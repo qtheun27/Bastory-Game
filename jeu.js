@@ -4,8 +4,6 @@
 
 const TAILLE_JOUEUR = 20; 
 
-// -- Les Personnages Jouables --
-// Les chemins pointent maintenant vers le dossier "images/"
 const PERSOS = {
     WIXY: { 
         nom: "WIXY",
@@ -31,21 +29,21 @@ const PERSOS = {
     }
 };
 
-// -- Les Armes --
 const VITESSE_BALLE = 10;
-const TAILLE_BALLE = 15; // Un peu plus gros pour bien voir l'image de l'arme
+const TAILLE_BALLE = 15; 
 const IMAGE_BOMBE = "images/bombe.png";
 const IMAGE_BOOMERANG = "images/boomerang.png";
 
-// -- L'Ennemi (Le Troll) --
 const TAILLE_ENNEMI = 40;        
 const IMAGE_BOSS = "images/boss.png";   
 const PV_MAX_ENNEMI = 10000;    
-const VITESSE_ENNEMI = 1.5; // Vitesse lente pour le gros Troll
+const VITESSE_ENNEMI = 1.5; 
+const DEGATS_BOSS = 3000;        // Dégâts du coup de maillet
+const DELAI_ATTAQUE_BOSS = 60;   // Temps de recharge du Boss (60 = environ 1 seconde)
 const COULEUR_ENNEMI = '#e74c3c'; 
 
 // ==============================================================================
-// 💻 PREPARATION DES IMAGES (Chargement en mémoire)
+// 💻 PREPARATION DES IMAGES
 // ==============================================================================
 
 let imgWixy = new Image(); imgWixy.src = PERSOS.WIXY.image;
@@ -59,7 +57,7 @@ let imgBombe = new Image(); imgBombe.src = IMAGE_BOMBE;
 let imgBoomerang = new Image(); imgBoomerang.src = IMAGE_BOOMERANG;
 
 // ==============================================================================
-// 💻 CODE DU JEU (La mécanique interne)
+// 💻 CODE DU JEU (Variables et Contrôles)
 // ==============================================================================
 
 const canvas = document.querySelector('canvas') || document.createElement('canvas');
@@ -69,7 +67,6 @@ const ctx = canvas.getContext('2d');
 function redimensionner() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    // On éloigne un peu le Boss au démarrage pour ne pas mourir tout de suite
     ennemi.x = canvas.width - 100;
     ennemi.y = canvas.height - 100;
 }
@@ -78,8 +75,8 @@ window.addEventListener('resize', redimensionner);
 let etatDuJeu = "MENU"; 
 let persoChoisi = null;
 
-let joueur = { x: 100, y: 100, pv: 0 };
-let ennemi = { x: 0, y: 0, pv: PV_MAX_ENNEMI };
+let joueur = { x: 100, y: 100, pv: 0, pvMax: 0 };
+let ennemi = { x: 0, y: 0, pv: PV_MAX_ENNEMI, chronoAttaque: 0 };
 let balles = []; 
 let compteurAvantProchainTir = 0; 
 
@@ -129,7 +126,6 @@ function gererClicEcran(positionX) {
         etatDuJeu = "MENU";
         return;
     }
-    
     if (etatDuJeu === "MENU") {
         if (positionX < canvas.width / 2) {
             lancerLeJeu(PERSOS.WIXY);
@@ -167,11 +163,15 @@ function gererFinToucher(e) {
 function lancerLeJeu(personnage) {
     persoChoisi = personnage;
     joueur.pv = personnage.pvMax;
+    joueur.pvMax = personnage.pvMax;
     joueur.x = 100;
     joueur.y = canvas.height / 2;
+    
     ennemi.pv = PV_MAX_ENNEMI;
     ennemi.x = canvas.width - 100;
     ennemi.y = canvas.height / 2;
+    ennemi.chronoAttaque = 0;
+    
     balles = [];
     joystickGauche.actif = false;
     joystickDroit.actif = false;
@@ -179,7 +179,7 @@ function lancerLeJeu(personnage) {
 }
 
 // ==============================================================================
-// 🔄 BOUCLE PRINCIPALE
+// 🔄 BOUCLE PRINCIPALE ET LOGIQUE
 // ==============================================================================
 
 function boucleDeJeu() {
@@ -199,7 +199,7 @@ function boucleDeJeu() {
 }
 
 function mettreAJourLaLogique() {
-    // -- 1. DEPLACEMENT JOUEUR --
+    // 1. DÉPLACEMENT JOUEUR
     let deplacementX = 0;
     let deplacementY = 0;
 
@@ -212,7 +212,6 @@ function mettreAJourLaLogique() {
         let diffX = joystickGauche.actuelX - joystickGauche.origineX;
         let diffY = joystickGauche.actuelY - joystickGauche.origineY;
         let distance = Math.hypot(diffX, diffY);
-        
         if (distance > 0) {
             let force = Math.min(distance / 50, 1); 
             deplacementX = (diffX / distance) * persoChoisi.vitesse * force;
@@ -225,20 +224,33 @@ function mettreAJourLaLogique() {
     joueur.x = Math.max(TAILLE_JOUEUR, Math.min(canvas.width - TAILLE_JOUEUR, joueur.x));
     joueur.y = Math.max(TAILLE_JOUEUR, Math.min(canvas.height - TAILLE_JOUEUR, joueur.y));
 
-    // -- 2. DEPLACEMENT DU BOSS (Le Troll pourchasse le joueur) --
+    // 2. COMPORTEMENT DU BOSS
     if (ennemi.pv > 0) {
         let angleVersJoueur = Math.atan2(joueur.y - ennemi.y, joueur.x - ennemi.x);
         ennemi.x += Math.cos(angleVersJoueur) * VITESSE_ENNEMI;
         ennemi.y += Math.sin(angleVersJoueur) * VITESSE_ENNEMI;
 
-        // Si le boss touche le joueur = Défaite
+        if (ennemi.chronoAttaque > 0) {
+            ennemi.chronoAttaque--;
+        }
+
         let distanceBossJoueur = Math.hypot(joueur.x - ennemi.x, joueur.y - ennemi.y);
-        if (distanceBossJoueur < TAILLE_JOUEUR + TAILLE_ENNEMI) {
-            etatDuJeu = "DEFAITE";
+        
+        // Attaque au corps-à-corps du boss
+        if (distanceBossJoueur < TAILLE_JOUEUR + TAILLE_ENNEMI + 10) {
+            if (ennemi.chronoAttaque <= 0) {
+                joueur.pv -= DEGATS_BOSS; // Coup de maillet !
+                ennemi.chronoAttaque = DELAI_ATTAQUE_BOSS; // Le boss se repose
+                
+                if (joueur.pv <= 0) {
+                    joueur.pv = 0;
+                    etatDuJeu = "DEFAITE";
+                }
+            }
         }
     }
 
-    // -- 3. TIR --
+    // 3. TIR DU JOUEUR
     if (compteurAvantProchainTir > 0) compteurAvantProchainTir--;
 
     if (joystickDroit.actif) {
@@ -248,7 +260,6 @@ function mettreAJourLaLogique() {
 
         if (distance > 10 && compteurAvantProchainTir <= 0) {
             let angle = Math.atan2(diffY, diffX); 
-            
             balles.push({
                 x: joueur.x,
                 y: joueur.y,
@@ -259,12 +270,11 @@ function mettreAJourLaLogique() {
                 etape: "aller", 
                 dejaTouche: false 
             });
-            
             compteurAvantProchainTir = persoChoisi.delaiTir;
         }
     }
 
-    // -- 4. BALLES ET COLLISIONS --
+    // 4. BALLES ET COLLISIONS
     for (let i = balles.length - 1; i >= 0; i--) {
         let balle = balles[i];
         
@@ -306,7 +316,6 @@ function mettreAJourLaLogique() {
                 ennemi.pv = 0;
                 etatDuJeu = "VICTOIRE"; 
             }
-            
             if (balle.arme === "bombe") {
                 balles.splice(i, 1);
             } else if (balle.arme === "boomerang") {
@@ -317,15 +326,24 @@ function mettreAJourLaLogique() {
 }
 
 // ==============================================================================
-// 🎨 RENDU VISUEL
+// 🎨 RENDU VISUEL (DESSIN)
 // ==============================================================================
+
+// Fonction pour dessiner les ombres (Crée l'illusion de 3D)
+function dessinerOmbre(x, y, taille) {
+    ctx.beginPath();
+    // Dessine une ellipse (cercle aplati) sous le personnage
+    ctx.ellipse(x, y + taille, taille, taille / 2, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+    ctx.fill();
+    ctx.closePath();
+}
 
 function dessinerMenu() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     ctx.fillStyle = PERSOS.WIXY.couleur;
     ctx.fillRect(0, 0, canvas.width / 2, canvas.height);
-    
     ctx.fillStyle = PERSOS.BORA.couleur;
     ctx.fillRect(canvas.width / 2, 0, canvas.width / 2, canvas.height);
 
@@ -366,40 +384,47 @@ function dessinerEcranFin(texte, couleurText) {
 function dessinerLesElements() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // 1. DESSINER LE JOUEUR 
+    // DESSINER LE JOUEUR
+    dessinerOmbre(joueur.x, joueur.y, TAILLE_JOUEUR); // L'ombre donne l'effet 3D !
     if (persoChoisi.imgObj.complete && persoChoisi.imgObj.naturalHeight !== 0) {
-        ctx.drawImage(persoChoisi.imgObj, joueur.x - TAILLE_JOUEUR, joueur.y - TAILLE_JOUEUR, TAILLE_JOUEUR * 2, TAILLE_JOUEUR * 2);
+        ctx.drawImage(persoChoisi.imgObj, joueur.x - TAILLE_JOUEUR, joueur.y - TAILLE_JOUEUR - 10, TAILLE_JOUEUR * 2, TAILLE_JOUEUR * 2);
     } else {
         ctx.beginPath();
-        ctx.arc(joueur.x, joueur.y, TAILLE_JOUEUR, 0, Math.PI * 2);
+        ctx.arc(joueur.x, joueur.y - 10, TAILLE_JOUEUR, 0, Math.PI * 2);
         ctx.fillStyle = persoChoisi.couleur;
         ctx.fill();
         ctx.closePath();
     }
 
-    // 2. DESSINER LE BOSS
+    // Barre de vie Joueur (Bleue)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(joueur.x - 20, joueur.y - 40, 40, 8);
+    ctx.fillStyle = '#3498db';
+    ctx.fillRect(joueur.x - 20, joueur.y - 40, 40 * (Math.max(joueur.pv, 0) / joueur.pvMax), 8);
+
+    // DESSINER LE BOSS
     if (ennemi.pv > 0) {
+        dessinerOmbre(ennemi.x, ennemi.y, TAILLE_ENNEMI - 10);
         if (imgEnnemi.complete && imgEnnemi.naturalHeight !== 0) {
-            ctx.drawImage(imgEnnemi, ennemi.x - TAILLE_ENNEMI, ennemi.y - TAILLE_ENNEMI, TAILLE_ENNEMI * 2, TAILLE_ENNEMI * 2);
+            ctx.drawImage(imgEnnemi, ennemi.x - TAILLE_ENNEMI, ennemi.y - TAILLE_ENNEMI - 20, TAILLE_ENNEMI * 2, TAILLE_ENNEMI * 2);
         } else {
             ctx.beginPath();
-            ctx.arc(ennemi.x, ennemi.y, TAILLE_ENNEMI, 0, Math.PI * 2);
+            ctx.arc(ennemi.x, ennemi.y - 20, TAILLE_ENNEMI, 0, Math.PI * 2);
             ctx.fillStyle = COULEUR_ENNEMI;
             ctx.fill();
             ctx.closePath();
         }
 
-        ctx.fillStyle = 'black';
-        ctx.fillRect(ennemi.x - 25, ennemi.y - 55, 50, 10);
-        ctx.fillStyle = '#2ecc71';
-        let pourcentagePv = ennemi.pv / PV_MAX_ENNEMI;
-        ctx.fillRect(ennemi.x - 25, ennemi.y - 55, 50 * pourcentagePv, 10);
+        // Barre de vie Boss (Rouge)
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillRect(ennemi.x - 25, ennemi.y - 65, 50, 10);
+        ctx.fillStyle = '#e74c3c';
+        ctx.fillRect(ennemi.x - 25, ennemi.y - 65, 50 * (Math.max(ennemi.pv, 0) / PV_MAX_ENNEMI), 10);
     }
 
-    // 3. DESSINER LES ARMES (TIRS)
+    // DESSINER LES TIRS
     for (let balle of balles) {
         let imageAUtiliser = balle.arme === "bombe" ? imgBombe : imgBoomerang;
-        
         if (imageAUtiliser.complete && imageAUtiliser.naturalHeight !== 0) {
             ctx.drawImage(imageAUtiliser, balle.x - TAILLE_BALLE, balle.y - TAILLE_BALLE, TAILLE_BALLE * 2, TAILLE_BALLE * 2);
         } else {
@@ -426,7 +451,6 @@ function dessinerJoystick(joystick) {
         let diffY = joystick.actuelY - joystick.origineY;
         let distance = Math.hypot(diffX, diffY);
         let limite = 50;
-        
         let boutonX = joystick.actuelX;
         let boutonY = joystick.actuelY;
         
