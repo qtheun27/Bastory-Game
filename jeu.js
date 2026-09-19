@@ -2,40 +2,61 @@
 // 🛠️ ZONE DES RÉGLAGES - MODIFIEZ CES VALEURS POUR CHANGER LE JEU !
 // ==============================================================================
 
-const TAILLE_JOUEUR = 20;
+const TAILLE_JOUEUR = 20; 
 
 // -- Les Personnages Jouables --
-// ASTUCE : Un écran de tablette fait environ 1000 pixels de large. 
-// Utilisez des centaines (ex: 400, 600) pour régler la distance !
+// Les chemins pointent maintenant vers le dossier "images/"
 const PERSOS = {
     WIXY: { 
         nom: "WIXY",
+        image: "images/wixy.png",  
         couleur: "#3498db", 
         pvMax: 6000, 
         vitesse: 4,         
         arme: "bombe",
         degats: 2000,
-        portee: 400,        // 400 pixels (portée moyenne/courte)
+        portee: 300,        
         delaiTir: 45        
     },
     BORA: { 
         nom: "BORA",
+        image: "images/bora.png",  
         couleur: "#9b59b6", 
         pvMax: 4800, 
         vitesse: 6,         
         arme: "boomerang",
         degats: 1250,
-        portee: 700,        // 700 pixels (longue portée)
+        portee: 500,        
         delaiTir: 20        
     }
 };
 
+// -- Les Armes --
 const VITESSE_BALLE = 10;
-const TAILLE_BALLE = 8;
+const TAILLE_BALLE = 15; // Un peu plus gros pour bien voir l'image de l'arme
+const IMAGE_BOMBE = "images/bombe.png";
+const IMAGE_BOOMERANG = "images/boomerang.png";
 
-const TAILLE_ENNEMI = 30;
+// -- L'Ennemi (Le Troll) --
+const TAILLE_ENNEMI = 40;        
+const IMAGE_BOSS = "images/boss.png";   
 const PV_MAX_ENNEMI = 10000;    
+const VITESSE_ENNEMI = 1.5; // Vitesse lente pour le gros Troll
 const COULEUR_ENNEMI = '#e74c3c'; 
+
+// ==============================================================================
+// 💻 PREPARATION DES IMAGES (Chargement en mémoire)
+// ==============================================================================
+
+let imgWixy = new Image(); imgWixy.src = PERSOS.WIXY.image;
+PERSOS.WIXY.imgObj = imgWixy; 
+
+let imgBora = new Image(); imgBora.src = PERSOS.BORA.image;
+PERSOS.BORA.imgObj = imgBora;
+
+let imgEnnemi = new Image(); imgEnnemi.src = IMAGE_BOSS;
+let imgBombe = new Image(); imgBombe.src = IMAGE_BOMBE;
+let imgBoomerang = new Image(); imgBoomerang.src = IMAGE_BOOMERANG;
 
 // ==============================================================================
 // 💻 CODE DU JEU (La mécanique interne)
@@ -48,13 +69,13 @@ const ctx = canvas.getContext('2d');
 function redimensionner() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    ennemi.x = canvas.width / 2;
-    ennemi.y = canvas.height / 2;
+    // On éloigne un peu le Boss au démarrage pour ne pas mourir tout de suite
+    ennemi.x = canvas.width - 100;
+    ennemi.y = canvas.height - 100;
 }
 window.addEventListener('resize', redimensionner);
 
-// -- Variables d'état --
-let etatDuJeu = "MENU"; // Peut être "MENU", "EN_JEU", ou "VICTOIRE"
+let etatDuJeu = "MENU"; 
 let persoChoisi = null;
 
 let joueur = { x: 100, y: 100, pv: 0 };
@@ -62,7 +83,6 @@ let ennemi = { x: 0, y: 0, pv: PV_MAX_ENNEMI };
 let balles = []; 
 let compteurAvantProchainTir = 0; 
 
-// -- Joysticks & Contrôles --
 let joystickGauche = { actif: false, id: null, origineX: 0, origineY: 0, actuelX: 0, actuelY: 0 };
 let joystickDroit  = { actif: false, id: null, origineX: 0, origineY: 0, actuelX: 0, actuelY: 0 };
 let touchesClavier = {};
@@ -74,20 +94,18 @@ canvas.addEventListener('touchstart', gererDebutToucher, {passive: false});
 canvas.addEventListener('touchmove', gererMouvementToucher, {passive: false});
 canvas.addEventListener('touchend', gererFinToucher);
 canvas.addEventListener('touchcancel', gererFinToucher);
-canvas.addEventListener('mousedown', (e) => gererClicEcran(e.clientX)); // Pour le test sur Mac
+canvas.addEventListener('mousedown', (e) => gererClicEcran(e.clientX)); 
 
 function gererDebutToucher(e) {
     e.preventDefault();
     for (let i = 0; i < e.changedTouches.length; i++) {
         let touch = e.changedTouches[i];
         
-        // Si on est dans le menu ou sur l'écran de victoire, on gère le choix
-        if (etatDuJeu === "MENU" || etatDuJeu === "VICTOIRE") {
+        if (etatDuJeu === "MENU" || etatDuJeu === "VICTOIRE" || etatDuJeu === "DEFAITE") {
             gererClicEcran(touch.clientX);
             continue;
         }
 
-        // Si on est en jeu, on gère les joysticks
         if (touch.clientX < canvas.width / 2 && !joystickGauche.actif) {
             joystickGauche.actif = true;
             joystickGauche.id = touch.identifier;
@@ -107,13 +125,11 @@ function gererDebutToucher(e) {
 }
 
 function gererClicEcran(positionX) {
-    // Si on a gagné, n'importe quel clic ramène au menu
-    if (etatDuJeu === "VICTOIRE") {
+    if (etatDuJeu === "VICTOIRE" || etatDuJeu === "DEFAITE") {
         etatDuJeu = "MENU";
         return;
     }
     
-    // Si on est dans le menu, on choisit le perso selon le côté cliqué
     if (etatDuJeu === "MENU") {
         if (positionX < canvas.width / 2) {
             lancerLeJeu(PERSOS.WIXY);
@@ -154,8 +170,9 @@ function lancerLeJeu(personnage) {
     joueur.x = 100;
     joueur.y = canvas.height / 2;
     ennemi.pv = PV_MAX_ENNEMI;
+    ennemi.x = canvas.width - 100;
+    ennemi.y = canvas.height / 2;
     balles = [];
-    // On libère les joysticks par sécurité
     joystickGauche.actif = false;
     joystickDroit.actif = false;
     etatDuJeu = "EN_JEU";
@@ -172,14 +189,17 @@ function boucleDeJeu() {
         mettreAJourLaLogique();
         dessinerLesElements();
     } else if (etatDuJeu === "VICTOIRE") {
-        dessinerLesElements(); // Garde le jeu affiché en fond
-        dessinerVictoire();    // Affiche le texte par-dessus
+        dessinerLesElements(); 
+        dessinerEcranFin("VICTOIRE !", "#f1c40f");    
+    } else if (etatDuJeu === "DEFAITE") {
+        dessinerLesElements(); 
+        dessinerEcranFin("DEFAITE...", "#e74c3c");    
     }
     requestAnimationFrame(boucleDeJeu);
 }
 
 function mettreAJourLaLogique() {
-    // -- 1. DEPLACEMENT --
+    // -- 1. DEPLACEMENT JOUEUR --
     let deplacementX = 0;
     let deplacementY = 0;
 
@@ -205,7 +225,20 @@ function mettreAJourLaLogique() {
     joueur.x = Math.max(TAILLE_JOUEUR, Math.min(canvas.width - TAILLE_JOUEUR, joueur.x));
     joueur.y = Math.max(TAILLE_JOUEUR, Math.min(canvas.height - TAILLE_JOUEUR, joueur.y));
 
-    // -- 2. TIR --
+    // -- 2. DEPLACEMENT DU BOSS (Le Troll pourchasse le joueur) --
+    if (ennemi.pv > 0) {
+        let angleVersJoueur = Math.atan2(joueur.y - ennemi.y, joueur.x - ennemi.x);
+        ennemi.x += Math.cos(angleVersJoueur) * VITESSE_ENNEMI;
+        ennemi.y += Math.sin(angleVersJoueur) * VITESSE_ENNEMI;
+
+        // Si le boss touche le joueur = Défaite
+        let distanceBossJoueur = Math.hypot(joueur.x - ennemi.x, joueur.y - ennemi.y);
+        if (distanceBossJoueur < TAILLE_JOUEUR + TAILLE_ENNEMI) {
+            etatDuJeu = "DEFAITE";
+        }
+    }
+
+    // -- 3. TIR --
     if (compteurAvantProchainTir > 0) compteurAvantProchainTir--;
 
     if (joystickDroit.actif) {
@@ -231,7 +264,7 @@ function mettreAJourLaLogique() {
         }
     }
 
-    // -- 3. BALLES ET COLLISIONS --
+    // -- 4. BALLES ET COLLISIONS --
     for (let i = balles.length - 1; i >= 0; i--) {
         let balle = balles[i];
         
@@ -245,7 +278,6 @@ function mettreAJourLaLogique() {
         balle.y += balle.vitesseY;
         balle.distanceParcourue += Math.hypot(balle.vitesseX, balle.vitesseY);
 
-        // -- Gestion de la portée (avec la nouvelle valeur en pixels) --
         if (balle.arme === "bombe" && balle.distanceParcourue >= persoChoisi.portee) {
             balles.splice(i, 1);
             continue;
@@ -267,13 +299,12 @@ function mettreAJourLaLogique() {
             continue;
         }
 
-        // -- Collision avec l'ennemi --
         let distanceBalleEnnemi = Math.hypot(balle.x - ennemi.x, balle.y - ennemi.y);
         if (ennemi.pv > 0 && distanceBalleEnnemi < TAILLE_BALLE + TAILLE_ENNEMI && !balle.dejaTouche) {
             ennemi.pv -= persoChoisi.degats; 
             if (ennemi.pv <= 0) {
                 ennemi.pv = 0;
-                etatDuJeu = "VICTOIRE"; // L'ennemi n'a plus de vie = on a gagné !
+                etatDuJeu = "VICTOIRE"; 
             }
             
             if (balle.arme === "bombe") {
@@ -300,28 +331,32 @@ function dessinerMenu() {
 
     ctx.fillStyle = "white";
     ctx.textAlign = "center";
-    ctx.font = "bold 30px Arial";
     
-    ctx.fillText("Choisir " + PERSOS.WIXY.nom, canvas.width / 4, canvas.height / 2);
-    ctx.font = "20px Arial";
-    ctx.fillText("Bombe (Courte portée)", canvas.width / 4, canvas.height / 2 + 40);
-    
+    if (PERSOS.WIXY.imgObj.complete && PERSOS.WIXY.imgObj.naturalHeight !== 0) {
+        ctx.drawImage(PERSOS.WIXY.imgObj, (canvas.width / 4) - 50, (canvas.height / 2) - 120, 100, 100);
+    }
     ctx.font = "bold 30px Arial";
-    ctx.fillText("Choisir " + PERSOS.BORA.nom, (canvas.width / 4) * 3, canvas.height / 2);
+    ctx.fillText("Choisir " + PERSOS.WIXY.nom, canvas.width / 4, canvas.height / 2 + 30);
     ctx.font = "20px Arial";
-    ctx.fillText("Boomerang (Longue portée)", (canvas.width / 4) * 3, canvas.height / 2 + 40);
+    ctx.fillText("Bombe (Courte portée)", canvas.width / 4, canvas.height / 2 + 70);
+    
+    if (PERSOS.BORA.imgObj.complete && PERSOS.BORA.imgObj.naturalHeight !== 0) {
+        ctx.drawImage(PERSOS.BORA.imgObj, (canvas.width / 4) * 3 - 50, (canvas.height / 2) - 120, 100, 100);
+    }
+    ctx.font = "bold 30px Arial";
+    ctx.fillText("Choisir " + PERSOS.BORA.nom, (canvas.width / 4) * 3, canvas.height / 2 + 30);
+    ctx.font = "20px Arial";
+    ctx.fillText("Boomerang (Longue portée)", (canvas.width / 4) * 3, canvas.height / 2 + 70);
 }
 
-function dessinerVictoire() {
-    // Fond semi-transparent pour griser le jeu derrière
+function dessinerEcranFin(texte, couleurText) {
     ctx.fillStyle = "rgba(0, 0, 0, 0.7)"; 
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Texte de victoire
-    ctx.fillStyle = "#f1c40f"; // Jaune or
+    ctx.fillStyle = couleurText; 
     ctx.textAlign = "center";
     ctx.font = "bold 60px Arial";
-    ctx.fillText("VICTOIRE !", canvas.width / 2, canvas.height / 2);
+    ctx.fillText(texte, canvas.width / 2, canvas.height / 2);
     
     ctx.fillStyle = "white";
     ctx.font = "25px Arial";
@@ -331,32 +366,49 @@ function dessinerVictoire() {
 function dessinerLesElements() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    ctx.beginPath();
-    ctx.arc(joueur.x, joueur.y, TAILLE_JOUEUR, 0, Math.PI * 2);
-    ctx.fillStyle = persoChoisi.couleur;
-    ctx.fill();
-    ctx.closePath();
-
-    if (ennemi.pv > 0) {
+    // 1. DESSINER LE JOUEUR 
+    if (persoChoisi.imgObj.complete && persoChoisi.imgObj.naturalHeight !== 0) {
+        ctx.drawImage(persoChoisi.imgObj, joueur.x - TAILLE_JOUEUR, joueur.y - TAILLE_JOUEUR, TAILLE_JOUEUR * 2, TAILLE_JOUEUR * 2);
+    } else {
         ctx.beginPath();
-        ctx.arc(ennemi.x, ennemi.y, TAILLE_ENNEMI, 0, Math.PI * 2);
-        ctx.fillStyle = COULEUR_ENNEMI;
+        ctx.arc(joueur.x, joueur.y, TAILLE_JOUEUR, 0, Math.PI * 2);
+        ctx.fillStyle = persoChoisi.couleur;
         ctx.fill();
         ctx.closePath();
-
-        ctx.fillStyle = 'black';
-        ctx.fillRect(ennemi.x - 25, ennemi.y - 45, 50, 10);
-        ctx.fillStyle = '#2ecc71';
-        let pourcentagePv = ennemi.pv / PV_MAX_ENNEMI;
-        ctx.fillRect(ennemi.x - 25, ennemi.y - 45, 50 * pourcentagePv, 10);
     }
 
-    ctx.fillStyle = "white"; 
+    // 2. DESSINER LE BOSS
+    if (ennemi.pv > 0) {
+        if (imgEnnemi.complete && imgEnnemi.naturalHeight !== 0) {
+            ctx.drawImage(imgEnnemi, ennemi.x - TAILLE_ENNEMI, ennemi.y - TAILLE_ENNEMI, TAILLE_ENNEMI * 2, TAILLE_ENNEMI * 2);
+        } else {
+            ctx.beginPath();
+            ctx.arc(ennemi.x, ennemi.y, TAILLE_ENNEMI, 0, Math.PI * 2);
+            ctx.fillStyle = COULEUR_ENNEMI;
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        ctx.fillStyle = 'black';
+        ctx.fillRect(ennemi.x - 25, ennemi.y - 55, 50, 10);
+        ctx.fillStyle = '#2ecc71';
+        let pourcentagePv = ennemi.pv / PV_MAX_ENNEMI;
+        ctx.fillRect(ennemi.x - 25, ennemi.y - 55, 50 * pourcentagePv, 10);
+    }
+
+    // 3. DESSINER LES ARMES (TIRS)
     for (let balle of balles) {
-        ctx.beginPath();
-        ctx.arc(balle.x, balle.y, TAILLE_BALLE, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.closePath();
+        let imageAUtiliser = balle.arme === "bombe" ? imgBombe : imgBoomerang;
+        
+        if (imageAUtiliser.complete && imageAUtiliser.naturalHeight !== 0) {
+            ctx.drawImage(imageAUtiliser, balle.x - TAILLE_BALLE, balle.y - TAILLE_BALLE, TAILLE_BALLE * 2, TAILLE_BALLE * 2);
+        } else {
+            ctx.beginPath();
+            ctx.arc(balle.x, balle.y, TAILLE_BALLE, 0, Math.PI * 2);
+            ctx.fillStyle = "white";
+            ctx.fill();
+            ctx.closePath();
+        }
     }
 
     dessinerJoystick(joystickGauche);
@@ -390,8 +442,5 @@ function dessinerJoystick(joystick) {
     }
 }
 
-// ==============================================================================
-// 🚀 DÉMARRAGE
-// ==============================================================================
 redimensionner(); 
 boucleDeJeu();
