@@ -142,11 +142,11 @@ function formulaire(obj, champs) {
     let inp, prev = '';
     if (type === 'select') { inp = el('select'); (typeof opts === 'function' ? opts() : opts).forEach(([v, t]) => inp.add(new Option(t, v))); }
     else inp = el('input', { type: type === 'image' ? 'text' : type === 'check' ? 'checkbox' : type, step: 'any' });
-    if (type === 'image') { prev = el('img', { className: 'apercu', src: obj[k] || '' }); prev.onerror = () => prev.style.opacity = .2; prev.onload = () => prev.style.opacity = 1; }
+    if (type === 'image') { prev = el('img', { className: 'apercu' }); afficherImage(prev, obj[k]); prev.onerror = () => prev.style.opacity = .2; prev.onload = () => prev.style.opacity = 1; }
     if (type === 'check') inp.checked = !!obj[k]; else inp.value = obj[k] ?? '';
     inp.oninput = inp.onchange = () => {
       obj[k] = type === 'number' ? (parseFloat(inp.value) || 0) : type === 'check' ? inp.checked : typeof obj[k] === 'number' ? +inp.value : inp.value;
-      if (prev) prev.src = inp.value; modifie();
+      if (prev) afficherImage(prev, inp.value); modifie();
     };
     f.append(el('label', {}, el('span', { textContent: lab }), inp,
       type === 'image' ? el('span', { className: 'img-outils' }, prev, boutonUpload(src => { inp.value = src; inp.oninput(); }, () => inp.value)) : ''));
@@ -329,7 +329,24 @@ function afficher() {
 
 // ---------- Firebase ----------
 firebase.initializeApp(FIREBASE_CONFIG);
-const auth = firebase.auth(), DOC = firebase.firestore().doc('bastory/config');
+const auth = firebase.auth(), FS = firebase.firestore(), DOC = FS.doc('bastory/config');
+// 🖼️ Images : chacune dans son propre document Firestore (collection "images") → plus de limite de 1 Mo pour la config
+const imagesFb = {};
+async function afficherImage(elImg, src) {
+  if (!src || !src.startsWith('fb:')) { elImg.src = src || ''; return; }
+  if (imagesFb[src] === undefined) { try { const d = await FS.collection('images').doc(src.slice(3)).get(); imagesFb[src] = d.exists ? d.data().data : ''; } catch (e) { imagesFb[src] = ''; } }
+  elImg.src = imagesFb[src];
+}
+async function sortirImages(o) { // remplace chaque image uploadée par un lien "fb:…" vers son document
+  for (const [k, v] of Object.entries(o)) {
+    if (v && typeof v === 'object') await sortirImages(v);
+    else if (typeof v === 'string' && v.startsWith('data:image')) {
+      const h = [...new Uint8Array(await crypto.subtle.digest('SHA-1', new TextEncoder().encode(v)))].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 24);
+      await FS.collection('images').doc(h).set({ data: v });
+      imagesFb['fb:' + h] = v; o[k] = 'fb:' + h;
+    }
+  }
+}
 let user = null;
 function majAuth() {
   $('#login').style.display = user ? 'none' : 'flex'; // écran de connexion obligatoire
@@ -355,6 +372,7 @@ async function chargerEnLigne() {
 
 // ---------- Actions ----------
 $('#bSave').onclick = async () => {
+  try { await sortirImages(cfg); } catch (e) { return alert('Envoi des images refusé : ' + e.message + '\nVérifie les règles Firestore (collection images).'); }
   const json = JSON.stringify(cfg);
   if (json.length > 950000) return alert(`Config trop lourde (${Math.round(json.length / 1024)} Ko, max 1 Mo). Utilise des images plus légères.`);
   try {

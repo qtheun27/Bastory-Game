@@ -18,7 +18,14 @@ let user = null;
 const cacheImg = {}, cacheBlanc = new Map();
 function img(src) {
   if (!src) return null;
-  if (!cacheImg[src]) { const i = new Image(); i.src = src; cacheImg[src] = i; }
+  if (!cacheImg[src]) {
+    const i = new Image(); cacheImg[src] = i;
+    if (src.startsWith('fb:')) { // image stockée dans Firestore (un document par image)
+      const c = FIREBASE_CONFIG;
+      fetch(`https://firestore.googleapis.com/v1/projects/${c.projectId}/databases/(default)/documents/images/${src.slice(3)}?key=${c.apiKey}`)
+        .then(r => r.json()).then(d => { i.src = d.fields.data.stringValue; }).catch(() => {});
+    } else i.src = src;
+  }
   return cacheImg[src];
 }
 const pret = i => i && i.complete && i.naturalWidth > 0;
