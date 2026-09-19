@@ -22,6 +22,9 @@
   .carte h3 { margin:0 0 10px; display:flex; justify-content:space-between; align-items:center; }
   .form label { display:grid; grid-template-columns:130px 1fr auto; gap:8px; align-items:center; margin:6px 0; font-size:13px; }
   input, select { width:100%; padding:6px; border-radius:6px; border:1px solid var(--bord); background:#15112b; color:var(--txt); }
+  .form .ligne { display:grid; grid-template-columns:130px 1fr; gap:8px; margin:6px 0; font-size:13px; }
+  .multi { display:flex; flex-wrap:wrap; gap:4px 12px; }
+  .form label.mc { display:flex; gap:6px; margin:0; }
   input[type=checkbox] { width:22px; height:22px; }
   input[type=color] { padding:2px; height:32px; }
   #login { position:fixed; inset:0; z-index:20; background:#0d0a1f; display:flex; align-items:center; justify-content:center; }
@@ -92,14 +95,20 @@ const CH = {
           ['joueursMin','Joueurs minimum (multi)','number'],['joueursMax','Joueurs maximum (multi)','number'],
           ['equipes','Équipes (multi)','select',[['chacun','Chacun pour soi'],['deux','2 équipes'],['coop','Tous ensemble (coop)']]],
           ['pointsVictoire','Points par victoire','number'],['pointsDefaite','Points par défaite','number'],
-          ['boss','Boss activés','check'],['nbBoss','Nombre de boss (max 10)','number'],['typeBoss','Quel boss','select',optBoss],['map','Map','select',optMaps]],
+          ['boss','Boss activés','check'],['nbBoss','Nombre de boss (max 10)','number'],
+          ['typesBoss','Types de boss (aucun coché = au hasard)','multi',() => Object.entries(cfg.bosses).map(([k, b]) => [k, b.nom])],['map','Map','select',optMaps]],
   perso: [['nom','Nom','text'],['image','Image jeu (vue du dessus)','image'],['imageCarte','Image carte (menu, fin)','image'],['couleur','Couleur','color'],['pvMax','Points de vie','number'],
           ['vitesse','Vitesse (2-8)','number'],['arme','Arme','select',optArmes],['degats','Dégâts','number'],['portee','Portée (px)','number'],['delaiTir','Cadence : délai entre 2 tirs (60 = 1 s)','number'],
           ['munitions','Nombre de munitions','number'],['recharge','Recharge d\'1 munition (60 = 1 s)','number']],
   arme:  [['nom','Nom','text'],['image','Image (vide = boule)','image'],
-          ['type','Trajectoire','select',[['lob','Lancer en cloche (passe les murs)'],['retour','Aller-retour'],['droit','Tir droit']]],
-          ['effet','Animation d\'impact','select',[['explosion','💥 Explosion'],['entaille','⚔️ Entaille'],['etincelle','✨ Étincelles'],['impact','🔨 Onde de choc']]],
-          ['vitesse','Vitesse','number'],['taille','Taille','number'],['rayon','Rayon explosion','number'],['couleur','Couleur effet','color']],
+          ['type','Trajectoire','select',[['lob','Lancer en cloche (passe les murs)'],['retour','Aller-retour'],['droit','Tir droit'],['terrain','🌋 Terrain (fait sortir des cases du sol)']]],
+          ['effet','Animation d\'impact','select',[['explosion','💥 Explosion'],['entaille','⚔️ Entaille'],['etincelle','✨ Étincelles'],['impact','🔨 Onde de choc'],
+            ['foudre','⚡ Foudre'],['glace','❄️ Glace'],['poison','☠️ Poison'],['feu','🔥 Feu'],['etoiles','⭐ Étoiles'],['vortex','🌀 Tourbillon'],['eclaboussure','💦 Éclaboussure']]],
+          ['vitesse','Vitesse','number'],['taille','Taille','number'],['rayon','Rayon explosion','number'],['couleur','Couleur effet','color'],
+          ['forme','🌋 Forme (terrain)','select',[['zone','Zone ronde'],['ligne','Ligne devant soi'],['mur','Mur en travers'],['croix','Croix']]],
+          ['nbCases','🌋 Nombre / taille (cases)','number'],
+          ['typeCase','🌋 Case créée','select',[['#','🟫 Mur (bloquant)'],['B','🌳 Buisson (cache)'],['W','🟦 Eau (bloque la marche)'],['.','🟩 Herbe (efface les obstacles)']]],
+          ['dureeCase','🌋 Durée (s, 0 = permanent)','number'],['delaiCase','🌋 Délai entre cases (60 = 1 s)','number']],
   boss:  [['nom','Nom','text'],['image','Image jeu (vue du dessus)','image'],['imageCarte','Image carte (fin de partie)','image'],['pvMax','Points de vie','number'],['vitesse','Vitesse','number'],['degats','Dégâts du coup','number'],
           ['delaiAttaque','Recharge (60 = 1 s)','number'],['rayonAttaque','Rayon du coup','number'],['taille','Taille (rayon)','number']],
   map:   [['nom','Nom','text'],['herbe1','Herbe 1','color'],['herbe2','Herbe 2','color'],['mur','Mur (dessus)','color'],['murFace','Mur (face)','color'],
@@ -114,6 +123,17 @@ const CH = {
 function formulaire(obj, champs) {
   const f = el('div', { className: 'form' });
   for (const [k, lab, type, opts] of champs) {
+    if (type === 'multi') { // cases à cocher multiples
+      if (!Array.isArray(obj[k])) obj[k] = [];
+      const box = el('div', { className: 'multi' });
+      opts().forEach(([v, t]) => {
+        const cb = el('input', { type: 'checkbox', checked: obj[k].includes(v) });
+        cb.onchange = () => { obj[k] = cb.checked ? [...obj[k], v] : obj[k].filter(x => x !== v); modifie(); };
+        box.append(el('label', { className: 'mc' }, cb, t));
+      });
+      f.append(el('div', { className: 'ligne' }, el('span', { textContent: lab }), box));
+      continue;
+    }
     let inp, prev = '';
     if (type === 'select') { inp = el('select'); (typeof opts === 'function' ? opts() : opts).forEach(([v, t]) => inp.add(new Option(t, v))); }
     else inp = el('input', { type: type === 'image' ? 'text' : type === 'check' ? 'checkbox' : type, step: 'any' });
@@ -124,27 +144,59 @@ function formulaire(obj, champs) {
       if (prev) prev.src = inp.value; modifie();
     };
     f.append(el('label', {}, el('span', { textContent: lab }), inp,
-      type === 'image' ? el('span', { className: 'img-outils' }, prev, boutonUpload(src => { inp.value = src; inp.oninput(); })) : ''));
+      type === 'image' ? el('span', { className: 'img-outils' }, prev, boutonUpload(src => { inp.value = src; inp.oninput(); }, () => inp.value)) : ''));
   }
   return f;
 }
-// 📷 Upload d'image : redimensionnée à 256 px et stockée directement dans la config Firebase
-function boutonUpload(cb) {
+// 📷 Upload d'image (256 px) + 🪄 gomme magique qui retire le fond uni
+function boutonUpload(cb, src) {
   const f = el('input', { type: 'file', accept: 'image/*', hidden: true });
-  f.onchange = async () => { if (f.files[0]) cb(await reduireImage(f.files[0])); f.value = ''; };
-  return el('span', {}, f, el('button', { type: 'button', className: 'sec', textContent: '📷', title: 'Uploader une image', onclick: e => { e.preventDefault(); f.click(); } }));
+  f.onchange = async () => { if (f.files[0]) { const r = await reduireImage(f.files[0]); cb(r.data); toast(r.gomme ? '🪄 Image importée, fond retiré' : 'Image importée'); } f.value = ''; };
+  const b = (t, title, fn) => el('button', { type: 'button', className: 'sec', textContent: t, title, onclick: e => { e.preventDefault(); fn(); } });
+  return el('span', {}, f, b('📷', 'Uploader une image (fond retiré automatiquement)', () => f.click()),
+    b('🪄', 'Gomme magique : retirer le fond', async () => {
+      try { const c = await chargerCanvas(src()); gommer(c); cb(versDataURL(c)); toast('🪄 Fond retiré — « Annuler » pour revenir en arrière'); }
+      catch (e) { alert('Image illisible'); }
+    }));
 }
-function reduireImage(file, max = 256) {
+function chargerCanvas(src, max = 256) {
   return new Promise((ok, ko) => {
-    const i = new Image();
+    const i = new Image(); i.crossOrigin = 'anonymous';
     i.onload = () => {
       const k = Math.min(1, max / Math.max(i.width, i.height)), c = el('canvas', { width: Math.round(i.width * k), height: Math.round(i.height * k) });
-      c.getContext('2d').drawImage(i, 0, 0, c.width, c.height);
-      let d = c.toDataURL('image/webp', 0.9); if (!d.startsWith('data:image/webp')) d = c.toDataURL('image/png');
-      URL.revokeObjectURL(i.src); ok(d);
+      c.getContext('2d').drawImage(i, 0, 0, c.width, c.height); ok(c);
     };
-    i.onerror = ko; i.src = URL.createObjectURL(file);
+    i.onerror = ko; i.src = src;
   });
+}
+const versDataURL = c => { const d = c.toDataURL('image/webp', 0.9); return d.startsWith('data:image/webp') ? d : c.toDataURL('image/png'); };
+function fondUni(c) { // les 4 coins sont opaques et de la même couleur = image avec fond
+  const w = c.width, h = c.height, d = c.getContext('2d').getImageData(0, 0, w, h).data;
+  const px = [0, w - 1, (h - 1) * w, w * h - 1].map(p => d.slice(p * 4, p * 4 + 4));
+  return px.every(p => p[3] > 200 && Math.abs(p[0] - px[0][0]) + Math.abs(p[1] - px[0][1]) + Math.abs(p[2] - px[0][2]) < 60);
+}
+function gommer(c, tol = 90) { // efface les pixels proches de la couleur des bords (remplissage depuis les bords)
+  const x = c.getContext('2d'), w = c.width, h = c.height, im = x.getImageData(0, 0, w, h), d = im.data;
+  const vu = new Uint8Array(w * h), pile = [];
+  for (let i = 0; i < w; i++) pile.push(i, (h - 1) * w + i);
+  for (let j = 0; j < h; j++) pile.push(j * w, j * w + w - 1);
+  const refs = [0, w - 1, (h - 1) * w, h * w - 1].map(p => [d[p * 4], d[p * 4 + 1], d[p * 4 + 2]]);
+  const proche = p => refs.some(r => Math.abs(d[p * 4] - r[0]) + Math.abs(d[p * 4 + 1] - r[1]) + Math.abs(d[p * 4 + 2] - r[2]) < tol);
+  while (pile.length) {
+    const p = pile.pop(); if (vu[p]) continue; vu[p] = 1;
+    if (d[p * 4 + 3] < 10 || proche(p)) {
+      d[p * 4 + 3] = 0; const px = p % w, py = (p / w) | 0;
+      if (px > 0) pile.push(p - 1); if (px < w - 1) pile.push(p + 1); if (py > 0) pile.push(p - w); if (py < h - 1) pile.push(p + w);
+    }
+  }
+  const vide = p => d[p * 4 + 3] === 0; // bords adoucis
+  for (let p = 0; p < w * h; p++) if (d[p * 4 + 3] > 0 && ((p % w > 0 && vide(p - 1)) || (p % w < w - 1 && vide(p + 1)) || (p >= w && vide(p - w)) || (p < w * (h - 1) && vide(p + w)))) d[p * 4 + 3] = Math.min(d[p * 4 + 3], 140);
+  x.putImageData(im, 0, 0);
+}
+async function reduireImage(file) {
+  const u = URL.createObjectURL(file), c = await chargerCanvas(u); URL.revokeObjectURL(u);
+  const gomme = fondUni(c); if (gomme) gommer(c);
+  return { data: versDataURL(c), gomme };
 }
 function carte(titre, contenu, onSuppr) {
   const h = el('h3', { textContent: titre });
@@ -173,7 +225,7 @@ const VUES = {
     z.append(el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouvelle arme', onclick: () => {
       const id = (prompt('Identifiant de l\'arme (ex : laser)') || '').trim().toLowerCase().replace(/\W/g, '');
       if (!id || cfg.armes[id]) return;
-      cfg.armes[id] = { nom: id, image: '', type: 'droit', effet: 'etincelle', vitesse: 12, taille: 12, rayon: 0, couleur: '#ffffff' };
+      cfg.armes[id] = { nom: id, image: '', type: 'droit', effet: 'etincelle', vitesse: 12, taille: 12, rayon: 0, couleur: '#ffffff', forme: 'zone', nbCases: 3, typeCase: '#', dureeCase: 5, delaiCase: 4 };
       modifie(); afficher();
     } })), g);
   },
@@ -183,7 +235,7 @@ const VUES = {
       if (cfg.modes.length > 1 && confirm('Supprimer le mode ' + m.nom + ' ?')) { cfg.modes.splice(i, 1); modifie(); afficher(); }
     })));
     z.append(el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouveau mode', onclick: () => {
-      cfg.modes.push({ nom: 'Nouveau mode', description: '', type: 'solo', actif: true, joueursMin: 1, joueursMax: 1, equipes: 'chacun', boss: true, nbBoss: 1, typeBoss: 'aleatoire', map: -1, pointsVictoire: 30, pointsDefaite: 5 });
+      cfg.modes.push({ nom: 'Nouveau mode', description: '', type: 'solo', actif: true, joueursMin: 1, joueursMax: 1, equipes: 'chacun', boss: true, nbBoss: 1, typesBoss: [], map: -1, pointsVictoire: 30, pointsDefaite: 5 });
       modifie(); afficher();
     } })), el('p', { className: 'aide', textContent: 'Solo/coop : on gagne quand tous les boss sont vaincus. Chacun pour soi / 2 équipes : on gagne quand tous les adversaires tombent (les boss attaquent tout le monde). Multi : départ dès que le max est atteint, ou 10 s après le minimum.' }), g);
   },
@@ -203,7 +255,7 @@ const VUES = {
     const g = el('div', { className: 'grille-cartes' });
     for (const [k, b] of Object.entries(cfg.bosses)) g.append(carte('👹 ' + b.nom + ' (' + k + ')', formulaire(b, CH.boss), () => {
       if (Object.keys(cfg.bosses).length < 2) return alert('Il faut garder au moins un boss.');
-      if (cfg.modes.some(m => m.typeBoss === k)) return alert('Boss utilisé par un mode : change d\'abord le mode.');
+      if (cfg.modes.some(m => (m.typesBoss || []).includes(k))) return alert('Boss utilisé par un mode : change d\'abord le mode.');
       if (confirm('Supprimer ' + b.nom + ' ?')) { delete cfg.bosses[k]; modifie(); afficher(); }
     }));
     z.append(el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouveau boss', onclick: () => {

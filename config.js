@@ -39,7 +39,12 @@ const CONFIG_PAR_DEFAUT = {
       "vitesse": 9,
       "taille": 18,
       "rayon": 80,
-      "couleur": "#ff9f1a"
+      "couleur": "#ff9f1a",
+      "forme": "zone",
+      "nbCases": 3,
+      "typeCase": "#",
+      "dureeCase": 5,
+      "delaiCase": 4
     },
     "boomerang": {
       "nom": "Boomerang",
@@ -49,7 +54,12 @@ const CONFIG_PAR_DEFAUT = {
       "vitesse": 11,
       "taille": 18,
       "rayon": 0,
-      "couleur": "#9cff57"
+      "couleur": "#9cff57",
+      "forme": "zone",
+      "nbCases": 3,
+      "typeCase": "#",
+      "dureeCase": 5,
+      "delaiCase": 4
     },
     "tir": {
       "nom": "Tir magique",
@@ -59,7 +69,27 @@ const CONFIG_PAR_DEFAUT = {
       "vitesse": 13,
       "taille": 10,
       "rayon": 0,
-      "couleur": "#ffe14a"
+      "couleur": "#ffe14a",
+      "forme": "zone",
+      "nbCases": 3,
+      "typeCase": "#",
+      "dureeCase": 5,
+      "delaiCase": 4
+    },
+    "seisme": {
+      "nom": "Séisme",
+      "image": "",
+      "type": "terrain",
+      "effet": "impact",
+      "vitesse": 10,
+      "taille": 16,
+      "rayon": 0,
+      "couleur": "#c98a4b",
+      "forme": "mur",
+      "nbCases": 3,
+      "typeCase": "#",
+      "dureeCase": 5,
+      "delaiCase": 4
     }
   },
   "maps": [
@@ -125,10 +155,10 @@ const CONFIG_PAR_DEFAUT = {
       "equipes": "chacun",
       "boss": true,
       "nbBoss": 1,
-      "typeBoss": "aleatoire",
       "map": -1,
       "pointsVictoire": 20,
-      "pointsDefaite": 2
+      "pointsDefaite": 2,
+      "typesBoss": []
     },
     {
       "nom": "Horde de trolls",
@@ -140,10 +170,10 @@ const CONFIG_PAR_DEFAUT = {
       "equipes": "chacun",
       "boss": true,
       "nbBoss": 3,
-      "typeBoss": "aleatoire",
       "map": -1,
       "pointsVictoire": 50,
-      "pointsDefaite": 5
+      "pointsDefaite": 5,
+      "typesBoss": []
     },
     {
       "nom": "Duel 1V1",
@@ -155,10 +185,10 @@ const CONFIG_PAR_DEFAUT = {
       "equipes": "chacun",
       "boss": false,
       "nbBoss": 0,
-      "typeBoss": "aleatoire",
       "map": -1,
       "pointsVictoire": 30,
-      "pointsDefaite": 5
+      "pointsDefaite": 5,
+      "typesBoss": []
     },
     {
       "nom": "Équipes 2V2",
@@ -170,10 +200,10 @@ const CONFIG_PAR_DEFAUT = {
       "equipes": "deux",
       "boss": false,
       "nbBoss": 0,
-      "typeBoss": "aleatoire",
       "map": -1,
       "pointsVictoire": 40,
-      "pointsDefaite": 5
+      "pointsDefaite": 5,
+      "typesBoss": []
     },
     {
       "nom": "Coop contre les boss",
@@ -185,10 +215,10 @@ const CONFIG_PAR_DEFAUT = {
       "equipes": "coop",
       "boss": true,
       "nbBoss": 2,
-      "typeBoss": "aleatoire",
       "map": -1,
       "pointsVictoire": 40,
-      "pointsDefaite": 5
+      "pointsDefaite": 5,
+      "typesBoss": []
     }
   ],
   "pouvoirs": {
@@ -246,7 +276,8 @@ const CONFIG_PAR_DEFAUT = {
       "duree": 6,
       "rarete": 1
     }
-  }
+  },
+  "version": 3
 };
 
 // Met à niveau une ancienne config (ajoute les nouveaux paramètres avec des valeurs par défaut)
@@ -261,6 +292,9 @@ function migrerConfig(c) {
     if (m.type === '1v1') { m.type = 'multi'; m.joueursMin = m.joueursMin || 2; m.joueursMax = m.joueursMax || 2; }
     def(m, { joueursMin: 1, joueursMax: 1, equipes: 'chacun', pointsVictoire: 30, pointsDefaite: 5 });
   });
+  if ((c.version || 0) < 3) { if (!c.armes.seisme) c.armes.seisme = copie(D.armes.seisme); c.version = 3; }
+  c.modes.forEach(m => { if (!Array.isArray(m.typesBoss)) m.typesBoss = m.typeBoss && m.typeBoss !== 'aleatoire' ? [m.typeBoss] : []; delete m.typeBoss; });
+  Object.values(c.armes).forEach(a => def(a, { forme: 'zone', nbCases: 3, typeCase: '#', dureeCase: 5, delaiCase: 4 }));
   c.persos.forEach(p => def(p, { imageCarte: '', munitions: 3, recharge: 60 }));
   Object.values(c.bosses).forEach(b => def(b, { imageCarte: '' }));
   c.maps.forEach(m => def(m, { casseMurs: true, casseBuissons: true, pvBloc: 3000, chanceObjet: 10, chanceCoffre: 100 }));

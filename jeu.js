@@ -154,9 +154,10 @@ function demarrer(mapIdx, liste) {
   bosses = [];
   if (hote && mode.boss && mode.nbBoss > 0) for (let i = 0; i < Math.min(10, mode.nbBoss); i++) {
     const e = !pvp && map.b[i] ? { x: c(map.b[i].x), y: c(map.b[i].y) } : caseLibre(places);
-    bosses.push(creerBoss(mode.typeBoss, e.x, e.y, i));
+    const types = (mode.typesBoss || []).filter(id => CONFIG.bosses[id]); // plusieurs types de boss, à tour de rôle
+    bosses.push(creerBoss(types.length ? types[i % types.length] : 'aleatoire', e.x, e.y, i));
   }
-  projectiles = []; particules = []; textes = []; ondes = []; objets = []; degatsTuiles = {};
+  projectiles = []; particules = []; textes = []; ondes = []; objets = []; degatsTuiles = {}; retours = []; levees = {};
   cam.x = moi.x; cam.y = moi.y; finDans = 0; resultat = ''; messageFin = ''; finInfo = null;
   joyG.actif = joyD.actif = false;
   etat = 'JEU';
@@ -326,6 +327,7 @@ function clic(x, y) {
 function creerProjectile(j, angle, force, x, y, deg) {
   const a = j.arme, v = a.vitesse || 10;
   const p = { type: a.type, arme: a, perso: j.perso, deg: deg || j.perso.degats, de: j.uid, x, y, vx: Math.cos(angle) * v, vy: Math.sin(angle) * v, dist: 0, rot: 0, z: 0, vie: 0, retour: false, touches: new Set() };
+  if (a.type === 'terrain') Object.assign(p, { cases: casesTerrain(a, x, y, angle, Math.max(TUILE, j.perso.portee * force)), t: 0 });
   if (a.type === 'lob') {
     const d = Math.max(80, j.perso.portee * force);
     Object.assign(p, { sx: x, sy: y, cx: x + Math.cos(angle) * d, cy: y + Math.sin(angle) * d, t: 0, duree: Math.max(18, d / v) });
@@ -360,7 +362,11 @@ function majProjectiles() {
   for (let i = projectiles.length - 1; i >= 0; i--) {
     const p = projectiles[i], proprio = p.de === moi.uid ? moi : autres[p.de], mien = p.de === moi.uid;
     let fini = ++p.vie > 400 || !proprio;
-    if (!fini && p.type === 'lob') {
+    if (!fini && p.type === 'terrain') { // les cases sortent du sol les unes après les autres
+      p.t++;
+      p.cases = p.cases.filter(c => { if (c[2] > p.t) return true; elever(c[0], c[1], p); return false; });
+      if (!p.cases.length) fini = true;
+    } else if (!fini && p.type === 'lob') {
       p.t++; const k = p.t / p.duree;
       p.x = p.sx + (p.cx - p.sx) * k; p.y = p.sy + (p.cy - p.sy) * k;
       p.z = Math.sin(k * Math.PI) * 110; p.rot += 0.2;
@@ -472,6 +478,42 @@ function activerPouvoir(id) {
   effet('etincelle', moi.x, moi.y, p.couleur || '#fff');
 }
 
+// ---------- 10c. ARME DE TERRAIN (fait sortir des cases du sol) ----------
+let retours = [], levees = {};
+function setTuile(tx, ty, c) { map.g[ty] = map.g[ty].slice(0, tx) + c + map.g[ty].slice(tx + 1); delete degatsTuiles[tx + ',' + ty]; }
+function casesTerrain(a, x, y, angle, dist) { // → [[tx, ty, délai], ...]
+  const T = TUILE, n = Math.max(1, Math.round(+a.nbCases || 3)), dl = +a.delaiCase || 4, l = [];
+  const cx = x + Math.cos(angle) * dist, cy = y + Math.sin(angle) * dist, ox = Math.floor(cx / T), oy = Math.floor(cy / T);
+  const ajoute = (tx, ty, d) => { if (!l.some(c => c[0] === tx && c[1] === ty)) l.push([tx, ty, Math.round(d)]); };
+  if (a.forme === 'ligne') for (let i = 1; i <= n; i++) ajoute(Math.floor((x + Math.cos(angle) * i * T) / T), Math.floor((y + Math.sin(angle) * i * T) / T), i * dl);
+  else if (a.forme === 'mur') { const px = -Math.sin(angle), py = Math.cos(angle); for (let i = 0; i < n; i++) { const o = (i - (n - 1) / 2) * T; ajoute(Math.floor((cx + px * o) / T), Math.floor((cy + py * o) / T), Math.abs(i - (n - 1) / 2) * dl); } }
+  else if (a.forme === 'croix') { ajoute(ox, oy, 0); for (let i = 1; i <= n; i++) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) ajoute(ox + dx * i, oy + dy * i, i * dl); }
+  else { const r = (n - 1) / 2, R = Math.ceil(r); for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) if (Math.hypot(dx, dy) <= r + 0.5) ajoute(ox + dx, oy + dy, Math.hypot(dx, dy) * dl); }
+  return l;
+}
+function elever(tx, ty, p) {
+  if (tx <= 0 || ty <= 0 || tx >= map.l - 1 || ty >= map.h - 1) return;
+  const a = p.arme, ancien = tuile(tx, ty), c = a.typeCase || '#';
+  if (ancien === 'C' || ancien === c) return;
+  setTuile(tx, ty, c); levees[tx + ',' + ty] = temps;
+  if (+a.dureeCase > 0) retours.push({ tx, ty, ancien, c, fin: temps + a.dureeCase * 60 }); // 0 = permanent
+  const T = TUILE, x = (tx + 0.5) * T, y = (ty + 0.5) * T;
+  effet(a.effet || 'impact', x, y, a.couleur, 45);
+  for (const cb of cibles(p)) {
+    const e = cb.e;
+    if (!p.touches.has(cb.k) && Math.abs(e.x - x) < T / 2 + e.r * 0.6 && Math.abs(e.y - y) < T / 2 + e.r * 0.6) { p.touches.add(cb.k); impact(e, p, x, y, false); }
+  }
+  if (bloque(c)) liberer();
+}
+function liberer() { // éjecte ceux qui se retrouvent coincés dans un bloc
+  for (const e of [moi, ...(hote ? bosses : [])]) if (e && !libre(e.x, e.y, e.r)) {
+    for (let r = TUILE / 2; r < TUILE * 5; r += TUILE / 2) {
+      const a = [...Array(12).keys()].map(i => i / 12 * Math.PI * 2).find(a => libre(e.x + Math.cos(a) * r, e.y + Math.sin(a) * r, e.r));
+      if (a !== undefined) { e.x += Math.cos(a) * r; e.y += Math.sin(a) * r; break; }
+    }
+  }
+}
+
 // ---------- 11. LOGIQUE ----------
 function maj() {
   temps++;
@@ -500,6 +542,11 @@ function maj() {
     if (hote) iaBoss(b);
     else { b.x += (b.tx - b.x) * 0.3; b.y += (b.ty - b.y) * 0.3; if (b.flash > 0) b.flash--; }
   }
+  retours = retours.filter(r => { // les cases temporaires reviennent à leur état d'origine
+    if (temps < r.fin) return true;
+    if (tuile(r.tx, r.ty) === r.c) { setTuile(r.tx, r.ty, r.ancien); levees[r.tx + ',' + r.ty] = temps; if (bloque(r.ancien)) liberer(); }
+    return false;
+  });
   majProjectiles(); majEffets();
   const vw = W / zoom, vh = H / zoom, cible = (p, v, m) => m <= v ? m / 2 : Math.max(v / 2, Math.min(m - v / 2, p));
   cam.x += (cible(moi.x, vw, map.l * TUILE) - cam.x) * 0.12;
@@ -562,6 +609,33 @@ function effet(type, x, y, couleur = '#fff', rayon = 60, angle = 0) {
   } else if (type === 'etincelle') {   // ✨ petites étincelles
     ondes.push({ x, y, r: 4, max: 34, c: couleur, vie: 1, ep: 4 });
     for (let i = 0; i < 12; i++) particule(x, y, i % 2 ? couleur : '#fff', 6, 4, 1, 'trait', { len: 12 });
+  } else if (type === 'foudre') {       // ⚡ éclairs
+    secousse = Math.max(secousse, 8);
+    for (let k = 0; k < 3; k++) {
+      const pts = []; let px = x + (Math.random() - 0.5) * 30, py = y - 160;
+      for (let i = 0; i < 8; i++) { pts.push([px, py]); px += (Math.random() - 0.5) * 34; py += 20; }
+      pts.push([x, y]); particules.push({ x, y, vx: 0, vy: 0, c: k ? couleur : '#fff', t: 5 - k, vie: 1, forme: 'eclair', pts });
+    }
+    ondes.push({ x, y, r: 6, max: rayon, c: '#fffbe0', vie: 1, ep: 8 });
+    for (let i = 0; i < 12; i++) particule(x, y, i % 2 ? couleur : '#fff', 8, 3, 1, 'trait', { len: 14 });
+  } else if (type === 'glace') {        // ❄️ éclats de glace
+    ondes.push({ x, y, r: 6, max: rayon, c: '#c8f4ff', vie: 1, ep: 10 });
+    for (let i = 0; i < 14; i++) particule(x, y, i % 2 ? '#e8fbff' : couleur, 6, 5, 1.2, 'trait', { len: 22 });
+    for (let i = 0; i < 10; i++) particule(x, y, '#ffffff', 3, 3, 1.5);
+  } else if (type === 'poison') {       // ☠️ bulles toxiques
+    for (let i = 0; i < 22; i++) particule(x + (Math.random() - 0.5) * rayon, y + (Math.random() - 0.5) * rayon * 0.6, i % 3 ? couleur : '#b7ff4a', 1.5, 7, 2, 'bulle', { g: -0.03 });
+    ondes.push({ x, y, r: 6, max: rayon * 0.9, c: couleur, vie: 1, ep: 6 });
+  } else if (type === 'feu') {          // 🔥 flammes
+    for (let i = 0; i < 26; i++) particule(x + (Math.random() - 0.5) * rayon * 0.8, y, ['#fff3b0', '#ffb000', couleur, '#ff3b00'][i % 4], 2, 10, 1.3, 'rond', { g: -0.15 });
+    for (let i = 0; i < 6; i++) particule(x, y - 20, 'rgba(60,60,60,.6)', 1.5, 14, 1.6, 'fumee');
+  } else if (type === 'etoiles') {      // ⭐ étoiles
+    for (let i = 0; i < 14; i++) particule(x, y, ['#ffd23f', '#fff', couleur][i % 3], 9, 9, 1.2, 'etoile');
+    ondes.push({ x, y, r: 6, max: rayon, c: '#ffd23f', vie: 1, ep: 5 });
+  } else if (type === 'vortex') {       // 🌀 tourbillon
+    for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2; particules.push({ x: x + Math.cos(a) * rayon, y: y + Math.sin(a) * rayon, vx: -Math.sin(a) * 5 - Math.cos(a) * 3, vy: Math.cos(a) * 5 - Math.sin(a) * 3, c: i % 2 ? couleur : '#fff', t: 5, vie: 1.2, forme: 'rond' }); }
+  } else if (type === 'eclaboussure') { // 💦 gouttes
+    for (let i = 0; i < 20; i++) particule(x, y, i % 2 ? couleur : '#e0f7ff', 6, 5, 1.2, 'rond', { vy: -4 - Math.random() * 4, g: 0.35 });
+    ondes.push({ x, y, r: 6, max: rayon, c: '#bff0ff', vie: 1, ep: 6 });
   } else if (type === 'impact') {      // 🔨 massue du boss : onde de choc + poussière
     secousse = Math.max(secousse, 14);
     ondes.push({ x, y, r: 10, max: rayon * 1.2, c: couleur, vie: 1, ep: 14 });
@@ -637,23 +711,35 @@ function dessinerEffets() {
     ctx.globalAlpha = Math.max(0, o.vie); ctx.strokeStyle = o.c; ctx.lineWidth = o.ep * o.vie;
     ctx.beginPath(); ctx.ellipse(o.x, o.y, o.r, o.r * 0.8, 0, 0, 7); ctx.stroke();
   }
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   for (const p of particules) {
-    ctx.globalAlpha = Math.max(0, Math.min(1, p.vie));
+    ctx.globalAlpha = Math.max(0, Math.min(1, p.vie)); ctx.fillStyle = ctx.strokeStyle = p.c;
     if (p.forme === 'trait') {
       const a = p.a !== undefined ? p.a : Math.atan2(p.vy, p.vx), l = p.len / 2;
-      ctx.strokeStyle = p.c; ctx.lineWidth = p.t * Math.max(0.2, p.vie); ctx.lineCap = 'round';
+      ctx.lineWidth = p.t * Math.max(0.2, p.vie);
       ctx.beginPath(); ctx.moveTo(p.x - Math.cos(a) * l, p.y - Math.sin(a) * l); ctx.lineTo(p.x + Math.cos(a) * l, p.y + Math.sin(a) * l); ctx.stroke();
-    } else { ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(p.x, p.y, p.t, 0, 7); ctx.fill(); }
+    } else if (p.forme === 'eclair') {
+      ctx.lineWidth = p.t; ctx.beginPath(); p.pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke();
+    } else if (p.forme === 'etoile') {
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) { const r = i % 2 ? p.t * 0.45 : p.t, a = i * Math.PI / 5 + p.vie * 3; ctx.lineTo(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r); }
+      ctx.fill();
+    } else if (p.forme === 'bulle') {
+      ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, p.t, 0, 7); ctx.stroke();
+      ctx.globalAlpha *= 0.3; ctx.fill();
+    } else { ctx.beginPath(); ctx.arc(p.x, p.y, p.t, 0, 7); ctx.fill(); }
   }
   for (const t of textes) { ctx.globalAlpha = Math.max(0, t.vie); texte(t.txt, t.x, t.y, 22, t.c); }
   ctx.globalAlpha = 1;
 }
 
-
 function majEffets() {
   for (const p of particules) {
-    p.x += p.vx; p.y += p.vy; p.vx *= 0.9; p.vy *= 0.9;
-    if (p.forme === 'fumee') { p.t *= 1.03; p.y -= 0.4; p.vie -= 0.025; } else p.vie -= p.forme === 'trait' && p.a !== undefined ? 0.06 : 0.04;
+    p.x += p.vx; p.y += p.vy;
+    if (p.g) { p.vy += p.g; p.vx *= 0.95; } else { p.vx *= 0.9; p.vy *= 0.9; }
+    if (p.forme === 'fumee') { p.t *= 1.03; p.y -= 0.4; p.vie -= 0.025; }
+    else if (p.forme === 'bulle') p.vie -= 0.025;
+    else p.vie -= p.forme === 'eclair' ? 0.07 : p.forme === 'trait' && p.a !== undefined ? 0.06 : 0.04;
   }
   for (const o of ondes) { o.r += (o.max - o.r) * 0.25; o.vie -= 0.06; }
   for (const t of textes) { t.y -= 1; t.vie -= 0.02; }
@@ -704,12 +790,14 @@ function dessinerJeu() {
     ellipse(b.fx, b.fy, R * k, R * 0.8 * k, 'rgba(255,40,40,.45)');
   }
   const objs = []; // tri par profondeur = effet 3D
-  tuiles((c, x, y, px, py) => { if (c === '#') objs.push([(y + 1) * T - 1, () => { mur(px, py); fissures(x, y, px, py); }]);
+  tuiles((c, x, y, px, py) => { if (c === '#') objs.push([(y + 1) * T - 1, () => { // les murs qui sortent du sol montent
+                                   const f = levees[x + ',' + y] !== undefined ? Math.min(1, (temps - levees[x + ',' + y]) / 12) : 1;
+                                   ctx.save(); ctx.translate(0, (1 - f) * 40); mur(px, py); fissures(x, y, px, py); ctx.restore(); }]);
                                  if (c === 'C') objs.push([(y + 1) * T - 1, () => { coffre(px, py); fissures(x, y, px, py); }]); });
   for (const j of joueurs()) if (visible(j) && (j.pv > 0 || j === moi))
     objs.push([j.y + j.r * 0.5, () => { aura(j); dessinerEntite(j, img(j.perso.image), j === moi ? '#3aa0ff' : j.eq === moi.eq ? '#2ecc71' : '#ff3b3b', j.r * 2.9); }]);
   for (const b of bosses) if (b.pv > 0) objs.push([b.y + b.r * 0.5, () => dessinerEntite(b, img(b.def.image), '#ff7b1a', b.r * 2.9)]);
-  for (const p of projectiles) if (p.type !== 'lob') objs.push([p.y, () => dessinerProjectile(p)]);
+  for (const p of projectiles) if (p.type !== 'lob' && p.type !== 'terrain') objs.push([p.y, () => dessinerProjectile(p)]);
   objs.sort((a, b) => a[0] - b[0]).forEach(o => o[1]());
 
   tuiles((c, x, y, px, py) => { if (c === 'B') buisson(px, py); });
@@ -760,7 +848,8 @@ function dessinerVisee() {
   const v = vec(joyD); if (v.d < 15) return;
   const a = moi.arme, portee = moi.perso.portee;
   ctx.save(); ctx.globalAlpha = 0.35; ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff';
-  if (a.type === 'lob') {
+  if (a.type === 'terrain') { for (const [tx, ty] of casesTerrain(a, moi.x, moi.y, v.a, Math.max(TUILE, portee * v.f))) ctx.fillRect(tx * TUILE + 4, ty * TUILE + 4, TUILE - 8, TUILE - 8); }
+  else if (a.type === 'lob') {
     const dist = Math.max(80, portee * v.f), tx = moi.x + Math.cos(v.a) * dist, ty = moi.y + Math.sin(v.a) * dist, R = a.rayon || 70;
     ctx.beginPath(); ctx.ellipse(tx, ty, R, R * 0.8, 0, 0, 7); ctx.fill();
     ctx.setLineDash([10, 10]); ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(moi.x, moi.y);
