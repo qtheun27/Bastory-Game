@@ -90,6 +90,36 @@ const CONFIG_PAR_DEFAUT = {
       "typeCase": "#",
       "dureeCase": 5,
       "delaiCase": 4
+    },
+    "ricochet": {
+      "nom": "Laser ricochet",
+      "image": "",
+      "type": "droit",
+      "effet": "etincelle",
+      "vitesse": 14,
+      "taille": 10,
+      "rayon": 0,
+      "couleur": "#5ad1ff",
+      "rebonds": 3,
+      "bonusRebond": 1.25,
+      "chaine": 0,
+      "perteChaine": 0.7,
+      "porteeChaine": 350
+    },
+    "eclair": {
+      "nom": "Éclair chercheur",
+      "image": "",
+      "type": "droit",
+      "effet": "foudre",
+      "vitesse": 13,
+      "taille": 10,
+      "rayon": 0,
+      "couleur": "#ffe14a",
+      "rebonds": 0,
+      "bonusRebond": 1.2,
+      "chaine": 3,
+      "perteChaine": 0.7,
+      "porteeChaine": 350
     }
   },
   "maps": [
@@ -141,7 +171,11 @@ const CONFIG_PAR_DEFAUT = {
       "delaiAttaque": 60,
       "rayonAttaque": 90,
       "taille": 48,
-      "imageCarte": ""
+      "imageCarte": "",
+      "arme": "",
+      "porteeTir": 400,
+      "degatsTir": 1500,
+      "cadenceTir": 90
     }
   },
   "modes": [
@@ -158,7 +192,9 @@ const CONFIG_PAR_DEFAUT = {
       "map": -1,
       "pointsVictoire": 20,
       "pointsDefaite": 2,
-      "typesBoss": []
+      "typesBoss": [],
+      "bots": true,
+      "attenteBots": 15
     },
     {
       "nom": "Horde de trolls",
@@ -173,7 +209,9 @@ const CONFIG_PAR_DEFAUT = {
       "map": -1,
       "pointsVictoire": 50,
       "pointsDefaite": 5,
-      "typesBoss": []
+      "typesBoss": [],
+      "bots": true,
+      "attenteBots": 15
     },
     {
       "nom": "Duel 1V1",
@@ -188,7 +226,9 @@ const CONFIG_PAR_DEFAUT = {
       "map": -1,
       "pointsVictoire": 30,
       "pointsDefaite": 5,
-      "typesBoss": []
+      "typesBoss": [],
+      "bots": true,
+      "attenteBots": 15
     },
     {
       "nom": "Équipes 2V2",
@@ -203,7 +243,9 @@ const CONFIG_PAR_DEFAUT = {
       "map": -1,
       "pointsVictoire": 40,
       "pointsDefaite": 5,
-      "typesBoss": []
+      "typesBoss": [],
+      "bots": true,
+      "attenteBots": 15
     },
     {
       "nom": "Coop contre les boss",
@@ -218,7 +260,9 @@ const CONFIG_PAR_DEFAUT = {
       "map": -1,
       "pointsVictoire": 40,
       "pointsDefaite": 5,
-      "typesBoss": []
+      "typesBoss": [],
+      "bots": true,
+      "attenteBots": 15
     }
   ],
   "pouvoirs": {
@@ -277,7 +321,7 @@ const CONFIG_PAR_DEFAUT = {
       "rarete": 1
     }
   },
-  "version": 3
+  "version": 4
 };
 
 // Met à niveau une ancienne config (ajoute les nouveaux paramètres avec des valeurs par défaut)
@@ -293,6 +337,10 @@ function migrerConfig(c) {
     def(m, { joueursMin: 1, joueursMax: 1, equipes: 'chacun', pointsVictoire: 30, pointsDefaite: 5 });
   });
   if ((c.version || 0) < 3) { if (!c.armes.seisme) c.armes.seisme = copie(D.armes.seisme); c.version = 3; }
+  if (c.version < 4) { ['ricochet', 'eclair'].forEach(k => { if (!c.armes[k]) c.armes[k] = copie(D.armes[k]); }); c.version = 4; }
+  c.modes.forEach(m => def(m, { bots: true, attenteBots: 15 }));
+  Object.values(c.armes).forEach(a => def(a, { rebonds: 0, bonusRebond: 1.2, chaine: 0, perteChaine: 0.7, porteeChaine: 350 }));
+  Object.values(c.bosses).forEach(b => def(b, { arme: '', porteeTir: 400, degatsTir: 1500, cadenceTir: 90 }));
   c.modes.forEach(m => { if (!Array.isArray(m.typesBoss)) m.typesBoss = m.typeBoss && m.typeBoss !== 'aleatoire' ? [m.typeBoss] : []; delete m.typeBoss; });
   Object.values(c.armes).forEach(a => def(a, { forme: 'zone', nbCases: 3, typeCase: '#', dureeCase: 5, delaiCase: 4 }));
   c.persos.forEach(p => def(p, { imageCarte: '', munitions: 3, recharge: 60 }));

@@ -48,7 +48,25 @@ function redim() {
   zoom = Math.max(0.55, Math.min(1.3, Math.min(W, H * 1.7) / (TUILE * 15)));
 }
 addEventListener('resize', redim); redim();
-const ecran = () => ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+let ox = 0, oy = 0; const sa = { l: 0, r: 0, t: 0, b: 0 };     // décalage de l'interface (encoche / zone sûre)
+const ecran = () => ctx.setTransform(dpr, 0, 0, dpr, ox * dpr, oy * dpr);
+function lireZoneSure() {
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;visibility:hidden;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
+  document.body.append(d); const c = getComputedStyle(d);
+  Object.assign(sa, { t: parseFloat(c.paddingTop) || 0, r: parseFloat(c.paddingRight) || 0, b: parseFloat(c.paddingBottom) || 0, l: parseFloat(c.paddingLeft) || 0 });
+  d.remove();
+}
+lireZoneSure(); addEventListener('resize', lireZoneSure);
+function zoneSure(f) { // dessine l'interface en évitant l'encoche des téléphones
+  const w0 = W, h0 = H; ox = sa.l; oy = sa.t; W = w0 - sa.l - sa.r; H = h0 - sa.t - sa.b;
+  ecran(); f(); W = w0; H = h0; ox = oy = 0; ecran();
+}
+const mobile = matchMedia('(pointer: coarse)').matches;
+function pleinEcran() { // mobile : plein écran + verrouillage en paysage (si le navigateur le permet)
+  if (!mobile || document.fullscreenElement || !document.documentElement.requestFullscreen) return;
+  document.documentElement.requestFullscreen().then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => {});
+}
 const monde = (sx, sy) => ctx.setTransform(zoom * dpr, 0, 0, zoom * dpr, (W / 2 - cam.x * zoom + sx) * dpr, (H / 2 - cam.y * zoom + sy) * dpr);
 const versMonde = (x, y) => ({ x: (x - W / 2) / zoom + cam.x, y: (y - H / 2) / zoom + cam.y });
 
@@ -91,7 +109,7 @@ $('bGoogle').onclick = () => {
 auth.onAuthStateChanged(u => {
   user = u;
   $('auth').style.display = u ? 'none' : 'flex';
-  if (u) { if (etat === 'AUTH') etat = 'MENU'; ecouterPoints(); } else { quitterSalle(); etat = 'AUTH'; }
+  if (u) { if (etat === 'AUTH') etat = 'MENU'; ecouterPoints(); presence(); } else { quitterSalle(); etat = 'AUTH'; }
 });
 
 // ---------- 6. MAP & COLLISIONS ----------
@@ -132,7 +150,8 @@ function creerBoss(id, x, y, i) {
   if (!CONFIG.bosses[id]) id = ids[Math.floor(Math.random() * ids.length)]; // 'aleatoire' ou inconnu
   const d = CONFIG.bosses[id];
   return { i, id, def: d, x, y, tx: x, ty: y, r: d.taille || 48, pv: d.pvMax, pvMax: d.pvMax, angle: Math.PI, recharge: 60,
-           flash: 0, marche: 0, kx: 0, ky: 0, charge: 0, chargeMax: 1, rage: false, cx: x, cy: y, fx: x, fy: y };
+           flash: 0, marche: 0, kx: 0, ky: 0, charge: 0, chargeMax: 1, rage: false, cx: x, cy: y, fx: x, fy: y,
+           uid: 'boss' + i, eq: -1, tir: 60, arme: CONFIG.armes[d.arme] || null, perso: { portee: +d.porteeTir || 400, degats: +d.degatsTir || Math.round(d.degats / 2) } };
 }
 // liste = joueurs de la partie [{uid, nom, p}] (le 1er est l'hôte) ; null = solo
 function demarrer(mapIdx, liste) {
@@ -147,6 +166,7 @@ function demarrer(mapIdx, liste) {
     const eq = mode.equipes === 'deux' ? k % 2 : mode.equipes === 'coop' ? 0 : k;
     const j = creerJoueur(d.p, sp.x, sp.y, d.uid, d.nom, eq);
     places.push(j);
+    if (d.bot) j.bot = true;
     if (d.uid === user.uid) moi = j; else autres[d.uid] = j;
   });
   hote = liste[0].uid === user.uid;
@@ -204,7 +224,7 @@ async function chercherPartie() {
     });
   } catch (e) { etat = 'MENU'; return alert('Erreur multijoueur : ' + e.message); }
   if (etat !== 'ATTENTE') return;
-  const id = pris || nouvelle, s = salle = { id, ref: rtdb.ref('salles/' + id), cle, hote: !pris, uid: user.uid, debut: false, min, max, depuis: 0, js: {} };
+  const id = pris || nouvelle, s = salle = { id, ref: rtdb.ref('salles/' + id), cle, hote: !pris, uid: user.uid, debut: false, min, max, depuis: 0, js: {}, cree: Date.now() };
   if (s.hote) { rtdb.ref(cle).onDisconnect().remove(); s.ref.onDisconnect().remove(); await s.ref.child('info').set({ map: mapChoisie(mode) }); }
   const moiRef = s.ref.child('joueurs/' + user.uid);
   moiRef.onDisconnect().remove();
@@ -224,38 +244,60 @@ async function chercherPartie() {
     if (!d.liste.some(j => j.uid === user.uid)) { quitterSalle(); return chercherPartie(); } // salle déjà pleine
     demarrer(d.map, d.liste);
   });
-  s.ref.child('evts').on('child_added', snap => { const e = snap.val(); if (salle === s && etat === 'JEU' && e && e.de !== user.uid) recevoir(e); });
+  s.ref.child('evts').on('child_added', snap => { const e = snap.val(); if (salle === s && etat === 'JEU' && e && (e.par || e.de) !== user.uid) recevoir(e); });
+  s.ref.child('bots').on('value', snap => { if (salle === s && etat === 'JEU' && !hote) for (const [uid, d] of Object.entries(snap.val() || {})) if (autres[uid]) Object.assign(autres[uid], { tx: d.x, ty: d.y, angle: d.a, pv: d.pv, cache: d.c, marche: d.m }); });
   s.ref.child('boss').on('value', snap => { if (salle === s && etat === 'JEU' && !hote) majBossDistants(snap.val() || []); });
 }
-function lancerSalle() {
+function lancerSalle(avecBots) {
   const s = salle; if (!s || s.debut) return; s.debut = true;
   rtdb.ref(s.cle).transaction(v => v && v.salle === s.id ? null : undefined).catch(() => {});
   const liste = Object.entries(s.js).sort((a, b) => (a[1].t || 0) - (b[1].t || 0)).map(([uid, d]) => ({ uid, nom: d.nom, p: d.p }));
+  if (avecBots) { // 🤖 complète avec des bots (nombre pair en équipes)
+    let k = 1;
+    while (liste.length < s.min || (mode.equipes === 'deux' && liste.length % 2 && liste.length < s.max))
+      liste.push({ uid: 'bot' + k, nom: '🤖 Bot ' + k++, p: Math.floor(Math.random() * CONFIG.persos.length), bot: true });
+  }
   s.ref.child('info').once('value', i => s.ref.child('info/debut').set({ map: (i.val() || {}).map || 0, liste }));
 }
 function rafraichirAttente() {
   const s = salle; if (!s || !s.hote || s.debut) return;
   attente.reste = s.depuis ? Math.max(0, 10 - Math.floor((Date.now() - s.depuis) / 1000)) : 0;
   if (s.depuis && attente.reste === 0) lancerSalle();
+  const m = modeChoisi(), attenteBots = (+m.attenteBots || 15) * 1000;
+  attente.bots = m.bots !== false && attente.n < s.min ? Math.max(0, Math.ceil((attenteBots - (Date.now() - s.cree)) / 1000)) : 0;
+  if (m.bots !== false && attente.n < s.min && Date.now() - s.cree > attenteBots) lancerSalle(true);
   if (temps % 1200 === 0) rtdb.ref(s.cle).transaction(v => v && v.uid === user.uid ? { ...v, t: Date.now() } : undefined);
 }
 function quitterSalle() {
   const s = salle; salle = null;
   if (!s || !rtdb) return;
   const finie = etat !== 'JEU' || resultat;
-  ['joueurs', 'evts', 'boss', 'info/debut'].forEach(k => s.ref.child(k).off());
+  ['joueurs', 'evts', 'boss', 'bots', 'info/debut'].forEach(k => s.ref.child(k).off());
   s.ref.child('joueurs/' + s.uid).remove().catch(() => {});
   rtdb.ref(s.cle).transaction(v => !v || v.salle !== s.id ? undefined : s.hote ? null : { ...v, n: Math.max(1, (v.n || 1) - 1) }).catch(() => {});
   if (s.hote && finie) setTimeout(() => s.ref.remove().catch(() => {}), 3000);
 }
-function envoyer(e) { if (salle) salle.ref.child('evts').push({ ...e, de: user.uid }); }
+function envoyer(e) { if (salle) salle.ref.child('evts').push({ de: user.uid, ...e, par: user.uid }); }
+let enLigne = 0, presenceActive = false;
+function presence() { // compteur de joueurs connectés
+  if (!rtdb || !user || presenceActive) return; presenceActive = true;
+  rtdb.ref('.info/connected').on('value', s => {
+    if (!s.val() || !user) return;
+    const ref = rtdb.ref('presence/' + user.uid);
+    ref.onDisconnect().remove(); ref.set({ nom: nomJoueur(), t: firebase.database.ServerValue.TIMESTAMP });
+  });
+  rtdb.ref('presence').on('value', s => enLigne = s.numChildren(), () => {});
+}
 function envoyerEtat(force) {
   if (!salle || !moi || (!force && temps % 4)) return;
   salle.ref.child('joueurs/' + user.uid).update({ x: Math.round(moi.x), y: Math.round(moi.y), a: +moi.angle.toFixed(2), pv: Math.round(moi.pv), c: moi.cache, m: Math.round(moi.marche), bo: bonusActifs(moi).join(',') });
+  const bots = Object.values(autres).filter(j => j.bot);
+  if (hote && bots.length) salle.ref.child('bots').set(Object.fromEntries(bots.map(j => [j.uid, { x: Math.round(j.x), y: Math.round(j.y), a: +j.angle.toFixed(2), pv: Math.round(j.pv), c: j.cache, m: Math.round(j.marche) }])));
   if (hote && bosses.length) salle.ref.child('boss').set(bosses.map(b => ({ id: b.id, x: Math.round(b.x), y: Math.round(b.y), a: +b.angle.toFixed(2), pv: b.pv, ch: b.charge, cm: b.chargeMax, fx: Math.round(b.fx), fy: Math.round(b.fy), rg: b.rage })));
 }
 function majAutres(js) {
   for (const [uid, j] of Object.entries(autres)) {
+    if (j.bot) continue; // les bots sont envoyés par l'hôte
     const d = js[uid];
     if (!d) { j.parti = true; j.pv = 0; continue; }
     if (d.x !== undefined) Object.assign(j, { tx: d.x, ty: d.y, angle: d.a, pv: d.pv, cache: d.c, marche: d.m, bo: d.bo ? d.bo.split(',') : [] });
@@ -270,7 +312,7 @@ function majBossDistants(liste) {
   });
 }
 function recevoir(e) {
-  const j = autres[e.de];
+  const j = entite(e.de);
   if (e.t === 'tir' && j) { j.angle = e.a; creerProjectile(j, e.a, e.f, e.x, e.y, e.d); }
   else if (e.t === 'db' && hote && bosses[e.i]) blesserBoss(bosses[e.i], e.deg);
   else if (e.t === 'fr') frappe(e, false);
@@ -290,7 +332,7 @@ addEventListener('keyup', e => touches[e.key.toLowerCase()] = false);
 const joyG = { actif: false }, joyD = { actif: false };
 function vec(j) { const dx = j.x - j.ox, dy = j.y - j.oy, d = Math.hypot(dx, dy); return { dx, dy, d, f: Math.min(d / 60, 1), a: Math.atan2(dy, dx) }; }
 canvas.addEventListener('touchstart', e => {
-  e.preventDefault();
+  e.preventDefault(); pleinEcran();
   for (const t of e.changedTouches) {
     if (etat !== 'JEU') { clic(t.clientX, t.clientY); continue; }
     const j = t.clientX < W / 2 ? joyG : joyD;
@@ -319,6 +361,7 @@ canvas.addEventListener('mousedown', e => {
 });
 function clic(x, y) {
   if (etat === 'VICTOIRE' || etat === 'DEFAITE') { if (finInfo && temps - finInfo.t0 < 40) return; quitterSalle(); etat = 'MENU'; return; }
+  x -= sa.l; y -= sa.t;
   const z = zones.find(z => x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h);
   if (z) z.action();
 }
@@ -326,7 +369,7 @@ function clic(x, y) {
 // ---------- 10. TIRS & DÉGÂTS ----------
 function creerProjectile(j, angle, force, x, y, deg) {
   const a = j.arme, v = a.vitesse || 10;
-  const p = { type: a.type, arme: a, perso: j.perso, deg: deg || j.perso.degats, de: j.uid, x, y, vx: Math.cos(angle) * v, vy: Math.sin(angle) * v, dist: 0, rot: 0, z: 0, vie: 0, retour: false, touches: new Set() };
+  const p = { rebonds: +a.rebonds || 0, chaine: +a.chaine || 0, sombre: !!j.def, type: a.type, arme: a, perso: j.perso, deg: deg || j.perso.degats, de: j.uid, x, y, vx: Math.cos(angle) * v, vy: Math.sin(angle) * v, dist: 0, rot: 0, z: 0, vie: 0, retour: false, touches: new Set() };
   if (a.type === 'terrain') Object.assign(p, { cases: casesTerrain(a, x, y, angle, Math.max(TUILE, j.perso.portee * force)), t: 0 });
   if (a.type === 'lob') {
     const d = Math.max(80, j.perso.portee * force);
@@ -353,14 +396,14 @@ function tirerAuto() {
 }
 const visible = j => j === moi || j.eq === moi.eq || !j.cache || Math.hypot(j.x - moi.x, j.y - moi.y) < 170;
 function cibles(p) { // ce qu'un projectile peut toucher (boss + joueurs d'une autre équipe)
-  const pr = p.de === moi.uid ? moi : autres[p.de], eq = pr ? pr.eq : -1;
-  const l = bosses.filter(b => b.pv > 0).map(b => ({ e: b, k: 'b' + b.i }));
+  const pr = entite(p.de), eq = pr ? pr.eq : -1;
+  const l = bosses.filter(b => b.pv > 0 && !(pr && pr.def)).map(b => ({ e: b, k: 'b' + b.i }));
   for (const j of joueurs()) if (j.uid !== p.de && j.eq !== eq && j.pv > 0) l.push({ e: j, k: 'j' + j.uid });
   return l;
 }
 function majProjectiles() {
   for (let i = projectiles.length - 1; i >= 0; i--) {
-    const p = projectiles[i], proprio = p.de === moi.uid ? moi : autres[p.de], mien = p.de === moi.uid;
+    const p = projectiles[i], proprio = entite(p.de), mien = auteur(p);
     let fini = ++p.vie > 400 || !proprio;
     if (!fini && p.type === 'terrain') { // les cases sortent du sol les unes après les autres
       p.t++;
@@ -380,12 +423,19 @@ function majProjectiles() {
       if (p.type === 'retour') {
         if (!p.retour && (p.dist >= p.perso.portee || mur)) { p.retour = true; if (mur) effet('etincelle', p.x, p.y, '#ddd'); }
         if (p.retour && Math.hypot(p.x - proprio.x, p.y - proprio.y) < proprio.r) fini = true;
+      } else if (mur && p.rebonds > 0) { // ricochet : repart en sens inverse, plus puissant
+        p.x -= p.vx; p.y -= p.vy;
+        if (bloqueTir(tuileA(p.x + p.vx, p.y))) p.vx = -p.vx; else p.vy = -p.vy;
+        p.rebonds--; p.deg = Math.round(p.deg * (+p.arme.bonusRebond || 1)); p.dist *= 0.5; p.touches.clear();
+        effet('etincelle', p.x, p.y, p.arme.couleur);
       } else if (mur || p.dist >= p.perso.portee) { effet('etincelle', p.x, p.y, p.arme.couleur); fini = true; }
       if (!fini) for (const c of cibles(p)) {
         const cle = (p.retour ? 'r' : 'a') + c.k;
         if (!p.touches.has(cle) && Math.hypot(p.x - c.e.x, p.y - c.e.y) < c.e.r + (p.arme.taille || 16)) {
           impact(c.e, p, p.x - p.vx * 3, p.y - p.vy * 3, true);
-          if (p.type === 'retour') p.touches.add(cle); else { fini = true; break; }
+          if (p.type === 'retour') p.touches.add(cle);
+          else if (p.chaine > 0 && (p.touches.add(cle), chercher(p, c.e))) break; // file vers l'ennemi suivant
+          else { fini = true; break; }
         }
       }
     }
@@ -396,17 +446,71 @@ function exploser(p) {
   const r = p.arme.rayon || 70;
   effet(p.arme.effet || 'explosion', p.x, p.y, p.arme.couleur, r);
   for (const c of cibles(p)) if (Math.hypot(p.x - c.e.x, p.y - c.e.y) < r + c.e.r * 0.6) impact(c.e, p, p.x, p.y, false);
-  if (p.de === moi.uid) abimerZone(p.x, p.y, r, p.deg);
+  if (p.sombre) effetSombre(p.x, p.y);
+  if (auteur(p)) abimerZone(p.x, p.y, r, p.deg);
 }
 function impact(e, p, x, y, avecEffet) {
-  const a = p.arme, deg = p.deg, ang = Math.atan2(e.y - y, e.x - x), kb = a.effet === 'explosion' ? 6 : 3;
-  if (avecEffet) effet(a.effet, e.x, e.y - 10, a.couleur, 40, ang);
+  const a = p.arme, pr = entite(p.de), deg = p.deg, ang = Math.atan2(e.y - y, e.x - x), kb = a.effet === 'explosion' ? 6 : 3;
+  if (avecEffet) effet(a.effet, e.x, e.y - 10, p.sombre ? '#2a0033' : a.couleur, 40, ang);
+  if (p.sombre) effetSombre(e.x, e.y - 10);
   if (e === moi) return toucherMoi(deg, x, y);
   e.flash = 8;
   texteFlottant('-' + deg, e.x, e.y - e.r * 1.4, a.couleur || '#fff');
+  if (e.bot) { if (hote) blesserBot(e, deg, ang); return; } // les bots sont gérés par l'hôte
   if (!e.def) return;                                 // autre joueur : il gère ses PV lui-même
   if (hote) { e.kx += Math.cos(ang) * kb; e.ky += Math.sin(ang) * kb; }
-  if (p.de === moi.uid) hote ? blesserBoss(e, deg) : envoyer({ t: 'db', i: e.i, deg }); // les dégâts des invités passent par l'hôte
+  if (p.de === moi.uid || (hote && pr && pr.bot)) hote ? blesserBoss(e, deg) : envoyer({ t: 'db', i: e.i, deg }); // les dégâts des invités passent par l'hôte
+}
+const entite = uid => uid === moi.uid ? moi : autres[uid] || (String(uid).startsWith('boss') ? bosses[+String(uid).slice(4)] : null);
+const auteur = p => { const e = entite(p.de); return p.de === moi.uid || (hote && !!e && (!!e.def || !!e.bot)); }; // qui décide des murs cassés
+function chercher(p, touche) { // tête chercheuse : fonce vers l'ennemi le plus proche avec moins de puissance
+  let best = null, dm = +p.arme.porteeChaine || 350;
+  for (const c of cibles(p)) if (c.e !== touche && !p.touches.has('a' + c.k)) { const d = Math.hypot(c.e.x - p.x, c.e.y - p.y); if (d < dm) { dm = d; best = c.e; } }
+  if (!best) return false;
+  const a = Math.atan2(best.y - p.y, best.x - p.x), v = Math.hypot(p.vx, p.vy);
+  particules.push({ x: (p.x + best.x) / 2, y: (p.y + best.y) / 2, vx: 0, vy: 0, c: p.arme.couleur || '#fff', t: 4, vie: 1, forme: 'trait', a, len: dm });
+  p.vx = Math.cos(a) * v; p.vy = Math.sin(a) * v; p.dist = 0; p.chaine--;
+  p.deg = Math.round(p.deg * (+p.arme.perteChaine || 0.7));
+  return true;
+}
+function effetSombre(x, y) { // aura noire des armes de boss
+  ondes.push({ x, y, r: 6, max: 75, c: '#14001f', vie: 1, ep: 12 });
+  for (let i = 0; i < 16; i++) particule(x, y, i % 2 ? 'rgba(15,0,25,.9)' : '#6a00a8', 5, 12, 1.3, 'fumee');
+}
+function blesserBot(j, deg, ang) {
+  if (j.pv <= 0) return;
+  j.pv = Math.max(0, j.pv - deg); j.flash = 8; j.kx += Math.cos(ang) * 10; j.ky += Math.sin(ang) * 10;
+  if (j.pv === 0) effet('explosion', j.x, j.y, '#888', 60);
+}
+function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses distances et tourne autour
+  if (j.flash > 0) j.flash--;
+  deplacer(j, j.kx, j.ky); j.kx *= 0.8; j.ky *= 0.8;
+  if (j.pv <= 0) return;
+  j.mun = Math.min(+j.perso.munitions || 3, j.mun + 1 / (+j.perso.recharge || 60));
+  if (j.recharge > 0) j.recharge--;
+  j.cache = tuileA(j.x, j.y) === 'B';
+  let c = null, dm = 1e9;
+  for (const e of [...joueurs().filter(o => o.eq !== j.eq && o.pv > 0), ...bosses.filter(b => b.pv > 0)]) {
+    const d = Math.hypot(e.x - j.x, e.y - j.y);
+    if ((!e.cache || d < 170) && d < dm) { dm = d; c = e; }
+  }
+  const v = j.perso.vitesse * 0.85;
+  if (c) {
+    const a = Math.atan2(c.y - j.y, c.x - j.x), ideal = j.perso.portee * 0.7, cote = Math.sin(temps / 50 + j.x * 0.01) > 0 ? 1 : -1;
+    const av = dm > ideal ? 1 : dm < ideal * 0.5 ? -1 : 0;
+    deplacer(j, (Math.cos(a) * av - Math.sin(a) * cote * 0.6) * v, (Math.sin(a) * av + Math.cos(a) * cote * 0.6) * v);
+    j.marche += v; tourner(j, a, 0.2);
+    if (dm < j.perso.portee && j.recharge <= 0 && j.mun >= 1 && Math.random() < 0.08) {
+      const ang = a + (Math.random() - 0.5) * 0.25, f = Math.min(1, dm / j.perso.portee);
+      j.mun -= 1; j.recharge = j.perso.delaiTir;
+      creerProjectile(j, ang, f, j.x, j.y, j.perso.degats);
+      envoyer({ t: 'tir', de: j.uid, a: +ang.toFixed(3), f: +f.toFixed(2), x: Math.round(j.x), y: Math.round(j.y), d: j.perso.degats });
+    }
+  } else { // se promène sur la map
+    if (!j.but || Math.hypot(j.but.x - j.x, j.but.y - j.y) < 30 || temps % 240 === 0) j.but = caseLibre([]);
+    const a = Math.atan2(j.but.y - j.y, j.but.x - j.x);
+    deplacer(j, Math.cos(a) * v, Math.sin(a) * v); j.marche += v; tourner(j, a, 0.1);
+  }
 }
 function toucherMoi(deg, x, y) {
   if (moi.pv <= 0) return;
@@ -506,7 +610,7 @@ function elever(tx, ty, p) {
   if (bloque(c)) liberer();
 }
 function liberer() { // éjecte ceux qui se retrouvent coincés dans un bloc
-  for (const e of [moi, ...(hote ? bosses : [])]) if (e && !libre(e.x, e.y, e.r)) {
+  for (const e of [moi, ...(hote ? [...bosses, ...Object.values(autres).filter(j => j.bot)] : [])]) if (e && !libre(e.x, e.y, e.r)) {
     for (let r = TUILE / 2; r < TUILE * 5; r += TUILE / 2) {
       const a = [...Array(12).keys()].map(i => i / 12 * Math.PI * 2).find(a => libre(e.x + Math.cos(a) * r, e.y + Math.sin(a) * r, e.r));
       if (a !== undefined) { e.x += Math.cos(a) * r; e.y += Math.sin(a) * r; break; }
@@ -537,7 +641,10 @@ function maj() {
   for (const o of objets) if (moi.pv > 0 && Math.hypot(o.x - moi.x, o.y - moi.y) < 42) {
     objets = objets.filter(x => x !== o); envoyer({ t: 'pr', tx: o.tx, ty: o.ty }); activerPouvoir(o.id); break;
   }
-  for (const j of Object.values(autres)) { j.x += (j.tx - j.x) * 0.35; j.y += (j.ty - j.y) * 0.35; if (j.flash > 0) j.flash--; }
+  for (const j of Object.values(autres)) {
+    if (j.bot && hote) iaBot(j);
+    else { j.x += (j.tx - j.x) * 0.35; j.y += (j.ty - j.y) * 0.35; if (j.flash > 0) j.flash--; }
+  }
   for (const b of bosses) {
     if (hote) iaBoss(b);
     else { b.x += (b.tx - b.x) * 0.3; b.y += (b.ty - b.y) * 0.3; if (b.flash > 0) b.flash--; }
@@ -572,6 +679,12 @@ function iaBoss(b) {
     return;
   }
   if (b.recharge > 0) b.recharge--;
+  if (b.arme && cible && b.tir-- <= 0 && dmin < b.perso.portee && dmin > b.r + 60) { // tir à distance (effet sombre)
+    const a = Math.atan2(cible.y - b.y, cible.x - b.x), f = Math.min(1, dmin / b.perso.portee);
+    b.tir = +D.cadenceTir || 90; b.angle = a;
+    creerProjectile(b, a, f, b.x, b.y, b.perso.degats);
+    envoyer({ t: 'tir', de: b.uid, a: +a.toFixed(3), f: +f.toFixed(2), x: Math.round(b.x), y: Math.round(b.y), d: b.perso.degats });
+  }
   if (cible && dmin < b.r + cible.r + 30 && b.recharge <= 0) {
     const a = Math.atan2(cible.y - b.y, cible.x - b.x);
     b.angle = a; b.chargeMax = b.charge = b.rage ? 24 : 36;
@@ -696,6 +809,7 @@ function dessinerEntite(e, im, anneau, taille) {
 function dessinerProjectile(p) {
   const a = p.arme, im = img(a.image), s = (a.taille || 16) * 2.4;
   const k = 1 - p.z / 220;
+  if (p.sombre) { ctx.save(); ctx.shadowColor = '#000'; ctx.shadowBlur = 25; ellipse(p.x, p.y - p.z - 10, s * 0.6, s * 0.6, 'rgba(30,0,45,.65)'); ctx.restore(); }
   ellipse(p.x, p.y + 6, s * 0.4 * k, s * 0.22 * k, 'rgba(0,0,0,.3)');
   ctx.save();
   ctx.translate(p.x, p.y - p.z - 10);
@@ -805,7 +919,7 @@ function dessinerJeu() {
   dessinerEffets();
   for (const j of joueurs()) if (j.pv > 0 && visible(j)) barreVie(j, j === moi ? '#3aa0ff' : j.eq === moi.eq ? '#2ecc71' : '#ff3b3b', j.nom);
   for (const b of bosses) if (b.pv > 0) barreVie(b, '#ff7b1a');
-  ecran(); dessinerHUD();
+  zoneSure(dessinerHUD);
 }
 function coffre(px, py) { // coffre mystère (contient souvent un super pouvoir)
   const T = TUILE, h = HAUT_MUR;
@@ -879,7 +993,7 @@ function bouton(x, y, w, h, txt, fond, action, taille = 14) {
 }
 function fond(c1, c2) {
   const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, c1); g.addColorStop(1, c2);
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = g; ctx.fillRect(-100, -100, W + 200, H + 200);
   ctx.save(); ctx.translate(W / 2, H * 0.45); ctx.rotate(temps * 0.002); ctx.fillStyle = 'rgba(255,255,255,.05)';
   for (let i = 0; i < 12; i++) { ctx.rotate(Math.PI / 6); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-60, -2000); ctx.lineTo(60, -2000); ctx.fill(); }
   ctx.restore();
@@ -910,11 +1024,12 @@ function dessinerHUD() {
     texte(Math.ceil((moi.bonus[id] - temps) / 60) + 's', x + 22, 112, 11, '#fff');
   });
   dessinerJoystick(joyG, '#ffffff');
-  dessinerJoystick(joyD, '#ffb000');
+  dessinerJoystick(joyD, '#ffb000'); ecran();
   if (!('ontouchstart' in window)) texte('ZQSD/flèches : bouger • Clic : tirer • Espace : tir auto • Échap : quitter', W / 2, H - 16, 12, '#fff');
 }
 function dessinerJoystick(j, c) {
   if (!j.actif) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // les joysticks suivent le doigt (coordonnées écran brutes)
   const v = vec(j), l = Math.min(v.d, 50);
   ctx.globalAlpha = 0.3; ctx.fillStyle = c; ctx.beginPath(); ctx.arc(j.ox, j.oy, 55, 0, 7); ctx.fill();
   ctx.globalAlpha = 0.8; ctx.beginPath(); ctx.arc(j.ox + Math.cos(v.a) * l, j.oy + Math.sin(v.a) * l, 24, 0, 7); ctx.fill();
@@ -926,9 +1041,9 @@ function dessinerMenu() {
   if (etat === 'AUTH') return;
   const m = modeChoisi();
   texte('BASTORY', W / 2, H * 0.08, Math.min(52, W / 11), '#ffd23f');
-  texte('👤 ' + nomJoueur() + '   🏆 ' + mesPoints + ' pts', 12, 20, 13, '#fff', 'left');
+  texte('👤 ' + nomJoueur() + '   🏆 ' + mesPoints + ' pts   🟢 ' + enLigne + ' en ligne', 12, 20, 13, '#fff', 'left');
   bouton(12, 34, 70, 26, 'Profil', 'rgba(0,0,0,.4)', () => ouvrirProfil(auth, p => db && db.collection('joueurs').doc(user.uid).set({ pseudo: p }, { merge: true })), 12);
-  bouton(88, 34, 110, 26, 'Déconnexion', 'rgba(0,0,0,.4)', () => auth.signOut(), 12);
+  bouton(88, 34, 110, 26, 'Déconnexion', 'rgba(0,0,0,.4)', () => { if (rtdb && user) rtdb.ref('presence/' + user.uid).remove(); auth.signOut(); }, 12);
   bouton(W - 104, 10, 94, 32, '⚙️ Admin', 'rgba(0,0,0,.4)', () => location.href = 'admin.html', 13);
   const my = H * 0.08 + 30, multi = m.type === 'multi';
   bouton(W / 2 - 150, my, 300, 40, '🎮 ' + m.nom + (modes().length > 1 ? '  ▶' : ''), multi ? '#e74c3c' : '#27ae60', () => modeIndex = (modeIndex + 1) % modes().length, 16);
@@ -968,6 +1083,8 @@ function dessinerAttente() {
   texte('Recherche de joueurs' + '.'.repeat(1 + Math.floor(temps / 30) % 3), W / 2, H * 0.42, 20, '#fff');
   texte(`👥 ${attente.n} / ${attente.max} joueurs` + (attente.min < attente.max ? `  (départ possible à ${attente.min})` : ''), W / 2, H * 0.5, 16, '#e8e0ff');
   if (attente.reste > 0) texte(`Départ dans ${attente.reste} s`, W / 2, H * 0.57, 18, '#9cff57');
+  else if (attente.bots > 0) texte(`🤖 Bots dans ${attente.bots} s si personne ne rejoint`, W / 2, H * 0.57, 16, '#5ad1ff');
+  texte('🟢 ' + enLigne + ' joueurs en ligne', W / 2, H * 0.8, 13, '#e8e0ff');
   bouton(W / 2 - 90, H * 0.66, 180, 44, 'Annuler', '#e74c3c', () => { quitterSalle(); etat = 'MENU'; }, 16);
 }
 function dessinerFin() { // animation de victoire / défaite avec les gagnants et les perdants
@@ -1010,8 +1127,8 @@ function dessinerFin() { // animation de victoire / défaite avec les gagnants e
 
 // ---------- 15. BOUCLE ----------
 function boucle() {
-  if (etat === 'AUTH' || etat === 'MENU') { temps++; dessinerMenu(); }
-  else if (etat === 'ATTENTE') { temps++; dessinerAttente(); rafraichirAttente(); }
+  if (etat === 'AUTH' || etat === 'MENU') { temps++; zoneSure(dessinerMenu); }
+  else if (etat === 'ATTENTE') { temps++; zoneSure(dessinerAttente); rafraichirAttente(); }
   else { if (etat === 'JEU') maj(); else temps++; dessinerJeu(); if (etat !== 'JEU') dessinerFin(); }
   requestAnimationFrame(boucle);
 }

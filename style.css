@@ -21,3 +21,10 @@ canvas { display: block; }
 #auth button.sec { background: #2ecc71; }
 #auth button.google { background: #fff; }
 #authErr { color: #ffb3b3; font-size: 14px; min-height: 18px; text-align: center; }
+
+/* Mobile : jeu en paysage uniquement */
+#tourne { display: none; position: fixed; inset: 0; z-index: 100; background: linear-gradient(#2b1d6b, #0f5fa8); color: #ffd23f;
+          font: 900 22px "Arial Black", Arial; text-align: center; align-items: center; justify-content: center; flex-direction: column; gap: 16px; padding: 30px; }
+#tourne span { font-size: 64px; animation: tourne 1.6s ease-in-out infinite; }
+@keyframes tourne { 50% { transform: rotate(90deg); } }
+@media (orientation: portrait) and (pointer: coarse) { #tourne { display: flex; } }
