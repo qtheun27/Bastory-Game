@@ -2,80 +2,93 @@
 // 🛠️ ZONE DES RÉGLAGES - MODIFIEZ CES VALEURS POUR CHANGER LE JEU !
 // ==============================================================================
 
-// -- Le Joueur --
-const VITESSE_JOUEUR = 5;       // Vitesse de déplacement du personnage
-const TAILLE_JOUEUR = 20;       // Taille du cercle du joueur
-const COULEUR_JOUEUR = '#3498db'; // Couleur bleue (code hexadécimal)
+const TAILLE_JOUEUR = 20;
+
+// -- Les Personnages Jouables --
+const PERSOS = {
+    WIXY: { 
+        nom: "WIXY",
+        couleur: "#3498db", // Bleu
+        pvMax: 6000, 
+        vitesse: 4,         // Un peu plus lent
+        arme: "bombe",
+        degats: 2000,
+        portee: TAILLE_JOUEUR * 5, // 5x la taille du perso (attention c'est court !)
+        delaiTir: 45        // Long temps d'attente entre deux bombes
+    },
+    BORA: { 
+        nom: "BORA",
+        couleur: "#9b59b6", // Violet
+        pvMax: 4800, 
+        vitesse: 6,         // Plus rapide
+        arme: "boomerang",
+        degats: 1250,
+        portee: TAILLE_JOUEUR * 8,
+        delaiTir: 20        // Tire plus vite
+    }
+};
 
 // -- Les Tirs (Balles) --
-const VITESSE_BALLE = 12;       // Vitesse des projectiles
-const TAILLE_BALLE = 6;         // Taille de la balle
-const DEGATS_BALLE = 10;        // Points de vie enlevés à l'ennemi par balle
-const DELAI_TIR = 15;           // Temps d'attente entre 2 tirs (plus le chiffre est petit, plus ça tire vite !)
-const COULEUR_BALLE = '#f1c40f';// Couleur jaune
+const VITESSE_BALLE = 10;
+const TAILLE_BALLE = 8;
 
 // -- L'Ennemi (Le Robot) --
-const TAILLE_ENNEMI = 30;       // Taille du méchant
-const PV_MAX_ENNEMI = 100;      // Points de vie maximum
-const COULEUR_ENNEMI = '#e74c3c'; // Couleur rouge
+const TAILLE_ENNEMI = 30;
+const PV_MAX_ENNEMI = 10000;    // J'ai augmenté ses PV pour résister à Wixy !
+const COULEUR_ENNEMI = '#e74c3c'; // Rouge
 
 // ==============================================================================
 // 💻 CODE DU JEU (La mécanique interne)
 // ==============================================================================
 
-// 1. Initialisation du Canvas (la zone de dessin)
 const canvas = document.querySelector('canvas') || document.createElement('canvas');
-if (!canvas.parentNode) document.body.appendChild(canvas); // Crée le canvas si pas fait dans l'HTML
+if (!canvas.parentNode) document.body.appendChild(canvas);
 const ctx = canvas.getContext('2d');
 
-// Met le canvas en plein écran
 function redimensionner() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    // Repositionne l'ennemi au centre en cas de changement de taille d'écran
     ennemi.x = canvas.width / 2;
     ennemi.y = canvas.height / 2;
 }
 window.addEventListener('resize', redimensionner);
 
-// 2. Nos éléments de jeu (Variables)
-let joueur = { 
-    x: 100, 
-    y: 100 
-};
+// -- Variables d'état --
+let etatDuJeu = "MENU"; // Peut être "MENU" ou "EN_JEU"
+let persoChoisi = null;
 
-let ennemi = { 
-    x: 0, 
-    y: 0, 
-    pv: PV_MAX_ENNEMI // pv = Points de Vie
-};
+let joueur = { x: 100, y: 100, pv: 0 };
+let ennemi = { x: 0, y: 0, pv: PV_MAX_ENNEMI };
+let balles = []; 
+let compteurAvantProchainTir = 0; 
 
-let balles = []; // Un tableau (liste) qui va contenir toutes les balles tirées
-let compteurAvantProchainTir = 0; // Un chronomètre pour ne pas tirer 1000 balles par seconde
-
-// 3. Gestion des contrôles (Clavier pour le Mac, Tactile pour la Tablette)
-let touchesClavier = {};
-
-// -- Les deux Joysticks Tactiles --
-// joystickGauche = Déplacement | joystickDroit = Visée et Tir
+// -- Joysticks & Contrôles --
 let joystickGauche = { actif: false, id: null, origineX: 0, origineY: 0, actuelX: 0, actuelY: 0 };
 let joystickDroit  = { actif: false, id: null, origineX: 0, origineY: 0, actuelX: 0, actuelY: 0 };
+let touchesClavier = {};
 
-// Écoute du clavier (Pour tester sur le Mac avec ZQSD / Flèches directionnelles)
 window.addEventListener('keydown', (e) => touchesClavier[e.key.toLowerCase()] = true);
 window.addEventListener('keyup', (e) => touchesClavier[e.key.toLowerCase()] = false);
 
-// Écoute du tactile (Pour jouer sur la tablette)
 canvas.addEventListener('touchstart', gererDebutToucher, {passive: false});
 canvas.addEventListener('touchmove', gererMouvementToucher, {passive: false});
 canvas.addEventListener('touchend', gererFinToucher);
 canvas.addEventListener('touchcancel', gererFinToucher);
+// Pour cliquer à la souris sur le menu (sur le Mac)
+canvas.addEventListener('mousedown', (e) => gererClicMenu(e.clientX));
 
 function gererDebutToucher(e) {
-    e.preventDefault(); // Empêche l'écran de scroller
+    e.preventDefault();
     for (let i = 0; i < e.changedTouches.length; i++) {
         let touch = e.changedTouches[i];
-        // Si on touche à gauche de l'écran -> Joystick de mouvement
+        
+        // Si on est dans le menu, le toucher sert à choisir le personnage
+        if (etatDuJeu === "MENU") {
+            gererClicMenu(touch.clientX);
+            continue;
+        }
+
+        // Si on est en jeu, on gère les joysticks
         if (touch.clientX < canvas.width / 2 && !joystickGauche.actif) {
             joystickGauche.actif = true;
             joystickGauche.id = touch.identifier;
@@ -83,9 +96,7 @@ function gererDebutToucher(e) {
             joystickGauche.origineY = touch.clientY;
             joystickGauche.actuelX = touch.clientX;
             joystickGauche.actuelY = touch.clientY;
-        } 
-        // Si on touche à droite de l'écran -> Joystick de tir
-        else if (touch.clientX >= canvas.width / 2 && !joystickDroit.actif) {
+        } else if (touch.clientX >= canvas.width / 2 && !joystickDroit.actif) {
             joystickDroit.actif = true;
             joystickDroit.id = touch.identifier;
             joystickDroit.origineX = touch.clientX;
@@ -96,8 +107,19 @@ function gererDebutToucher(e) {
     }
 }
 
+function gererClicMenu(positionX) {
+    if (etatDuJeu !== "MENU") return;
+    
+    if (positionX < canvas.width / 2) {
+        lancerLeJeu(PERSOS.WIXY);
+    } else {
+        lancerLeJeu(PERSOS.BORA);
+    }
+}
+
 function gererMouvementToucher(e) {
     e.preventDefault();
+    if (etatDuJeu === "MENU") return;
     for (let i = 0; i < e.changedTouches.length; i++) {
         let touch = e.changedTouches[i];
         if (joystickGauche.actif && touch.identifier === joystickGauche.id) {
@@ -112,146 +134,207 @@ function gererMouvementToucher(e) {
 }
 
 function gererFinToucher(e) {
+    if (etatDuJeu === "MENU") return;
     for (let i = 0; i < e.changedTouches.length; i++) {
         let touch = e.changedTouches[i];
-        if (joystickGauche.actif && touch.identifier === joystickGauche.id) {
-            joystickGauche.actif = false;
-        }
-        if (joystickDroit.actif && touch.identifier === joystickDroit.id) {
-            joystickDroit.actif = false;
-        }
+        if (joystickGauche.actif && touch.identifier === joystickGauche.id) joystickGauche.actif = false;
+        if (joystickDroit.actif && touch.identifier === joystickDroit.id) joystickDroit.actif = false;
     }
 }
 
+function lancerLeJeu(personnage) {
+    persoChoisi = personnage;
+    joueur.pv = personnage.pvMax;
+    joueur.x = 100;
+    joueur.y = canvas.height / 2;
+    ennemi.pv = PV_MAX_ENNEMI;
+    balles = [];
+    etatDuJeu = "EN_JEU";
+}
+
 // ==============================================================================
-// 🔄 BOUCLE PRINCIPALE (Mise à jour et Dessin, 60 fois par seconde)
+// 🔄 BOUCLE PRINCIPALE
 // ==============================================================================
 
 function boucleDeJeu() {
-    mettreAJourLaLogique();
-    dessinerLesElements();
-    requestAnimationFrame(boucleDeJeu); // Relance la boucle
+    if (etatDuJeu === "MENU") {
+        dessinerMenu();
+    } else if (etatDuJeu === "EN_JEU") {
+        mettreAJourLaLogique();
+        dessinerLesElements();
+    }
+    requestAnimationFrame(boucleDeJeu);
 }
 
 function mettreAJourLaLogique() {
-    // -- 1. DEPLACEMENT DU JOUEUR --
+    // -- 1. DEPLACEMENT --
     let deplacementX = 0;
     let deplacementY = 0;
 
-    // Via clavier (Test Mac)
-    if (touchesClavier['q'] || touchesClavier['a'] || touchesClavier['arrowleft']) deplacementX -= VITESSE_JOUEUR;
-    if (touchesClavier['d'] || touchesClavier['arrowright']) deplacementX += VITESSE_JOUEUR;
-    if (touchesClavier['z'] || touchesClavier['w'] || touchesClavier['arrowup']) deplacementY -= VITESSE_JOUEUR;
-    if (touchesClavier['s'] || touchesClavier['arrowdown']) deplacementY += VITESSE_JOUEUR;
+    if (touchesClavier['q'] || touchesClavier['a'] || touchesClavier['arrowleft']) deplacementX -= persoChoisi.vitesse;
+    if (touchesClavier['d'] || touchesClavier['arrowright']) deplacementX += persoChoisi.vitesse;
+    if (touchesClavier['z'] || touchesClavier['w'] || touchesClavier['arrowup']) deplacementY -= persoChoisi.vitesse;
+    if (touchesClavier['s'] || touchesClavier['arrowdown']) deplacementY += persoChoisi.vitesse;
 
-    // Via Joystick Gauche (Tablette)
     if (joystickGauche.actif) {
         let diffX = joystickGauche.actuelX - joystickGauche.origineX;
         let diffY = joystickGauche.actuelY - joystickGauche.origineY;
         let distance = Math.hypot(diffX, diffY);
         
-        // On limite la force du joystick pour ne pas aller trop vite
         if (distance > 0) {
-            let force = Math.min(distance / 50, 1); // 50 pixels est la taille max du joystick
-            deplacementX = (diffX / distance) * VITESSE_JOUEUR * force;
-            deplacementY = (diffY / distance) * VITESSE_JOUEUR * force;
+            let force = Math.min(distance / 50, 1); 
+            deplacementX = (diffX / distance) * persoChoisi.vitesse * force;
+            deplacementY = (diffY / distance) * persoChoisi.vitesse * force;
         }
     }
 
-    // Appliquer le déplacement
     joueur.x += deplacementX;
     joueur.y += deplacementY;
-
-    // Empêcher le joueur de sortir de l'écran
     joueur.x = Math.max(TAILLE_JOUEUR, Math.min(canvas.width - TAILLE_JOUEUR, joueur.x));
     joueur.y = Math.max(TAILLE_JOUEUR, Math.min(canvas.height - TAILLE_JOUEUR, joueur.y));
 
-    // -- 2. SYSTEME DE TIR (Joystick Droit) --
-    if (compteurAvantProchainTir > 0) {
-        compteurAvantProchainTir--; // On fait diminuer le chrono
-    }
+    // -- 2. TIR --
+    if (compteurAvantProchainTir > 0) compteurAvantProchainTir--;
 
     if (joystickDroit.actif) {
         let diffX = joystickDroit.actuelX - joystickDroit.origineX;
         let diffY = joystickDroit.actuelY - joystickDroit.origineY;
         let distance = Math.hypot(diffX, diffY);
 
-        // Si on tire un peu le joystick et que le chrono est à zéro, on tire !
         if (distance > 10 && compteurAvantProchainTir <= 0) {
-            let angle = Math.atan2(diffY, diffX); // Calcule la direction (en radians)
+            let angle = Math.atan2(diffY, diffX); 
             
-            // On crée une nouvelle balle
             balles.push({
                 x: joueur.x,
                 y: joueur.y,
+                origineX: joueur.x,
+                origineY: joueur.y,
                 vitesseX: Math.cos(angle) * VITESSE_BALLE,
-                vitesseY: Math.sin(angle) * VITESSE_BALLE
+                vitesseY: Math.sin(angle) * VITESSE_BALLE,
+                arme: persoChoisi.arme,
+                distanceParcourue: 0,
+                etape: "aller", // Utile pour le boomerang
+                dejaTouche: false // Pour que le boomerang ne blesse qu'une fois à l'aller et une fois au retour
             });
             
-            compteurAvantProchainTir = DELAI_TIR; // Réinitialise le chrono
+            compteurAvantProchainTir = persoChoisi.delaiTir;
         }
     }
 
-    // -- 3. DEPLACEMENT DES BALLES ET COLLISIONS --
+    // -- 3. BALLES ET COLLISIONS --
     for (let i = balles.length - 1; i >= 0; i--) {
         let balle = balles[i];
         
-        // Fait avancer la balle
+        // Logique de mouvement spécifique selon l'arme
+        if (balle.arme === "boomerang" && balle.etape === "retour") {
+            // Le boomerang revient vers le joueur
+            let angleRetour = Math.atan2(joueur.y - balle.y, joueur.x - balle.x);
+            balle.vitesseX = Math.cos(angleRetour) * VITESSE_BALLE;
+            balle.vitesseY = Math.sin(angleRetour) * VITESSE_BALLE;
+        }
+
         balle.x += balle.vitesseX;
         balle.y += balle.vitesseY;
+        
+        // Calcul de la distance parcourue (pour savoir quand exploser ou revenir)
+        balle.distanceParcourue += Math.hypot(balle.vitesseX, balle.vitesseY);
 
-        // Si la balle sort de l'écran, on la supprime
+        // -- Gestion de la portée --
+        if (balle.arme === "bombe" && balle.distanceParcourue >= persoChoisi.portee) {
+            // La bombe a atteint sa portée max, elle explose et disparaît
+            balles.splice(i, 1);
+            continue;
+        }
+
+        if (balle.arme === "boomerang") {
+            if (balle.etape === "aller" && balle.distanceParcourue >= persoChoisi.portee) {
+                // Le boomerang a atteint la distance max, il fait demi-tour
+                balle.etape = "retour";
+                balle.dejaTouche = false; // Il peut retoucher l'ennemi au retour !
+            }
+            // Si le boomerang est sur le retour et touche presque le joueur, on le supprime
+            if (balle.etape === "retour" && Math.hypot(balle.x - joueur.x, balle.y - joueur.y) < TAILLE_JOUEUR) {
+                balles.splice(i, 1);
+                continue;
+            }
+        }
+
+        // Si la balle sort de l'écran, on la supprime (sécurité)
         if (balle.x < 0 || balle.x > canvas.width || balle.y < 0 || balle.y > canvas.height) {
             balles.splice(i, 1);
             continue;
         }
 
-        // Vérification de collision avec l'ennemi (Théorème de Pythagore pour calculer la distance)
+        // -- Collision avec l'ennemi --
         let distanceBalleEnnemi = Math.hypot(balle.x - ennemi.x, balle.y - ennemi.y);
-        
-        if (ennemi.pv > 0 && distanceBalleEnnemi < TAILLE_BALLE + TAILLE_ENNEMI) {
-            ennemi.pv -= DEGATS_BALLE; // L'ennemi perd des PV
-            balles.splice(i, 1); // La balle disparaît
-            if (ennemi.pv < 0) ennemi.pv = 0; // Empêche d'avoir des PV négatifs
+        if (ennemi.pv > 0 && distanceBalleEnnemi < TAILLE_BALLE + TAILLE_ENNEMI && !balle.dejaTouche) {
+            ennemi.pv -= persoChoisi.degats; 
+            if (ennemi.pv < 0) ennemi.pv = 0;
+            
+            if (balle.arme === "bombe") {
+                // La bombe disparaît direct
+                balles.splice(i, 1);
+            } else if (balle.arme === "boomerang") {
+                // Le boomerang continue sa route mais on retient qu'il a déjà touché pour cette étape
+                balle.dejaTouche = true; 
+            }
         }
     }
 }
 
 // ==============================================================================
-// 🎨 DESSIN SUR L'ÉCRAN (Le rendu visuel)
+// 🎨 RENDU VISUEL
 // ==============================================================================
 
+function dessinerMenu() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Moitié gauche : WIXY
+    ctx.fillStyle = PERSOS.WIXY.couleur;
+    ctx.fillRect(0, 0, canvas.width / 2, canvas.height);
+    
+    // Moitié droite : BORA
+    ctx.fillStyle = PERSOS.BORA.couleur;
+    ctx.fillRect(canvas.width / 2, 0, canvas.width / 2, canvas.height);
+
+    ctx.fillStyle = "white";
+    ctx.textAlign = "center";
+    ctx.font = "bold 30px Arial";
+    
+    ctx.fillText("Choisir " + PERSOS.WIXY.nom, canvas.width / 4, canvas.height / 2);
+    ctx.fillText("Arme : Bombe", canvas.width / 4, canvas.height / 2 + 40);
+    
+    ctx.fillText("Choisir " + PERSOS.BORA.nom, (canvas.width / 4) * 3, canvas.height / 2);
+    ctx.fillText("Arme : Boomerang", (canvas.width / 4) * 3, canvas.height / 2 + 40);
+}
+
 function dessinerLesElements() {
-    // Effacer l'écran précédent (fond transparent pour laisser voir le CSS)
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // 1. Dessiner le Joueur
     ctx.beginPath();
     ctx.arc(joueur.x, joueur.y, TAILLE_JOUEUR, 0, Math.PI * 2);
-    ctx.fillStyle = COULEUR_JOUEUR;
+    ctx.fillStyle = persoChoisi.couleur;
     ctx.fill();
     ctx.closePath();
 
-    // 2. Dessiner l'Ennemi (s'il est encore en vie)
+    // 2. Dessiner l'Ennemi
     if (ennemi.pv > 0) {
-        // Le corps de l'ennemi
         ctx.beginPath();
         ctx.arc(ennemi.x, ennemi.y, TAILLE_ENNEMI, 0, Math.PI * 2);
         ctx.fillStyle = COULEUR_ENNEMI;
         ctx.fill();
         ctx.closePath();
 
-        // La barre de vie (fond noir)
         ctx.fillStyle = 'black';
         ctx.fillRect(ennemi.x - 25, ennemi.y - 45, 50, 10);
-        // La barre de vie (partie verte restante)
-        ctx.fillStyle = '#2ecc71'; // Vert
+        ctx.fillStyle = '#2ecc71';
         let pourcentagePv = ennemi.pv / PV_MAX_ENNEMI;
         ctx.fillRect(ennemi.x - 25, ennemi.y - 45, 50 * pourcentagePv, 10);
     }
 
     // 3. Dessiner les Balles
-    ctx.fillStyle = COULEUR_BALLE;
+    ctx.fillStyle = "white"; // On met les tirs en blanc
     for (let balle of balles) {
         ctx.beginPath();
         ctx.arc(balle.x, balle.y, TAILLE_BALLE, 0, Math.PI * 2);
@@ -259,25 +342,22 @@ function dessinerLesElements() {
         ctx.closePath();
     }
 
-    // 4. Dessiner les Joysticks (UI Tactile)
+    // 4. Dessiner les Joysticks
     dessinerJoystick(joystickGauche);
     dessinerJoystick(joystickDroit);
 }
 
-// Fonction utilitaire pour dessiner un joystick s'il est actif
 function dessinerJoystick(joystick) {
     if (joystick.actif) {
-        // La base (Grand cercle transparent)
         ctx.beginPath();
         ctx.arc(joystick.origineX, joystick.origineY, 50, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)'; // Blanc transparent
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.fill();
         
-        // Le bouton (Petit cercle intérieur, limité au rayon de la base)
         let diffX = joystick.actuelX - joystick.origineX;
         let diffY = joystick.actuelY - joystick.origineY;
         let distance = Math.hypot(diffX, diffY);
-        let limite = 50; // Rayon max
+        let limite = 50;
         
         let boutonX = joystick.actuelX;
         let boutonY = joystick.actuelY;
@@ -289,13 +369,13 @@ function dessinerJoystick(joystick) {
 
         ctx.beginPath();
         ctx.arc(boutonX, boutonY, 20, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'; // Blanc plus visible
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
         ctx.fill();
     }
 }
 
 // ==============================================================================
-// 🚀 DÉMARRAGE DU JEU
+// 🚀 DÉMARRAGE
 // ==============================================================================
-redimensionner(); // Ajuste la taille dès le lancement
-boucleDeJeu();    // Lance le moteur du jeu
+redimensionner(); 
+boucleDeJeu();
