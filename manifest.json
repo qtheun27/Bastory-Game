@@ -1,0 +1,10 @@
+{
+  "name": "Bastory",
+  "short_name": "Bastory",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0b2a6b",
+  "theme_color": "#2b1d6b",
+  "icons": [{ "src": "images/wixy.png", "sizes": "512x512", "type": "image/png" }]
+}

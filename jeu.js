@@ -212,7 +212,7 @@ function finir(r, msg) {
     db.collection('joueurs').doc(user.uid).set({ pseudo: nomJoueur(), points: inc(finInfo.points), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0) }, { merge: true }).catch(e => console.warn(e));
   }
 }
-function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => mesPoints = (d.data() || {}).points || 0, () => {}); }
+function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; mesPoints = v.points || 0; mesStats = { points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0 }; }, () => {}); }
 
 // ---------- 8. MULTIJOUEUR (Realtime Database) ----------
 // Salle d'attente → départ quand le max est atteint (ou 10 s après avoir atteint le minimum).
@@ -336,6 +336,7 @@ addEventListener('keydown', e => {
   if (e.key === 'Escape' && etat !== 'MENU') { quitterSalle(); etat = 'MENU'; }
 });
 addEventListener('keyup', e => touches[e.key.toLowerCase()] = false);
+addEventListener('contextmenu', e => e.preventDefault());
 const joyG = { actif: false }, joyD = { actif: false };
 function vec(j) { const dx = j.x - j.ox, dy = j.y - j.oy, d = Math.hypot(dx, dy); return { dx, dy, d, f: Math.min(d / 60, 1), a: Math.atan2(dy, dx) }; }
 canvas.addEventListener('touchstart', e => {
@@ -1030,6 +1031,11 @@ function dessinerHUD() {
     ctx.font = '22px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.icone || '✨', x + 22, 92);
     texte(Math.ceil((moi.bonus[id] - temps) / 60) + 's', x + 22, 112, 11, '#fff');
   });
+  if (mobile) { // emplacements des joysticks (comme arcade)
+    const u = U();
+    if (!joyG.actif) { ctx.globalAlpha = 0.18; ellipse(95 * u, H - 95 * u, 55 * u, 55 * u, '#fff'); ctx.globalAlpha = 0.35; ellipse(95 * u, H - 95 * u, 24 * u, 24 * u, '#fff'); ctx.globalAlpha = 1; }
+    if (!joyD.actif) { ctx.globalAlpha = 0.2; ellipse(W - 95 * u, H - 95 * u, 55 * u, 55 * u, '#ffb000'); ctx.globalAlpha = 0.45; ellipse(W - 95 * u, H - 95 * u, 24 * u, 24 * u, '#ffb000'); ctx.globalAlpha = 1; emoji('🎯', W - 95 * u, H - 95 * u, 20 * u); }
+  }
   dessinerJoystick(joyG, '#ffffff');
   dessinerJoystick(joyD, '#ffb000'); ecran();
   if (!('ontouchstart' in window)) texte('ZQSD/flèches : bouger • Clic : tirer • Espace : tir auto • Échap : quitter', W / 2, H - 16, 12, '#fff');
@@ -1042,47 +1048,270 @@ function dessinerJoystick(j, c) {
   ctx.globalAlpha = 0.8; ctx.beginPath(); ctx.arc(j.ox + Math.cos(v.a) * l, j.oy + Math.sin(v.a) * l, 24, 0, 7); ctx.fill();
   ctx.globalAlpha = 1;
 }
+// ---------- 14b. MENU PRINCIPAL (style arcade) ----------
+// Écrans : accueil • persos • modes • classement • pouvoirs
+let ecranMenu = 'accueil', persoVue = 0, pageMenu = 0, mesStats = { points: 0, victoires: 0, parties: 0 }, classement = null, classementT = -9999;
+const cacheMini = {};
+const U = () => Math.max(0.6, Math.min(1.35, Math.min(W / 900, H / 440)));   // échelle de l'interface selon l'écran
+const selPerso = () => CONFIG.persos[persoIndex] || CONFIG.persos[0];
+const modesStyle = m => m.type === 'solo' ? ['🧍', '#4cd964', '#1f9d3a', 'Solo'] : m.equipes === 'coop' ? ['🤝', '#5ac8fa', '#1d74c9', 'Coop']
+  : m.equipes === 'deux' ? ['⚔️', '#ff9f43', '#d35400', 'Équipes'] : ['👥', '#ff6b6b', '#c0392b', 'Chacun pour soi'];
+function emoji(t, x, y, taille) { ctx.font = `${taille}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(t, x, y); }
+function allerA(e) { ecranMenu = e; pageMenu = 0; }
+function bouton3D(x, y, w, h, c1, c2, action, r) { // bouton en relief façon arcade
+  const u = U(); r = r || 14 * u;
+  rect(x, y + 5 * u, w, h, r, 'rgba(0,0,0,.35)');
+  const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, c1); g.addColorStop(1, c2);
+  rect(x, y, w, h, r, g, '#1a1030', 3 * u);
+  rect(x + 4 * u, y + 3 * u, w - 8 * u, h * 0.36, r * 0.7, 'rgba(255,255,255,.22)');
+  if (action) zones.push({ x, y, w, h, action });
+}
+function pastille(x, y, w, icone, txt, action) {
+  const u = U(), h = 34 * u;
+  rect(x, y, w, h, h / 2, 'rgba(0,0,0,.45)', 'rgba(255,255,255,.15)', 2);
+  emoji(icone, x + h / 2 + 2, y + h / 2, 18 * u); texte(txt, x + h + 4 * u, y + h / 2, 15 * u, '#fff', 'left');
+  if (action) zones.push({ x, y, w, h, action });
+}
+function lignes(txt, maxW, taille) { // coupe un texte en lignes
+  ctx.font = `900 ${taille}px Arial`; const out = []; let l = '';
+  for (const m of String(txt || '').split(' ')) { const t = l ? l + ' ' + m : m; if (ctx.measureText(t).width > maxW && l) { out.push(l); l = m; } else l = t; }
+  if (l) out.push(l); return out;
+}
+function miniMap(def) { // aperçu de la map (1 pixel = 1 case)
+  const cle = def.nom + def.grille.join('').length;
+  if (!cacheMini[cle]) {
+    const g = def.grille, c = document.createElement('canvas'); c.width = Math.max(...g.map(r => r.length)); c.height = g.length;
+    const x = c.getContext('2d'), col = { '#': def.mur, 'B': def.buissonFonce, 'W': def.eau, 'C': '#f1c40f', 'P': '#3aa0ff', 'E': '#ff3b3b' };
+    g.forEach((r, j) => [...r].forEach((t, i) => { x.fillStyle = col[t] || def.herbe1; x.fillRect(i, j, 1, 1); }));
+    cacheMini[cle] = c;
+  }
+  return cacheMini[cle];
+}
+function dessinerMiniMap(def, x, y, w, h) {
+  const m = miniMap(def), k = Math.min(w / m.width, h / m.height), mw = m.width * k, mh = m.height * k;
+  rect(x - 3, y - 3, w + 6, h + 6, 8, 'rgba(0,0,0,.4)');
+  ctx.imageSmoothingEnabled = false; ctx.drawImage(m, x + (w - mw) / 2, y + (h - mh) / 2, mw, mh); ctx.imageSmoothingEnabled = true;
+}
+function fondMenu() {
+  fond('#2a7de1', '#0b2a6b');
+  const u = U(), s = 46 * u, d = (temps * 0.4) % (s * 2);
+  ctx.fillStyle = 'rgba(255,255,255,.05)';
+  for (let y = -s * 2; y < H + s * 2; y += s) for (let x = -s * 4; x < W + s * 2; x += s * 2) {
+    const px = x + d + ((y / s) % 2 ? s : 0), py = y + d / 2;
+    ctx.beginPath(); ctx.moveTo(px, py - s * 0.35); ctx.lineTo(px + s * 0.35, py); ctx.lineTo(px, py + s * 0.35); ctx.lineTo(px - s * 0.35, py); ctx.fill();
+  }
+}
+function barreHaut(titre, retour) {
+  const u = U(), h = 54 * u;
+  rect(-100, -100, W + 200, h + 100, 0, 'rgba(8,10,40,.6)');
+  if (retour) { bouton3D(10 * u, 8 * u, 104 * u, 38 * u, '#ffd23f', '#e09a00', () => allerA('accueil')); texte('◀ Retour', 62 * u, 27 * u, 14 * u, '#fff'); }
+  else { // puce profil
+    const p = selPerso(), im = carteDe(p);
+    rect(10 * u, 7 * u, 210 * u, 40 * u, 20 * u, 'rgba(0,0,0,.45)', 'rgba(255,255,255,.15)', 2);
+    ctx.beginPath(); ctx.arc(30 * u, 27 * u, 17 * u, 0, 7); ctx.fillStyle = p.couleur; ctx.fill();
+    if (pret(im)) ctx.drawImage(im, 14 * u, 11 * u, 32 * u, 32 * u);
+    texte(nomJoueur(), 54 * u, 20 * u, 14 * u, '#fff', 'left');
+    texte('⭐ ' + mesStats.victoires + ' victoires', 54 * u, 36 * u, 10 * u, '#ffe8a3', 'left');
+    zones.push({ x: 10 * u, y: 7 * u, w: 210 * u, h: 40 * u, action: () => ouvrirProfil(auth, p => db && db.collection('joueurs').doc(user.uid).set({ pseudo: p }, { merge: true })) });
+  }
+  if (titre) texte(titre, W / 2, 27 * u, 24 * u, '#ffd23f');
+  else pastille(W / 2 - 70 * u, 10 * u, 140 * u, '🏆', mesStats.points + ' pts');
+  pastille(W - 250 * u, 10 * u, 130 * u, '🟢', enLigne + ' en ligne');
+  bouton3D(W - 110 * u, 8 * u, 46 * u, 38 * u, '#8e7bff', '#5b3fd6', () => location.href = 'admin.html'); emoji('⚙️', W - 87 * u, 27 * u, 18 * u);
+  bouton3D(W - 56 * u, 8 * u, 46 * u, 38 * u, '#ff6b6b', '#c0392b', () => { if (rtdb && user) rtdb.ref('presence/' + user.uid).remove(); auth.signOut(); }); emoji('⏻', W - 33 * u, 27 * u, 18 * u);
+  return h;
+}
+function statBarre(x, y, w, icone, lab, val, txt, couleur) {
+  const u = U();
+  emoji(icone, x + 10 * u, y + 7 * u, 14 * u); texte(lab, x + 24 * u, y + 7 * u, 11 * u, '#fff', 'left');
+  const bx = x + 96 * u, bw = w - 96 * u - 50 * u;
+  rect(bx, y, bw, 14 * u, 7 * u, 'rgba(0,0,0,.45)');
+  rect(bx, y, Math.max(8 * u, bw * Math.max(0, Math.min(1, val))), 14 * u, 7 * u, couleur || '#ffd23f');
+  texte(txt, x + w - 4 * u, y + 7 * u, 11 * u, '#fff', 'right');
+}
+function lancerPartie() {
+  const m = modeChoisi();
+  if (m.type === 'multi') chercherPartie(); else demarrer(mapChoisie(m), null);
+}
 function dessinerMenu() {
   ecran(); zones = [];
-  fond('#2b1d6b', '#0f5fa8');
+  fondMenu();
   if (etat === 'AUTH') return;
-  const m = modeChoisi();
-  texte('BASTORY', W / 2, H * 0.08, Math.min(52, W / 11), '#ffd23f');
-  texte('👤 ' + nomJoueur() + '   🏆 ' + mesPoints + ' pts   🟢 ' + enLigne + ' en ligne', 12, 20, 13, '#fff', 'left');
-  bouton(12, 34, 70, 26, 'Profil', 'rgba(0,0,0,.4)', () => ouvrirProfil(auth, p => db && db.collection('joueurs').doc(user.uid).set({ pseudo: p }, { merge: true })), 12);
-  bouton(88, 34, 110, 26, 'Déconnexion', 'rgba(0,0,0,.4)', () => { if (rtdb && user) rtdb.ref('presence/' + user.uid).remove(); auth.signOut(); }, 12);
-  bouton(W - 104, 10, 94, 32, '⚙️ Admin', 'rgba(0,0,0,.4)', () => location.href = 'admin.html', 13);
-  const my = H * 0.08 + 30, multi = m.type === 'multi';
-  bouton(W / 2 - 150, my, 300, 40, '🎮 ' + m.nom + (modes().length > 1 ? '  ▶' : ''), multi ? '#e74c3c' : '#27ae60', () => modeIndex = (modeIndex + 1) % modes().length, 16);
-  const infos = [m.description, multi ? `👥 ${m.joueursMin === m.joueursMax ? m.joueursMax : m.joueursMin + '-' + m.joueursMax} joueurs` : '',
-                 multi ? { deux: '2 équipes', coop: 'coopération', chacun: 'chacun pour soi' }[m.equipes] : '', m.boss && m.nbBoss > 0 ? m.nbBoss + ' boss' : '', `🏆 +${m.pointsVictoire}`];
-  texte(infos.filter(Boolean).join('  •  '), W / 2, my + 54, 12, '#e8e0ff');
-
-  const n = CONFIG.persos.length, gap = 14, cw = Math.min(200, (W - 30) / n - gap), y0 = my + 72, ch = Math.min(250, H - y0 - 76);
-  const x0 = (W - (n * cw + (n - 1) * gap)) / 2;
-  CONFIG.persos.forEach((p, i) => {
-    const x = x0 + i * (cw + gap), a = CONFIG.armes[p.arme] || {}, im = carteDe(p), is = Math.min(cw * 0.7, ch * 0.4);
-    rect(x, y0, cw, ch, 18, p.couleur, '#1a1030', 4);
-    rect(x + 6, y0 + 6, cw - 12, is + 10, 12, 'rgba(255,255,255,.2)');
-    if (pret(im)) ctx.drawImage(im, x + cw / 2 - is / 2, y0 + 11 + Math.sin(temps * 0.05 + i) * 4, is, is);
-    let y = y0 + is + 30;
-    texte(p.nom, x + cw / 2, y, Math.min(20, cw / 7), '#fff');
-    texte((a.nom || p.arme) + ' • ' + (p.munitions || 3) + ' mun.', x + cw / 2, y + 20, 11, '#ffe8a3');
-    y += 36;
-    for (const [lab, val] of [['PV', p.pvMax / 8000], ['VIT', p.vitesse / 8], ['DÉG', p.degats / 3000]]) {
-      if (y + 10 > y0 + ch) break;
-      texte(lab, x + 12, y + 4, 10, '#fff', 'left');
-      rect(x + 44, y, cw - 56, 9, 4, 'rgba(0,0,0,.35)');
-      rect(x + 44, y, (cw - 56) * Math.min(1, val), 9, 4, '#ffd23f');
-      y += 16;
-    }
-    zones.push({ x, y: y0, w: cw, h: ch, action: () => { persoIndex = i; multi ? chercherPartie() : demarrer(mapChoisie(m), null); } });
-  });
-  const fixe = m.map >= 0 && CONFIG.maps[m.map];
-  bouton(W / 2 - 140, y0 + ch + 12, 280, 38, '🗺️ ' + CONFIG.maps[mapChoisie(m)].nom + (fixe || CONFIG.maps.length < 2 ? '' : '  ▶'), '#d4a017',
-         fixe ? null : () => mapIndex = (mapIndex + 1) % CONFIG.maps.length, 15);
-  texte('Choisis ton perso pour jouer', W / 2, H - 12, 11, '#fff');
+  ({ accueil: menuAccueil, persos: menuPersos, modes: menuModes, classement: menuClassement, pouvoirs: menuPouvoirs })[ecranMenu]();
 }
+
+// --- Accueil
+function menuAccueil() {
+  const u = U(), top = barreHaut(), p = selPerso(), a = CONFIG.armes[p.arme] || {}, m = modeChoisi(), [ic, c1, c2, lab] = modesStyle(m);
+  [['🧍', 'PERSOS', '#b57bff', '#7b3fe4', 'persos'], ['🏅', 'CLASSEMENT', '#ffb347', '#e67e22', 'classement'], ['✨', 'POUVOIRS', '#ff7ab6', '#d6337f', 'pouvoirs']]
+    .forEach(([i, t, a1, a2, e], k) => { // colonne de gauche
+      const y = top + 14 * u + k * 78 * u;
+      bouton3D(12 * u, y, 96 * u, 66 * u, a1, a2, () => allerA(e));
+      emoji(i, 60 * u, y + 24 * u, 24 * u); texte(t, 60 * u, y + 50 * u, 10 * u, '#fff');
+    });
+  // perso au centre sur son socle
+  const colD = 300 * u, cx = 120 * u + (W - 120 * u - colD - 20 * u) / 2, taille = Math.min(H * 0.46, (W - colD - 140 * u) * 0.6), cy = top + (H - top) * 0.46;
+  const halo = ctx.createRadialGradient(cx, cy, 5, cx, cy, taille * 0.8); halo.addColorStop(0, 'rgba(255,255,255,.35)'); halo.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = halo; ctx.fillRect(cx - taille, cy - taille, taille * 2, taille * 2);
+  ellipse(cx, cy + taille * 0.45, taille * 0.5, taille * 0.13, 'rgba(0,0,0,.35)');
+  ellipse(cx, cy + taille * 0.42, taille * 0.46, taille * 0.11, p.couleur);
+  const im = carteDe(p), b = Math.sin(temps * 0.05) * 6 * u;
+  if (pret(im)) ctx.drawImage(im, cx - taille / 2, cy - taille / 2 - 10 * u + b, taille, taille);
+  zones.push({ x: cx - taille / 2, y: cy - taille / 2, w: taille, h: taille, action: () => { persoVue = persoIndex; allerA('persos'); } });
+  const by = Math.min(H - 58 * u, cy + taille * 0.58);
+  rect(cx - 110 * u, by, 220 * u, 30 * u, 8 * u, p.couleur, '#1a1030', 3 * u);
+  texte(p.nom, cx, by + 15 * u, 18 * u, '#fff');
+  texte('🔫 ' + (a.nom || '') + '   ❤️ ' + p.pvMax + '   💥 ' + p.degats + '   🔋 ' + (p.munitions || 3), cx, by + 44 * u, 11 * u, '#e8f0ff');
+  // carte du mode (à droite)
+  const mx = W - colD - 14 * u, my = top + 14 * u, jh = 78 * u, mh = Math.max(110 * u, Math.min(170 * u, H - my - jh - 30 * u));
+  bouton3D(mx, my, colD, mh, c1, c2, () => allerA('modes'));
+  emoji(ic, mx + 32 * u, my + 30 * u, 30 * u);
+  texte(m.nom, mx + 58 * u, my + 22 * u, 18 * u, '#fff', 'left');
+  texte(lab + (m.type === 'multi' ? ' • en ligne' : ''), mx + 58 * u, my + 42 * u, 11 * u, '#fff8d0', 'left');
+  texte('CHANGER ▶', mx + colD - 12 * u, my + 22 * u, 11 * u, '#fff', 'right');
+  const infos = [m.type === 'multi' ? '👥 ' + (m.joueursMin === m.joueursMax ? m.joueursMax : m.joueursMin + '-' + m.joueursMax) : '', m.boss && m.nbBoss > 0 ? '👹 ' + m.nbBoss : '', '🏆 +' + m.pointsVictoire, m.bots !== false && m.type === 'multi' ? '🤖' : ''].filter(Boolean).join('   ');
+  texte(infos, mx + 14 * u, my + 64 * u, 13 * u, '#fff', 'left');
+  if (mh > 120 * u) { // aperçu de la map
+    const def = CONFIG.maps[mapChoisie(m)], th = mh - 86 * u;
+    dessinerMiniMap(def, mx + 14 * u, my + 78 * u, th * 1.5, th);
+    texte('🗺️ ' + def.nom, mx + 24 * u + th * 1.5, my + 78 * u + th / 2, 13 * u, '#fff', 'left');
+  }
+  // bouton JOUER
+  const jy = H - jh - 16 * u, pulse = 1 + Math.sin(temps * 0.08) * 0.03;
+  ctx.save(); ctx.translate(mx + colD / 2, jy + jh / 2); ctx.scale(pulse, pulse); ctx.translate(-(mx + colD / 2), -(jy + jh / 2));
+  bouton3D(mx, jy, colD, jh, '#ffe14a', '#f0a000', lancerPartie, 18 * u);
+  texte('JOUER', mx + colD / 2, jy + jh / 2 - (m.type === 'multi' ? 7 * u : 0), 34 * u, '#fff');
+  if (m.type === 'multi') texte('en ligne', mx + colD / 2, jy + jh / 2 + 22 * u, 11 * u, '#5a3a00');
+  ctx.restore();
+}
+
+// --- Persos : grille + fiche détaillée
+function menuPersos() {
+  const u = U(), top = barreHaut('PERSOS', true), n = CONFIG.persos.length;
+  const panW = Math.min(360 * u, W * 0.42), zoneW = W - panW - 36 * u, x0 = 14 * u, y0 = top + 14 * u, zoneH = H - y0 - 14 * u;
+  const cols = Math.max(2, Math.floor(zoneW / (120 * u))), cw = (zoneW - (cols - 1) * 10 * u) / cols, chh = cw * 1.2;
+  const rows = Math.max(1, Math.floor((zoneH - 30 * u) / (chh + 10 * u))), parPage = cols * rows, pages = Math.ceil(n / parPage);
+  pageMenu = Math.min(pageMenu, pages - 1);
+  CONFIG.persos.slice(pageMenu * parPage, (pageMenu + 1) * parPage).forEach((p, k) => {
+    const i = pageMenu * parPage + k, x = x0 + (k % cols) * (cw + 10 * u), y = y0 + Math.floor(k / cols) * (chh + 10 * u), im = carteDe(p);
+    bouton3D(x, y, cw, chh, p.couleur, '#1a1030', () => persoVue = i);
+    if (pret(im)) ctx.drawImage(im, x + cw * 0.12, y + 6 * u, cw * 0.76, cw * 0.76);
+    rect(x + 4 * u, y + chh - 28 * u, cw - 8 * u, 24 * u, 8 * u, 'rgba(0,0,0,.5)');
+    texte(p.nom, x + cw / 2, y + chh - 16 * u, 13 * u, '#fff');
+    if (i === persoVue) rect(x - 3 * u, y - 3 * u, cw + 6 * u, chh + 6 * u, 16 * u, null, '#ffd23f', 4 * u);
+    if (i === persoIndex) emoji('✅', x + cw - 14 * u, y + 14 * u, 16 * u);
+  });
+  if (pages > 1) {
+    bouton3D(x0, H - 40 * u, 60 * u, 30 * u, '#8e7bff', '#5b3fd6', () => pageMenu = (pageMenu + pages - 1) % pages); texte('◀', x0 + 30 * u, H - 25 * u, 14 * u, '#fff');
+    texte((pageMenu + 1) + ' / ' + pages, x0 + zoneW / 2, H - 25 * u, 13 * u, '#fff');
+    bouton3D(x0 + zoneW - 60 * u, H - 40 * u, 60 * u, 30 * u, '#8e7bff', '#5b3fd6', () => pageMenu = (pageMenu + 1) % pages); texte('▶', x0 + zoneW - 30 * u, H - 25 * u, 14 * u, '#fff');
+  }
+  // fiche du perso
+  const p = CONFIG.persos[persoVue] || selPerso(), a = CONFIG.armes[p.arme] || {}, px = W - panW - 14 * u, py = y0, ph = H - py - 14 * u;
+  rect(px, py, panW, ph, 18 * u, 'rgba(8,10,40,.7)', p.couleur, 3 * u);
+  const is = Math.min(panW * 0.42, ph * 0.3), im = carteDe(p);
+  if (pret(im)) ctx.drawImage(im, px + 12 * u, py + 10 * u + Math.sin(temps * 0.05) * 3 * u, is, is);
+  texte(p.nom, px + 24 * u + is, py + 24 * u, 22 * u, '#fff', 'left');
+  const ai = img(a.image); if (pret(ai)) ctx.drawImage(ai, px + 24 * u + is, py + 40 * u, 26 * u, 26 * u);
+  texte(a.nom || p.arme, px + 56 * u + is, py + 53 * u, 13 * u, '#ffe8a3', 'left');
+  const types = { lob: 'Lancer en cloche', retour: 'Aller-retour', droit: 'Tir droit', terrain: 'Fait surgir le sol' };
+  const extra = [types[a.type], a.rebonds > 0 ? a.rebonds + ' ricochets' : '', a.chaine > 0 ? 'chercheur ×' + a.chaine : ''].filter(Boolean).join(' • ');
+  lignes(extra, panW - is - 36 * u, 10 * u).slice(0, 2).forEach((l, k) => texte(l, px + 24 * u + is, py + 78 * u + k * 14 * u, 10 * u, '#cfd8ff', 'left'));
+  const st = [['❤️', 'Vie', p.pvMax / 8000, p.pvMax, '#ff5a6e'], ['💥', 'Dégâts', p.degats / 3000, p.degats, '#ff9f43'], ['🏃', 'Vitesse', p.vitesse / 8, p.vitesse, '#4cd964'],
+    ['🎯', 'Portée', p.portee / 600, p.portee, '#5ac8fa'], ['🔋', 'Munitions', (p.munitions || 3) / 6, p.munitions || 3, '#ffd23f'],
+    ['⚡', 'Cadence', 1 - (p.delaiTir || 30) / 90, ((p.delaiTir || 30) / 60).toFixed(2) + 's', '#b57bff'], ['♻️', 'Recharge', 1 - (p.recharge || 60) / 150, ((p.recharge || 60) / 60).toFixed(1) + 's', '#ff7ab6']];
+  const sy = py + is + 22 * u, pas = Math.min(24 * u, (ph - is - 90 * u) / st.length);
+  st.forEach((s, k) => statBarre(px + 12 * u, sy + k * pas, panW - 24 * u, ...s));
+  const choisi = persoVue === persoIndex, bh = 44 * u;
+  bouton3D(px + 20 * u, py + ph - bh - 12 * u, panW - 40 * u, bh, choisi ? '#9aa5b8' : '#4cd964', choisi ? '#5d6778' : '#1f9d3a', choisi ? null : () => { persoIndex = persoVue; allerA('accueil'); });
+  texte(choisi ? '✔ SÉLECTIONNÉ' : 'CHOISIR', px + panW / 2, py + ph - bh / 2 - 12 * u, 18 * u, '#fff');
+}
+
+// --- Modes de jeu + choix de la map
+function menuModes() {
+  const u = U(), top = barreHaut('MODES DE JEU', true), liste = modes(), m = modeChoisi();
+  const mapH = m.map >= 0 ? 34 * u : 96 * u, x0 = 14 * u, y0 = top + 14 * u, zoneW = W - 28 * u, zoneH = H - y0 - mapH - 60 * u;
+  const cols = Math.max(2, Math.floor(zoneW / (210 * u))), cw = (zoneW - (cols - 1) * 12 * u) / cols, chh = Math.min(150 * u, zoneH);
+  const rows = Math.max(1, Math.floor((zoneH + 12 * u) / (chh + 12 * u))), parPage = cols * rows, pages = Math.ceil(liste.length / parPage);
+  pageMenu = Math.min(pageMenu, pages - 1);
+  liste.slice(pageMenu * parPage, (pageMenu + 1) * parPage).forEach((md, k) => {
+    const i = pageMenu * parPage + k, x = x0 + (k % cols) * (cw + 12 * u), y = y0 + Math.floor(k / cols) * (chh + 12 * u), [ic, c1, c2, lab] = modesStyle(md);
+    bouton3D(x, y, cw, chh, c1, c2, () => modeIndex = i);
+    emoji(ic, x + 28 * u, y + 28 * u, 26 * u);
+    texte(md.nom, x + 52 * u, y + 22 * u, 15 * u, '#fff', 'left');
+    texte(lab, x + 52 * u, y + 40 * u, 10 * u, '#fff8d0', 'left');
+    lignes(md.description, cw - 24 * u, 11 * u).slice(0, 2).forEach((l, j) => texte(l, x + 12 * u, y + 64 * u + j * 15 * u, 11 * u, '#fff', 'left'));
+    const inf = [md.type === 'multi' ? '👥 ' + (md.joueursMin === md.joueursMax ? md.joueursMax : md.joueursMin + '-' + md.joueursMax) : '🧍 1', md.boss && md.nbBoss > 0 ? '👹 ' + md.nbBoss : '', '🏆 +' + md.pointsVictoire, md.type === 'multi' && md.bots !== false ? '🤖 bots' : ''].filter(Boolean).join('  ');
+    if (chh > 100 * u) texte(inf, x + 12 * u, y + chh - 16 * u, 12 * u, '#fff', 'left');
+    if (i === modeIndex % liste.length) { rect(x - 3 * u, y - 3 * u, cw + 6 * u, chh + 6 * u, 16 * u, null, '#fff', 4 * u); emoji('✅', x + cw - 16 * u, y + 16 * u, 16 * u); }
+  });
+  if (pages > 1) { const py = H - mapH - 50 * u; bouton3D(W - 110 * u, py, 96 * u, 30 * u, '#8e7bff', '#5b3fd6', () => pageMenu = (pageMenu + 1) % pages); texte('Suite ▶ ' + (pageMenu + 1) + '/' + pages, W - 62 * u, py + 15 * u, 12 * u, '#fff'); }
+  // maps
+  const my = H - mapH - 12 * u;
+  if (m.map >= 0 && CONFIG.maps[m.map]) { texte('🗺️ Map imposée par ce mode : ' + CONFIG.maps[m.map].nom, W / 2, my + mapH / 2, 14 * u, '#fff'); return; }
+  rect(x0, my, zoneW, mapH, 14 * u, 'rgba(8,10,40,.55)');
+  texte('🗺️ MAP', x0 + 14 * u, my + 16 * u, 12 * u, '#ffd23f', 'left');
+  const tw = (mapH - 34 * u) * 1.5;
+  CONFIG.maps.forEach((def, i) => {
+    const x = x0 + 14 * u + i * (tw + 16 * u), y = my + 28 * u; if (x + tw > x0 + zoneW) return;
+    dessinerMiniMap(def, x, y, tw, mapH - 44 * u);
+    texte(def.nom, x + tw / 2, y + mapH - 38 * u, 10 * u, '#fff');
+    if (i === mapIndex % CONFIG.maps.length) rect(x - 4, y - 4, tw + 8, mapH - 36 * u, 6, null, '#ffd23f', 3);
+    zones.push({ x, y, w: tw, h: mapH - 34 * u, action: () => mapIndex = i });
+  });
+}
+
+// --- Classement des joueurs
+function menuClassement() {
+  const u = U(), top = barreHaut('CLASSEMENT', true);
+  if (db && temps - classementT > 900) { // rafraîchi toutes les ~15 s
+    classementT = temps;
+    db.collection('joueurs').orderBy('points', 'desc').limit(30).get().then(s => classement = s.docs.map(d => ({ uid: d.id, ...d.data() }))).catch(() => classement = classement || []);
+  }
+  const cw = Math.min(260 * u, W * 0.3), x0 = 14 * u, y0 = top + 14 * u, h = H - y0 - 14 * u;
+  rect(x0, y0, cw, h, 18 * u, 'rgba(8,10,40,.7)', '#ffd23f', 3 * u);
+  const im = carteDe(selPerso()), is = Math.min(cw * 0.45, h * 0.3);
+  if (pret(im)) ctx.drawImage(im, x0 + cw / 2 - is / 2, y0 + 10 * u, is, is);
+  texte(nomJoueur(), x0 + cw / 2, y0 + is + 24 * u, 18 * u, '#fff');
+  const rang = classement ? classement.findIndex(j => j.uid === (user && user.uid)) + 1 : 0;
+  [['🏆', 'Points', mesStats.points], ['⭐', 'Victoires', mesStats.victoires], ['🎮', 'Parties', mesStats.parties],
+   ['📈', 'Taux de victoire', mesStats.parties ? Math.round(mesStats.victoires / mesStats.parties * 100) + ' %' : '-'], ['🥇', 'Rang', rang ? '#' + rang : '-']]
+    .forEach(([i, l, v], k) => { const y = y0 + is + 50 * u + k * 26 * u; if (y > y0 + h - 14 * u) return; emoji(i, x0 + 22 * u, y, 15 * u); texte(l, x0 + 38 * u, y, 12 * u, '#cfd8ff', 'left'); texte(String(v), x0 + cw - 14 * u, y, 14 * u, '#fff', 'right'); });
+  const lx = x0 + cw + 14 * u, lw = W - lx - 14 * u;
+  if (!classement) return texte('Chargement…', lx + lw / 2, y0 + 40 * u, 16 * u, '#fff');
+  if (!classement.length) return texte('Personne encore… joue une partie !', lx + lw / 2, y0 + 40 * u, 16 * u, '#fff');
+  const rh = 32 * u, parCol = Math.max(1, Math.floor(h / (rh + 6 * u))), cols = classement.length > parCol && lw > 500 * u ? 2 : 1, colW = (lw - (cols - 1) * 12 * u) / cols;
+  classement.slice(0, parCol * cols).forEach((j, k) => {
+    const x = lx + Math.floor(k / parCol) * (colW + 12 * u), y = y0 + (k % parCol) * (rh + 6 * u), moiL = user && j.uid === user.uid;
+    rect(x, y, colW, rh, 10 * u, moiL ? 'rgba(255,210,63,.35)' : 'rgba(8,10,40,.55)', moiL ? '#ffd23f' : null, 2);
+    const med = ['🥇', '🥈', '🥉'][k];
+    if (med) emoji(med, x + 18 * u, y + rh / 2, 18 * u); else texte('#' + (k + 1), x + 18 * u, y + rh / 2, 12 * u, '#cfd8ff');
+    texte(j.pseudo || 'Joueur', x + 38 * u, y + rh / 2, 13 * u, '#fff', 'left');
+    texte('⭐' + (j.victoires || 0) + '   🏆 ' + (j.points || 0), x + colW - 10 * u, y + rh / 2, 12 * u, '#ffe8a3', 'right');
+  });
+}
+
+// --- Super pouvoirs + aide
+function menuPouvoirs() {
+  const u = U(), top = barreHaut('SUPER POUVOIRS', true), l = Object.values(CONFIG.pouvoirs);
+  const x0 = 14 * u, y0 = top + 14 * u, zoneW = W - 28 * u, aideH = 64 * u;
+  const cols = Math.max(2, Math.floor(zoneW / (200 * u))), cw = (zoneW - (cols - 1) * 12 * u) / cols, chh = 70 * u;
+  const desc = p => ({ vitesse: `Vitesse ×${p.valeur}`, degats: `Dégâts ×${p.valeur}`, bouclier: `Dégâts reçus ×${p.valeur}`, soin: `Soigne ${Math.round(p.valeur * 100)} % des PV`,
+    munitions: 'Munitions illimitées', invisible: 'Invisible pour les ennemis' })[p.effet] + (p.effet !== 'soin' ? ` • ${p.duree} s` : '');
+  l.forEach((p, k) => {
+    const x = x0 + (k % cols) * (cw + 12 * u), y = y0 + Math.floor(k / cols) * (chh + 10 * u); if (y + chh > H - aideH - 20 * u) return;
+    rect(x, y, cw, chh, 14 * u, 'rgba(8,10,40,.6)', p.couleur, 3 * u);
+    ctx.beginPath(); ctx.arc(x + 34 * u, y + chh / 2, 24 * u, 0, 7); ctx.fillStyle = p.couleur; ctx.fill();
+    emoji(p.icone || '✨', x + 34 * u, y + chh / 2, 24 * u);
+    texte(p.nom, x + 66 * u, y + chh / 2 - 10 * u, 15 * u, '#fff', 'left');
+    texte(desc(p), x + 66 * u, y + chh / 2 + 12 * u, 11 * u, '#cfd8ff', 'left');
+  });
+  const ay = H - aideH - 12 * u;
+  rect(x0, ay, zoneW, aideH, 14 * u, 'rgba(8,10,40,.6)');
+  texte('🎁 Casse les murs, buissons et coffres pour trouver des pouvoirs — marche dessus pour les ramasser.', x0 + 14 * u, ay + 20 * u, 12 * u, '#fff', 'left');
+  texte('🕹️ Joystick gauche : bouger • Joystick droit : viser et relâcher pour tirer (petit tap = tir auto) • 🌳 Buisson = caché', x0 + 14 * u, ay + 44 * u, 11 * u, '#cfd8ff', 'left');
+}
+
 function dessinerAttente() {
   ecran(); zones = [];
   fond('#3b0d1f', '#2b1d6b');
