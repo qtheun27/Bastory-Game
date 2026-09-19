@@ -1,13 +1,16 @@
 // =====================================================================
-// 🎮 BASTORY GAME — MOTEUR
-// Les données (persos, armes, boss, maps) sont dans config.js
-// et se modifient sans code via admin.html.
+// 🎮 BASTORY GAME — MOTEUR (solo, boss multiples, multijoueur 1V1)
+// Données : Firebase / config.js — éditables sans code dans admin.html
 // =====================================================================
 
-// ---------- 1. CONFIG ----------
-// Priorité : config en ligne (Firebase) → sinon config.js
-const CONFIG = window.CONFIG_DISTANTE || JSON.parse(JSON.stringify(CONFIG_PAR_DEFAUT));
+// ---------- 1. CONFIG & FIREBASE ----------
+const CONFIG = migrerConfig(window.CONFIG_DISTANTE || JSON.parse(JSON.stringify(CONFIG_PAR_DEFAUT)));
 const TUILE = 64, HAUT_MUR = 28;
+firebase.initializeApp(FIREBASE_CONFIG);
+const auth = firebase.auth();
+let rtdb = null;
+try { rtdb = firebase.database(); } catch (e) { console.warn('Realtime Database non configurée → multijoueur désactivé', e); }
+let user = null;
 
 // ---------- 2. IMAGES ----------
 const cacheImg = {}, cacheBlanc = new Map();
@@ -28,7 +31,7 @@ function blanc(i) { // silhouette blanche pour le flash quand on est touché
 }
 CONFIG.persos.forEach(p => img(p.image));
 Object.values(CONFIG.armes).forEach(a => img(a.image));
-img(CONFIG.boss.image);
+Object.values(CONFIG.bosses).forEach(b => img(b.image));
 
 // ---------- 3. CANVAS ----------
 const canvas = document.createElement('canvas');
@@ -48,17 +51,49 @@ const monde = (sx, sy) => ctx.setTransform(zoom * dpr, 0, 0, zoom * dpr, (W / 2 
 const versMonde = (x, y) => ({ x: (x - W / 2) / zoom + cam.x, y: (y - H / 2) / zoom + cam.y });
 
 // ---------- 4. ÉTAT ----------
-let etat = 'MENU', mapIndex = 0, map = null, perso = null, arme = null;
-let joueur = null, boss = null, projectiles = [], particules = [], textes = [], ondes = [];
-let cam = { x: 0, y: 0 }, secousse = 0, temps = 0, finDans = 0, resultat = '', zones = [];
+let etat = 'AUTH', modeIndex = 0, mapIndex = 0, persoIndex = 0, mode = null, hote = true, salle = null;
+let map = null, moi = null, adv = null, bosses = [], projectiles = [], particules = [], textes = [], ondes = [];
+let cam = { x: 0, y: 0 }, secousse = 0, temps = 0, finDans = 0, resultat = '', messageFin = '', zones = [];
+const modes = () => { const m = CONFIG.modes.filter(m => m.actif !== false); return m.length ? m : CONFIG.modes; };
+const modeChoisi = () => modes()[modeIndex % modes().length];
+const mapChoisie = m => (m.map >= 0 && CONFIG.maps[m.map]) ? +m.map : mapIndex % CONFIG.maps.length;
 
-// ---------- 5. MAP & COLLISIONS ----------
-// Légende : '.' herbe  '#' mur  'B' buisson  'W' eau  'P' départ joueur  'E' départ boss
+// ---------- 5. CONNEXION / INSCRIPTION ----------
+const $ = id => document.getElementById(id);
+const nomJoueur = () => (user && (user.displayName || (user.email || '').split('@')[0])) || 'Joueur';
+const ERR = {
+  'auth/invalid-email': 'Email mal formé', 'auth/invalid-credential': 'Email ou mot de passe incorrect',
+  'auth/wrong-password': 'Mot de passe incorrect', 'auth/user-not-found': 'Compte inconnu',
+  'auth/email-already-in-use': 'Cet email a déjà un compte', 'auth/weak-password': 'Mot de passe trop court (6 caractères min.)',
+  'auth/missing-password': 'Entre un mot de passe', 'auth/too-many-requests': "Trop d'essais, réessaie plus tard",
+  'auth/popup-closed-by-user': 'Fenêtre Google fermée', 'auth/unauthorized-domain': 'Domaine non autorisé dans Firebase'
+};
+const erreurAuth = e => $('authErr').textContent = ERR[e.code] || e.message;
+const champs = () => ({ email: $('aEmail').value.trim(), mdp: $('aMdp').value, pseudo: $('aPseudo').value.trim() });
+$('authForm').onsubmit = e => { e.preventDefault(); const c = champs(); auth.signInWithEmailAndPassword(c.email, c.mdp).catch(erreurAuth); };
+$('bInscription').onclick = async () => {
+  const c = champs();
+  if (!c.pseudo) return erreurAuth({ message: 'Choisis un pseudo pour créer ton compte' });
+  try { const r = await auth.createUserWithEmailAndPassword(c.email, c.mdp); await r.user.updateProfile({ displayName: c.pseudo }); user = auth.currentUser; }
+  catch (e) { erreurAuth(e); }
+};
+$('bGoogle').onclick = () => {
+  const g = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(g).catch(e => e.code === 'auth/popup-blocked' ? auth.signInWithRedirect(g) : erreurAuth(e));
+};
+auth.onAuthStateChanged(u => {
+  user = u;
+  $('auth').style.display = u ? 'none' : 'flex';
+  if (u) { if (etat === 'AUTH') etat = 'MENU'; } else { quitterSalle(); etat = 'AUTH'; }
+});
+
+// ---------- 6. MAP & COLLISIONS ----------
+// '.' herbe  '#' mur  'B' buisson  'W' eau  'P' départ joueur (2 pour le 1V1)  'E' départ boss
 function chargerMap(def) {
   const l = Math.max(...def.grille.map(r => r.length));
   const g = def.grille.map(r => r.padEnd(l, '.'));
-  const m = { def, g, l, h: g.length, j: { x: 2, y: 2 }, b: { x: l - 3, y: g.length - 3 } };
-  g.forEach((r, y) => { for (let x = 0; x < l; x++) { if (r[x] === 'P') m.j = { x, y }; if (r[x] === 'E') m.b = { x, y }; } });
+  const m = { def, g, l, h: g.length, j: [], b: [] };
+  g.forEach((r, y) => { for (let x = 0; x < l; x++) { if (r[x] === 'P') m.j.push({ x, y }); if (r[x] === 'E') m.b.push({ x, y }); } });
   return m;
 }
 const tuile = (tx, ty) => (!map || tx < 0 || ty < 0 || tx >= map.l || ty >= map.h) ? '#' : map.g[ty][tx];
@@ -68,44 +103,130 @@ function libre(x, y, r) {
   const k = r * 0.75;
   return ![[-k, -k], [k, -k], [-k, k], [k, k], [0, -k], [0, k], [-k, 0], [k, 0]].some(([a, b]) => bloque(tuileA(x + a, y + b)));
 }
-function deplacer(e, dx, dy) {
-  if (libre(e.x + dx, e.y, e.r)) e.x += dx;
-  if (libre(e.x, e.y + dy, e.r)) e.y += dy;
-}
-function tourner(e, a, k) {
-  let d = a - e.angle;
-  while (d > Math.PI) d -= 2 * Math.PI;
-  while (d < -Math.PI) d += 2 * Math.PI;
-  e.angle += d * k;
+function deplacer(e, dx, dy) { if (libre(e.x + dx, e.y, e.r)) e.x += dx; if (libre(e.x, e.y + dy, e.r)) e.y += dy; }
+function tourner(e, a, k) { let d = a - e.angle; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; e.angle += d * k; }
+function caseLibre(loin) {
+  for (let k = 0; k < 200; k++) {
+    const tx = 1 + Math.floor(Math.random() * (map.l - 2)), ty = 1 + Math.floor(Math.random() * (map.h - 2));
+    const x = (tx + 0.5) * TUILE, y = (ty + 0.5) * TUILE;
+    if (tuile(tx, ty) === '.' && loin.every(j => Math.hypot(j.x - x, j.y - y) > 350)) return { x, y };
+  }
+  return { x: map.l * TUILE / 2, y: map.h * TUILE / 2 };
 }
 
-// ---------- 6. LANCEMENT ----------
-function lancer(p) {
-  perso = p;
-  arme = CONFIG.armes[p.arme] || Object.values(CONFIG.armes)[0];
-  map = chargerMap(CONFIG.maps[mapIndex] || CONFIG.maps[0]);
-  const B = CONFIG.boss, c = t => (t + 0.5) * TUILE;
-  joueur = { x: c(map.j.x), y: c(map.j.y), r: 26, pv: p.pvMax, pvMax: p.pvMax, angle: 0, recharge: 0, flash: 0, marche: 0, kx: 0, ky: 0, cache: false };
-  boss = { x: c(map.b.x), y: c(map.b.y), r: B.taille || 48, pv: B.pvMax, pvMax: B.pvMax, angle: Math.PI, recharge: 60, flash: 0, marche: 0, kx: 0, ky: 0, charge: 0, chargeMax: 1, rage: false };
-  boss.cx = joueur.x; boss.cy = joueur.y;
+// ---------- 7. CRÉATION DE PARTIE ----------
+function creerJoueur(pi, x, y, uid, nom) {
+  const p = CONFIG.persos[pi] || CONFIG.persos[0];
+  return { uid, nom, perso: p, arme: CONFIG.armes[p.arme] || Object.values(CONFIG.armes)[0], x, y, tx: x, ty: y, r: 26,
+           pv: p.pvMax, pvMax: p.pvMax, angle: 0, recharge: 0, flash: 0, marche: 0, kx: 0, ky: 0, cache: false };
+}
+function creerBoss(id, x, y, i) {
+  const ids = Object.keys(CONFIG.bosses);
+  if (!CONFIG.bosses[id]) id = ids[Math.floor(Math.random() * ids.length)]; // 'aleatoire' ou inconnu
+  const d = CONFIG.bosses[id];
+  return { i, id, def: d, x, y, tx: x, ty: y, r: d.taille || 48, pv: d.pvMax, pvMax: d.pvMax, angle: Math.PI, recharge: 60,
+           flash: 0, marche: 0, kx: 0, ky: 0, charge: 0, chargeMax: 1, rage: false, cx: x, cy: y, fx: x, fy: y };
+}
+function demarrer(mapIdx, adversaire) {
+  mode = modeChoisi();
+  map = chargerMap(CONFIG.maps[mapIdx] || CONFIG.maps[0]);
+  const c = t => (t + 0.5) * TUILE, p1 = map.j[0] || { x: 2, y: 2 }, p2 = map.j[1] || { x: map.l - 1 - p1.x, y: map.h - 1 - p1.y };
+  const [mp, ap] = hote ? [p1, p2] : [p2, p1];
+  moi = creerJoueur(persoIndex, c(mp.x), c(mp.y), user.uid, nomJoueur());
+  adv = adversaire ? creerJoueur(adversaire.p, c(ap.x), c(ap.y), adversaire.uid, adversaire.nom) : null;
+  bosses = [];
+  if (hote && mode.boss && mode.nbBoss > 0) for (let i = 0; i < Math.min(10, mode.nbBoss); i++) {
+    const e = !adv && map.b[i] ? { x: c(map.b[i].x), y: c(map.b[i].y) } : caseLibre([moi, adv].filter(Boolean));
+    bosses.push(creerBoss(mode.typeBoss, e.x, e.y, i));
+  }
   projectiles = []; particules = []; textes = []; ondes = [];
-  cam.x = joueur.x; cam.y = joueur.y; finDans = 0; resultat = '';
+  cam.x = moi.x; cam.y = moi.y; finDans = 0; resultat = ''; messageFin = '';
   joyG.actif = joyD.actif = false;
   etat = 'JEU';
 }
+function finir(r, msg) { if (resultat) return; resultat = r; messageFin = msg || ''; finDans = 70; envoyerEtat(true); }
 
-// ---------- 7. CONTRÔLES ----------
+// ---------- 8. MULTIJOUEUR (Realtime Database) ----------
+// Chaque joueur envoie sa position ; les tirs et coups de boss sont des événements ;
+// l'hôte (1er joueur) fait vivre les boss ; chacun gère ses propres points de vie.
+async function chercherAdversaire() {
+  if (!rtdb) return alert('Multijoueur indisponible : ajoute databaseURL dans firebase-config.js');
+  mode = modeChoisi(); etat = 'ATTENTE';
+  const cle = 'attente/' + mode.nom.replace(/[.#$\[\]\/]/g, '_'), nouvelle = rtdb.ref('salles').push().key;
+  let pris = null;
+  try {
+    await rtdb.ref(cle).transaction(v => {
+      if (v && v.salle && v.uid !== user.uid && Date.now() - v.t < 60000) { pris = v; return null; }
+      pris = null; return { uid: user.uid, salle: nouvelle, t: Date.now() };
+    });
+  } catch (e) { etat = 'MENU'; return alert('Erreur multijoueur : ' + e.message); }
+  if (etat !== 'ATTENTE') return;
+  hote = !pris;
+  const id = hote ? nouvelle : pris.salle;
+  salle = { id, ref: rtdb.ref('salles/' + id), cle, hote, uid: user.uid, debut: false };
+  if (hote) { rtdb.ref(cle).onDisconnect().remove(); salle.ref.onDisconnect().remove(); await salle.ref.child('info').set({ map: mapChoisie(mode) }); }
+  const moiRef = salle.ref.child('joueurs/' + user.uid);
+  moiRef.onDisconnect().remove();
+  await moiRef.set({ nom: nomJoueur(), p: persoIndex });
+  const s = salle;
+  s.ref.child('joueurs').on('value', snap => {
+    if (salle !== s) return;
+    const autre = Object.entries(snap.val() || {}).find(([k]) => k !== user.uid);
+    if (etat === 'ATTENTE' && autre && !s.debut) {
+      s.debut = true;
+      if (hote) rtdb.ref(cle).remove();
+      s.ref.child('info').once('value', i => demarrer((i.val() || {}).map || 0, { uid: autre[0], nom: autre[1].nom, p: autre[1].p }));
+    } else if (etat === 'JEU' && adv) {
+      if (!autre) return finir('VICTOIRE', 'Ton adversaire a quitté la partie');
+      const d = autre[1];
+      if (d.x !== undefined) Object.assign(adv, { tx: d.x, ty: d.y, angle: d.a, pv: d.pv, cache: d.c, marche: d.m });
+    }
+  });
+  s.ref.child('evts').on('child_added', snap => { const e = snap.val(); if (salle === s && e && e.de !== user.uid) recevoir(e); });
+  if (!hote) s.ref.child('boss').on('value', snap => { if (salle === s && etat === 'JEU') majBossDistants(snap.val() || []); });
+}
+function rafraichirAttente() { // garde l'annonce "je cherche un adversaire" active
+  if (salle && salle.hote && temps % 1200 === 0) rtdb.ref(salle.cle).transaction(v => v && v.uid === user.uid ? { ...v, t: Date.now() } : undefined);
+}
+function quitterSalle() {
+  const s = salle; salle = null;
+  if (!s || !rtdb) return;
+  ['joueurs', 'evts', 'boss'].forEach(k => s.ref.child(k).off());
+  s.ref.child('joueurs/' + s.uid).remove().catch(() => {});
+  rtdb.ref(s.cle).transaction(v => v && v.uid === s.uid ? null : undefined).catch(() => {});
+  if (s.hote) setTimeout(() => s.ref.remove().catch(() => {}), 3000);
+}
+function envoyer(e) { if (salle) salle.ref.child('evts').push({ ...e, de: user.uid }); }
+function envoyerEtat(force) {
+  if (!salle || !moi || (!force && temps % 4)) return;
+  salle.ref.child('joueurs/' + user.uid).update({ x: Math.round(moi.x), y: Math.round(moi.y), a: +moi.angle.toFixed(2), pv: moi.pv, c: moi.cache, m: Math.round(moi.marche) });
+  if (hote && bosses.length) salle.ref.child('boss').set(bosses.map(b => ({ id: b.id, x: Math.round(b.x), y: Math.round(b.y), a: +b.angle.toFixed(2), pv: b.pv, ch: b.charge, cm: b.chargeMax, fx: Math.round(b.fx), fy: Math.round(b.fy), rg: b.rage })));
+}
+function majBossDistants(liste) {
+  liste.forEach((d, i) => {
+    const b = bosses[i] || (bosses[i] = creerBoss(d.id, d.x, d.y, i));
+    Object.assign(b, { tx: d.x, ty: d.y, angle: d.a, charge: d.ch, chargeMax: d.cm || 1, fx: d.fx, fy: d.fy, rage: d.rg });
+    if (b.pv > 0 && d.pv <= 0) mortBoss(b);
+    b.pv = d.pv;
+  });
+}
+function recevoir(e) {
+  if (e.t === 'tir' && adv) { adv.angle = e.a; creerProjectile(adv, e.a, e.f, e.x, e.y); }
+  else if (e.t === 'db' && hote && bosses[e.i]) blesserBoss(bosses[e.i], e.deg);
+  else if (e.t === 'fr') frappe(e);
+}
+
+// ---------- 9. CONTRÔLES ----------
 const touches = {};
 addEventListener('keydown', e => {
+  if (etat === 'AUTH') return;
   touches[e.key.toLowerCase()] = true;
   if (e.key === ' ' && etat === 'JEU') tirerAuto();
-  if (e.key === 'Escape') etat = 'MENU';
+  if (e.key === 'Escape' && etat !== 'MENU') { quitterSalle(); etat = 'MENU'; }
 });
 addEventListener('keyup', e => touches[e.key.toLowerCase()] = false);
-
 const joyG = { actif: false }, joyD = { actif: false };
 function vec(j) { const dx = j.x - j.ox, dy = j.y - j.oy, d = Math.hypot(dx, dy); return { dx, dy, d, f: Math.min(d / 60, 1), a: Math.atan2(dy, dx) }; }
-
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
   for (const t of e.changedTouches) {
@@ -123,7 +244,7 @@ function finTouche(e) {
     if (joyG.actif && joyG.id === t.identifier) joyG.actif = false;
     if (joyD.actif && joyD.id === t.identifier) {
       joyD.actif = false;
-      if (etat === 'JEU') { const v = vec(joyD); v.d > 15 ? tirer(v.a, v.f) : tirerAuto(); } // tir au relâchement (petit tap = visée auto)
+      if (etat === 'JEU') { const v = vec(joyD); v.d > 15 ? tirer(v.a, v.f) : tirerAuto(); }
     }
   }
 }
@@ -131,40 +252,105 @@ canvas.addEventListener('touchend', finTouche);
 canvas.addEventListener('touchcancel', finTouche);
 canvas.addEventListener('mousedown', e => {
   if (etat !== 'JEU') return clic(e.clientX, e.clientY);
-  const m = versMonde(e.clientX, e.clientY), d = Math.hypot(m.x - joueur.x, m.y - joueur.y);
-  tirer(Math.atan2(m.y - joueur.y, m.x - joueur.x), Math.min(1, d / perso.portee));
+  const m = versMonde(e.clientX, e.clientY), d = Math.hypot(m.x - moi.x, m.y - moi.y);
+  tirer(Math.atan2(m.y - moi.y, m.x - moi.x), Math.min(1, d / moi.perso.portee));
 });
 function clic(x, y) {
-  if (etat === 'VICTOIRE' || etat === 'DEFAITE') { etat = 'MENU'; return; }
+  if (etat === 'VICTOIRE' || etat === 'DEFAITE') { quitterSalle(); etat = 'MENU'; return; }
   const z = zones.find(z => x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h);
   if (z) z.action();
 }
 
-// ---------- 8. TIRS ----------
-function tirer(angle, force = 1) {
-  if (joueur.recharge > 0 || joueur.pv <= 0) return;
-  joueur.recharge = perso.delaiTir;
-  joueur.angle = angle;
-  const v = arme.vitesse || 10;
-  const p = { type: arme.type, arme, x: joueur.x, y: joueur.y, vx: Math.cos(angle) * v, vy: Math.sin(angle) * v, dist: 0, rot: 0, z: 0, vie: 0, retour: false, touches: new Set() };
-  if (arme.type === 'lob') {
-    const d = Math.max(80, perso.portee * force);
-    Object.assign(p, { sx: joueur.x, sy: joueur.y, cx: joueur.x + Math.cos(angle) * d, cy: joueur.y + Math.sin(angle) * d, t: 0, duree: Math.max(18, d / v) });
+// ---------- 10. TIRS & DÉGÂTS ----------
+function creerProjectile(j, angle, force, x, y) {
+  const a = j.arme, v = a.vitesse || 10;
+  const p = { type: a.type, arme: a, perso: j.perso, de: j.uid, x, y, vx: Math.cos(angle) * v, vy: Math.sin(angle) * v, dist: 0, rot: 0, z: 0, vie: 0, retour: false, touches: new Set() };
+  if (a.type === 'lob') {
+    const d = Math.max(80, j.perso.portee * force);
+    Object.assign(p, { sx: x, sy: y, cx: x + Math.cos(angle) * d, cy: y + Math.sin(angle) * d, t: 0, duree: Math.max(18, d / v) });
   }
   projectiles.push(p);
 }
+function tirer(angle, force = 1) {
+  if (!moi || moi.recharge > 0 || moi.pv <= 0 || resultat) return;
+  moi.recharge = moi.perso.delaiTir; moi.angle = angle;
+  creerProjectile(moi, angle, force, moi.x, moi.y);
+  envoyer({ t: 'tir', a: +angle.toFixed(3), f: +force.toFixed(2), x: Math.round(moi.x), y: Math.round(moi.y) });
+}
 function tirerAuto() {
-  if (!joueur) return;
-  if (boss.pv > 0) {
-    const d = Math.hypot(boss.x - joueur.x, boss.y - joueur.y);
-    tirer(Math.atan2(boss.y - joueur.y, boss.x - joueur.x), Math.min(1, d / perso.portee));
-  } else tirer(joueur.angle, 1);
+  if (!moi) return;
+  let c = null, dm = 1e9;
+  for (const e of [...bosses, adv]) if (e && e.pv > 0) { const d = Math.hypot(e.x - moi.x, e.y - moi.y); if (d < dm) { dm = d; c = e; } }
+  if (c) tirer(Math.atan2(c.y - moi.y, c.x - moi.x), Math.min(1, dm / moi.perso.portee)); else tirer(moi.angle, 1);
+}
+function cibles(p) { // ce qu'un projectile peut toucher
+  const l = bosses.filter(b => b.pv > 0).map(b => ({ e: b, k: 'b' + b.i }));
+  const j = p.de === moi.uid ? adv : moi;
+  if (j && j.pv > 0) l.push({ e: j, k: 'j' });
+  return l;
+}
+function majProjectiles() {
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const p = projectiles[i], proprio = p.de === moi.uid ? moi : adv;
+    let fini = ++p.vie > 400 || !proprio;
+    if (!fini && p.type === 'lob') {
+      p.t++; const k = p.t / p.duree;
+      p.x = p.sx + (p.cx - p.sx) * k; p.y = p.sy + (p.cy - p.sy) * k;
+      p.z = Math.sin(k * Math.PI) * 110; p.rot += 0.2;
+      if (k >= 1) { exploser(p); fini = true; }
+    } else if (!fini) {
+      if (p.retour) { const a = Math.atan2(proprio.y - p.y, proprio.x - p.x), v = (p.arme.vitesse || 10) * 1.1; p.vx = Math.cos(a) * v; p.vy = Math.sin(a) * v; }
+      p.x += p.vx; p.y += p.vy; p.dist += Math.hypot(p.vx, p.vy);
+      if (p.type === 'retour') p.rot += 0.45;
+      const mur = tuileA(p.x, p.y) === '#';
+      if (p.type === 'retour') {
+        if (!p.retour && (p.dist >= p.perso.portee || mur)) { p.retour = true; if (mur) effet('etincelle', p.x, p.y, '#ddd'); }
+        if (p.retour && Math.hypot(p.x - proprio.x, p.y - proprio.y) < proprio.r) fini = true;
+      } else if (mur || p.dist >= p.perso.portee) { effet('etincelle', p.x, p.y, p.arme.couleur); fini = true; }
+      if (!fini) for (const c of cibles(p)) {
+        const cle = (p.retour ? 'r' : 'a') + c.k;
+        if (!p.touches.has(cle) && Math.hypot(p.x - c.e.x, p.y - c.e.y) < c.e.r + (p.arme.taille || 16)) {
+          impact(c.e, p, p.x - p.vx * 3, p.y - p.vy * 3, true);
+          if (p.type === 'retour') p.touches.add(cle); else { fini = true; break; }
+        }
+      }
+    }
+    if (fini) projectiles.splice(i, 1);
+  }
+}
+function exploser(p) {
+  const r = p.arme.rayon || 70;
+  effet(p.arme.effet || 'explosion', p.x, p.y, p.arme.couleur, r);
+  for (const c of cibles(p)) if (Math.hypot(p.x - c.e.x, p.y - c.e.y) < r + c.e.r * 0.6) impact(c.e, p, p.x, p.y, false);
+}
+function impact(e, p, x, y, avecEffet) {
+  const a = p.arme, deg = p.perso.degats, ang = Math.atan2(e.y - y, e.x - x), kb = a.effet === 'explosion' ? 6 : 3;
+  if (avecEffet) effet(a.effet, e.x, e.y - 10, a.couleur, 40, ang);
+  if (e === moi) return toucherMoi(deg, x, y);
+  e.flash = 8;
+  texteFlottant('-' + deg, e.x, e.y - e.r * 1.4, a.couleur || '#fff');
+  if (!e.def) return;                                 // adversaire : il gère ses PV lui-même
+  if (hote) { e.kx += Math.cos(ang) * kb; e.ky += Math.sin(ang) * kb; }
+  if (p.de === moi.uid) hote ? blesserBoss(e, deg) : envoyer({ t: 'db', i: e.i, deg }); // les dégâts de l'invité passent par l'hôte
+}
+function toucherMoi(deg, x, y) {
+  if (moi.pv <= 0) return;
+  moi.pv = Math.max(0, moi.pv - deg); moi.flash = 8;
+  const ang = Math.atan2(moi.y - y, moi.x - x);
+  moi.kx += Math.cos(ang) * 14; moi.ky += Math.sin(ang) * 14;
+  texteFlottant('-' + deg, moi.x, moi.y - 50, '#ff4d4d');
+  if (moi.pv === 0) { effet('explosion', moi.x, moi.y, '#888', 60); envoyerEtat(true); }
+}
+function blesserBoss(b, deg) { if (b.pv <= 0) return; b.pv = Math.max(0, b.pv - deg); b.flash = 8; if (b.pv === 0) mortBoss(b); }
+function mortBoss(b) { effet('explosion', b.x, b.y, '#7fbf3f', 130); secousse = 22; }
+function frappe(e) { // coup de massue d'un boss (reçu de l'hôte ou local)
+  effet('impact', e.x, e.y, '#f5deb3', e.r);
+  if (moi.pv > 0 && Math.hypot(moi.x - e.x, moi.y - e.y) < e.r + moi.r * 0.5) toucherMoi(e.deg, e.x, e.y);
 }
 
-// ---------- 9. LOGIQUE ----------
+// ---------- 11. LOGIQUE ----------
 function maj() {
   temps++;
-  // Joueur
   let mx = 0, my = 0;
   if (touches.q || touches.a || touches.arrowleft) mx--;
   if (touches.d || touches.arrowright) mx++;
@@ -172,110 +358,72 @@ function maj() {
   if (touches.s || touches.arrowdown) my++;
   const dk = Math.hypot(mx, my); if (dk) { mx /= dk; my /= dk; }
   if (joyG.actif) { const v = vec(joyG); if (v.d > 5) { mx = Math.cos(v.a) * v.f; my = Math.sin(v.a) * v.f; } }
-  if (joueur.pv <= 0) mx = my = 0;
-  deplacer(joueur, mx * perso.vitesse + joueur.kx, my * perso.vitesse + joueur.ky);
-  joueur.kx *= 0.8; joueur.ky *= 0.8;
-  if (mx || my) { joueur.marche += perso.vitesse; if (!joyD.actif) tourner(joueur, Math.atan2(my, mx), 0.25); }
-  if (joyD.actif) { const v = vec(joyD); if (v.d > 15) tourner(joueur, v.a, 0.4); }
-  if (joueur.recharge > 0) joueur.recharge--;
-  if (joueur.flash > 0) joueur.flash--;
-  joueur.cache = tuileA(joueur.x, joueur.y) === 'B';
+  if (moi.pv <= 0) mx = my = 0;
+  const vit = moi.perso.vitesse;
+  deplacer(moi, mx * vit + moi.kx, my * vit + moi.ky);
+  moi.kx *= 0.8; moi.ky *= 0.8;
+  if (mx || my) { moi.marche += vit; if (!joyD.actif) tourner(moi, Math.atan2(my, mx), 0.25); }
+  if (joyD.actif) { const v = vec(joyD); if (v.d > 15) tourner(moi, v.a, 0.4); }
+  if (moi.recharge > 0) moi.recharge--;
+  if (moi.flash > 0) moi.flash--;
+  moi.cache = tuileA(moi.x, moi.y) === 'B';
 
-  majBoss(); majProjectiles(); majEffets();
+  if (adv) { adv.x += (adv.tx - adv.x) * 0.35; adv.y += (adv.ty - adv.y) * 0.35; if (adv.flash > 0) adv.flash--; }
+  for (const b of bosses) {
+    if (hote) iaBoss(b);
+    else { b.x += (b.tx - b.x) * 0.3; b.y += (b.ty - b.y) * 0.3; if (b.flash > 0) b.flash--; }
+  }
+  majProjectiles(); majEffets();
 
-  // Caméra
   const vw = W / zoom, vh = H / zoom, cible = (p, v, m) => m <= v ? m / 2 : Math.max(v / 2, Math.min(m - v / 2, p));
-  cam.x += (cible(joueur.x, vw, map.l * TUILE) - cam.x) * 0.12;
-  cam.y += (cible(joueur.y, vh, map.h * TUILE) - cam.y) * 0.12;
+  cam.x += (cible(moi.x, vw, map.l * TUILE) - cam.x) * 0.12;
+  cam.y += (cible(moi.y, vh, map.h * TUILE) - cam.y) * 0.12;
 
+  envoyerEtat(false);
+  if (!resultat) {
+    if (moi.pv <= 0) finir('DEFAITE', adv ? adv.nom + ' a gagné' : '');
+    else if (adv && adv.pv <= 0) finir('VICTOIRE', 'Tu as battu ' + adv.nom);
+    else if (!adv && bosses.length && bosses.every(b => b.pv <= 0)) finir('VICTOIRE', bosses.length > 1 ? 'Tous les boss sont vaincus' : '');
+  }
   if (finDans > 0 && --finDans === 0) { etat = resultat; joyG.actif = joyD.actif = false; }
 }
 
-function majBoss() {
-  const B = CONFIG.boss;
-  if (boss.flash > 0) boss.flash--;
-  deplacer(boss, boss.kx, boss.ky); boss.kx *= 0.8; boss.ky *= 0.8;
-  if (boss.pv <= 0 || joueur.pv <= 0) return;
-  const dj = Math.hypot(joueur.x - boss.x, joueur.y - boss.y);
-  if (!joueur.cache || dj < 170) { boss.cx = joueur.x; boss.cy = joueur.y; } // caché dans un buisson = le boss perd ta trace
-  boss.rage = boss.pv < boss.pvMax / 2;
-
-  if (boss.charge > 0) { // préparation du coup de massue
-    if (--boss.charge === 0) {
-      effet('impact', boss.fx, boss.fy, '#f5deb3', B.rayonAttaque);
-      if (Math.hypot(joueur.x - boss.fx, joueur.y - boss.fy) < B.rayonAttaque + joueur.r * 0.5) toucherJoueur(B.degats, boss.fx, boss.fy);
-      boss.recharge = B.delaiAttaque;
-    }
+function iaBoss(b) {
+  const D = b.def;
+  if (b.flash > 0) b.flash--;
+  deplacer(b, b.kx, b.ky); b.kx *= 0.8; b.ky *= 0.8;
+  if (b.pv <= 0) return;
+  let cible = null, dmin = 1e9;
+  for (const j of [moi, adv]) if (j && j.pv > 0) {
+    const d = Math.hypot(j.x - b.x, j.y - b.y);
+    if ((!j.cache || d < 170) && d < dmin) { dmin = d; cible = j; } // caché dans un buisson = invisible de loin
+  }
+  if (cible) { b.cx = cible.x; b.cy = cible.y; }
+  b.rage = b.pv < b.pvMax / 2;
+  if (b.charge > 0) {
+    if (--b.charge === 0) { const e = { t: 'fr', x: b.fx, y: b.fy, r: D.rayonAttaque, deg: D.degats }; frappe(e); envoyer(e); b.recharge = D.delaiAttaque; }
     return;
   }
-  if (boss.recharge > 0) boss.recharge--;
-  if (dj < boss.r + joueur.r + 30 && boss.recharge <= 0) {
-    const a = Math.atan2(joueur.y - boss.y, joueur.x - boss.x);
-    boss.angle = a; boss.chargeMax = boss.charge = boss.rage ? 24 : 36;
-    boss.fx = boss.x + Math.cos(a) * boss.r * 1.1; boss.fy = boss.y + Math.sin(a) * boss.r * 1.1;
+  if (b.recharge > 0) b.recharge--;
+  if (cible && dmin < b.r + cible.r + 30 && b.recharge <= 0) {
+    const a = Math.atan2(cible.y - b.y, cible.x - b.x);
+    b.angle = a; b.chargeMax = b.charge = b.rage ? 24 : 36;
+    b.fx = b.x + Math.cos(a) * b.r * 1.1; b.fy = b.y + Math.sin(a) * b.r * 1.1;
     return;
   }
-  const dx = boss.cx - boss.x, dy = boss.cy - boss.y, d = Math.hypot(dx, dy);
+  const dx = b.cx - b.x, dy = b.cy - b.y, d = Math.hypot(dx, dy);
   if (d > 8) {
-    const v = B.vitesse * (boss.rage ? 1.4 : 1), ux = dx / d, uy = dy / d, x0 = boss.x, y0 = boss.y;
-    deplacer(boss, ux * v, uy * v);
-    if (Math.hypot(boss.x - x0, boss.y - y0) < v * 0.3) { const s = Math.floor(temps / 120) % 2 ? 1 : -1; deplacer(boss, -uy * v * s, ux * v * s); } // contourne les murs
-    boss.marche += v; tourner(boss, Math.atan2(dy, dx), 0.08);
+    const v = D.vitesse * (b.rage ? 1.4 : 1), ux = dx / d, uy = dy / d, x0 = b.x, y0 = b.y;
+    deplacer(b, ux * v, uy * v);
+    if (Math.hypot(b.x - x0, b.y - y0) < v * 0.3) { const s = Math.floor(temps / 120 + b.i) % 2 ? 1 : -1; deplacer(b, -uy * v * s, ux * v * s); }
+    b.marche += v; tourner(b, Math.atan2(dy, dx), 0.08);
+  }
+  for (const o of bosses) if (o !== b && o.pv > 0) { // les boss ne se superposent pas
+    const dd = Math.hypot(b.x - o.x, b.y - o.y) || 1;
+    if (dd < b.r + o.r) deplacer(b, (b.x - o.x) / dd * 1.5, (b.y - o.y) / dd * 1.5);
   }
 }
-
-function majProjectiles() {
-  for (let i = projectiles.length - 1; i >= 0; i--) {
-    const p = projectiles[i]; let fini = ++p.vie > 400;
-    if (p.type === 'lob') { // la bombe passe au-dessus des murs
-      p.t++; const k = p.t / p.duree;
-      p.x = p.sx + (p.cx - p.sx) * k; p.y = p.sy + (p.cy - p.sy) * k;
-      p.z = Math.sin(k * Math.PI) * 110; p.rot += 0.2;
-      if (k >= 1) { exploser(p); fini = true; }
-    } else {
-      if (p.retour) {
-        const a = Math.atan2(joueur.y - p.y, joueur.x - p.x), v = (p.arme.vitesse || 10) * 1.1;
-        p.vx = Math.cos(a) * v; p.vy = Math.sin(a) * v;
-      }
-      p.x += p.vx; p.y += p.vy; p.dist += Math.hypot(p.vx, p.vy);
-      if (p.type === 'retour') p.rot += 0.45;
-      const mur = tuileA(p.x, p.y) === '#';
-      if (p.type === 'retour') {
-        if (!p.retour && (p.dist >= perso.portee || mur)) { p.retour = true; if (mur) effet('etincelle', p.x, p.y, '#ddd'); }
-        if (p.retour && Math.hypot(p.x - joueur.x, p.y - joueur.y) < joueur.r) fini = true;
-      } else if (mur || p.dist >= perso.portee) { effet('etincelle', p.x, p.y, p.arme.couleur); fini = true; }
-      const cle = p.retour ? 'r' : 'a'; // le boomerang peut toucher à l'aller ET au retour
-      if (!fini && boss.pv > 0 && !p.touches.has(cle) && Math.hypot(p.x - boss.x, p.y - boss.y) < boss.r + (p.arme.taille || 16)) {
-        toucherBoss(perso.degats, p.x - p.vx * 3, p.y - p.vy * 3, p.arme);
-        if (p.type === 'retour') p.touches.add(cle); else fini = true;
-      }
-    }
-    if (fini) projectiles.splice(i, 1);
-  }
-}
-
-function exploser(p) {
-  const r = p.arme.rayon || 70;
-  effet(p.arme.effet || 'explosion', p.x, p.y, p.arme.couleur, r);
-  if (boss.pv > 0 && Math.hypot(p.x - boss.x, p.y - boss.y) < r + boss.r * 0.6) toucherBoss(perso.degats, p.x, p.y, p.arme, false);
-}
-function toucherBoss(deg, x, y, a, avecEffet = true) {
-  boss.pv = Math.max(0, boss.pv - deg); boss.flash = 8;
-  const ang = Math.atan2(boss.y - y, boss.x - x), kb = a.effet === 'explosion' ? 6 : 3;
-  if (avecEffet) effet(a.effet, boss.x, boss.y - 10, a.couleur, 40, ang);
-  boss.kx += Math.cos(ang) * kb; boss.ky += Math.sin(ang) * kb;
-  texteFlottant('-' + deg, boss.x, boss.y - boss.r * 1.4, a.couleur || '#fff');
-  if (boss.pv === 0 && !resultat) { effet('explosion', boss.x, boss.y, '#7fbf3f', 130); secousse = 22; finDans = 80; resultat = 'VICTOIRE'; }
-}
-function toucherJoueur(deg, x, y) {
-  joueur.pv = Math.max(0, joueur.pv - deg); joueur.flash = 8;
-  const ang = Math.atan2(joueur.y - y, joueur.x - x);
-  joueur.kx += Math.cos(ang) * 14; joueur.ky += Math.sin(ang) * 14;
-  texteFlottant('-' + deg, joueur.x, joueur.y - 50, '#ff4d4d');
-  if (joueur.pv === 0 && !resultat) { effet('explosion', joueur.x, joueur.y, '#888', 60); finDans = 70; resultat = 'DEFAITE'; }
-}
-
-// ---------- 10. EFFETS (animations d'impact différentes par arme) ----------
+// ---------- 12. EFFETS (animations d'impact différentes par arme) ----------
 function particule(x, y, c, vit, taille, vie = 1, forme = 'rond', extra = {}) {
   const a = Math.random() * Math.PI * 2, v = vit * (0.4 + Math.random() * 0.6);
   particules.push(Object.assign({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, c, t: taille * (0.6 + Math.random() * 0.6), vie, forme }, extra));
@@ -300,18 +448,8 @@ function effet(type, x, y, couleur = '#fff', rayon = 60, angle = 0) {
     for (let i = 0; i < 8; i++) particule(x, y, 'rgba(160,140,110,0.7)', rayon / 20, 20, 1.3, 'fumee');
   }
 }
-function texteFlottant(txt, x, y, c) { textes.push({ txt, x: x + (Math.random() - 0.5) * 20, y, c, vie: 1 }); }
-function majEffets() {
-  for (const p of particules) {
-    p.x += p.vx; p.y += p.vy; p.vx *= 0.9; p.vy *= 0.9;
-    if (p.forme === 'fumee') { p.t *= 1.03; p.y -= 0.4; p.vie -= 0.025; } else p.vie -= p.forme === 'trait' && p.a !== undefined ? 0.06 : 0.04;
-  }
-  for (const o of ondes) { o.r += (o.max - o.r) * 0.25; o.vie -= 0.06; }
-  for (const t of textes) { t.y -= 1; t.vie -= 0.02; }
-  particules = particules.filter(p => p.vie > 0); ondes = ondes.filter(o => o.vie > 0); textes = textes.filter(t => t.vie > 0);
-}
 
-// ---------- 11. DESSIN : outils ----------
+// ---------- 12b. DESSIN : outils ----------
 function texte(t, x, y, taille, couleur, align = 'center') {
   ctx.font = `900 ${taille}px "Arial Black", Arial, sans-serif`;
   ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
@@ -325,63 +463,6 @@ function rect(x, y, w, h, r, fill, stroke, ep = 3) {
 }
 function ellipse(x, y, rx, ry, fill) { ctx.beginPath(); ctx.ellipse(x, y, Math.max(0, rx), Math.max(0, ry), 0, 0, 7); ctx.fillStyle = fill; ctx.fill(); }
 
-// ---------- 12. DESSIN : monde ----------
-function dessinerJeu() {
-  ecran(); ctx.fillStyle = '#16351f'; ctx.fillRect(0, 0, W, H);
-  const s = secousse; secousse = secousse < 0.3 ? 0 : secousse * 0.85;
-  monde((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
-
-  const T = TUILE, d = map.def, vw = W / zoom / 2 + T, vh = H / zoom / 2 + T * 2;
-  const x0 = Math.max(0, Math.floor((cam.x - vw) / T)), x1 = Math.min(map.l - 1, Math.ceil((cam.x + vw) / T));
-  const y0 = Math.max(0, Math.floor((cam.y - vh) / T)), y1 = Math.min(map.h - 1, Math.ceil((cam.y + vh) / T));
-
-  // Sol
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-    const c = tuile(x, y), px = x * T, py = y * T;
-    if (c === 'W') {
-      ctx.fillStyle = d.eau || '#3aa6e0'; ctx.fillRect(px, py, T, T);
-      if (tuile(x, y - 1) !== 'W') { ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(px, py, T, 10); }
-      const o = Math.sin(temps * 0.05 + x + y) * 5;
-      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(px + 12, py + 30 + o); ctx.quadraticCurveTo(px + 32, py + 22 + o, px + 52, py + 30 + o); ctx.stroke();
-    } else {
-      ctx.fillStyle = (x + y) % 2 ? d.herbe1 : d.herbe2; ctx.fillRect(px, py, T, T);
-      if (((x * 73856093) ^ (y * 19349663)) % 5 === 0) {
-        ctx.strokeStyle = 'rgba(0,60,0,.25)'; ctx.lineWidth = 3; ctx.beginPath();
-        for (const k of [-6, 0, 6]) { ctx.moveTo(px + 32 + k, py + 40); ctx.lineTo(px + 32 + k * 1.5, py + 28); }
-        ctx.stroke();
-      }
-    }
-  }
-  // Ombres des murs
-  ctx.fillStyle = 'rgba(0,0,0,.22)';
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (tuile(x, y) === '#') ctx.fillRect(x * T + 10, y * T + 10, T, T);
-
-  dessinerVisee();
-  if (boss.charge > 0 && boss.pv > 0) { // zone rouge qui annonce le coup du boss
-    const k = 1 - boss.charge / boss.chargeMax, R = CONFIG.boss.rayonAttaque;
-    ellipse(boss.fx, boss.fy, R, R * 0.8, 'rgba(255,40,40,.2)');
-    ellipse(boss.fx, boss.fy, R * k, R * 0.8 * k, 'rgba(255,40,40,.45)');
-  }
-
-  // Objets triés par profondeur (effet 3D)
-  const objs = [];
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (tuile(x, y) === '#') objs.push([(y + 1) * T - 1, () => mur(x * T, y * T)]);
-  objs.push([joueur.y + joueur.r * 0.5, () => dessinerEntite(joueur, img(perso.image), '#3aa0ff', joueur.r * 2.9)]);
-  if (boss.pv > 0) objs.push([boss.y + boss.r * 0.5, () => dessinerEntite(boss, img(CONFIG.boss.image), '#ff3b3b', boss.r * 2.9)]);
-  for (const p of projectiles) if (p.type !== 'lob') objs.push([p.y, () => dessinerProjectile(p)]);
-  objs.sort((a, b) => a[0] - b[0]).forEach(o => o[1]());
-
-  // Buissons (par-dessus, transparents quand on est dedans)
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (tuile(x, y) === 'B') buisson(x * T, y * T);
-  for (const p of projectiles) if (p.type === 'lob') dessinerProjectile(p);
-
-  dessinerEffets();
-  barreVie(joueur, '#3aa0ff');
-  if (boss.pv > 0) barreVie(boss, '#ff3b3b');
-
-  ecran(); dessinerHUD();
-}
 
 function mur(px, py) {
   const T = TUILE, h = HAUT_MUR, d = map.def;
@@ -395,17 +476,6 @@ function mur(px, py) {
   ctx.beginPath(); ctx.moveTo(px, py + T - h); ctx.lineTo(px + T, py + T - h); ctx.stroke();
 }
 
-function buisson(px, py) {
-  const d = map.def, cx = px + 32, cy = py + 24, sw = Math.sin(temps * 0.04 + px * 0.1) * 2;
-  ctx.globalAlpha = Math.hypot(joueur.x - cx, joueur.y - cy - 8) < 70 ? 0.45 : 1;
-  ctx.fillStyle = d.buissonFonce || '#1f7a35';
-  for (const [dx, dy, r] of [[-20, 8, 24], [20, 8, 24], [0, 16, 26], [0, -6, 24]]) { ctx.beginPath(); ctx.arc(cx + dx + sw, cy + dy, r, 0, 7); ctx.fill(); }
-  ctx.fillStyle = d.buisson || '#2fae4a';
-  for (const [dx, dy, r] of [[-14, 2, 18], [14, 2, 18], [0, -8, 18], [0, 10, 18]]) { ctx.beginPath(); ctx.arc(cx + dx + sw, cy + dy, r, 0, 7); ctx.fill(); }
-  ctx.fillStyle = 'rgba(255,255,255,.2)';
-  for (const [dx, dy] of [[-12, -4], [10, -12], [4, 6]]) { ctx.beginPath(); ctx.arc(cx + dx + sw, cy + dy, 5, 0, 7); ctx.fill(); }
-  ctx.globalAlpha = 1;
-}
 
 function dessinerEntite(e, im, anneau, taille) {
   if (e.rage) ellipse(e.x, e.y + e.r * 0.45, e.r * 1.5, e.r * 0.9, `rgba(255,0,0,${0.15 + 0.1 * Math.sin(temps * 0.2)})`);
@@ -427,6 +497,7 @@ function dessinerEntite(e, im, anneau, taille) {
   ctx.restore();
 }
 
+
 function dessinerProjectile(p) {
   const a = p.arme, im = img(a.image), s = (a.taille || 16) * 2.4;
   const k = 1 - p.z / 220;
@@ -439,21 +510,6 @@ function dessinerProjectile(p) {
   ctx.restore();
 }
 
-function dessinerVisee() {
-  if (!joyD.actif) return;
-  const v = vec(joyD); if (v.d < 15) return;
-  ctx.save(); ctx.globalAlpha = 0.35; ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff';
-  if (arme.type === 'lob') {
-    const dist = Math.max(80, perso.portee * v.f), tx = joueur.x + Math.cos(v.a) * dist, ty = joueur.y + Math.sin(v.a) * dist, R = arme.rayon || 70;
-    ctx.beginPath(); ctx.ellipse(tx, ty, R, R * 0.8, 0, 0, 7); ctx.fill();
-    ctx.setLineDash([10, 10]); ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(joueur.x, joueur.y);
-    ctx.quadraticCurveTo((joueur.x + tx) / 2, (joueur.y + ty) / 2 - dist * 0.35, tx, ty); ctx.stroke();
-  } else {
-    ctx.translate(joueur.x, joueur.y); ctx.rotate(v.a);
-    ctx.beginPath(); ctx.roundRect(0, -16, perso.portee, 32, 16); ctx.fill();
-  }
-  ctx.restore();
-}
 
 function dessinerEffets() {
   for (const o of ondes) {
@@ -472,34 +528,139 @@ function dessinerEffets() {
   ctx.globalAlpha = 1;
 }
 
-function barreVie(e, couleur) {
+
+function majEffets() {
+  for (const p of particules) {
+    p.x += p.vx; p.y += p.vy; p.vx *= 0.9; p.vy *= 0.9;
+    if (p.forme === 'fumee') { p.t *= 1.03; p.y -= 0.4; p.vie -= 0.025; } else p.vie -= p.forme === 'trait' && p.a !== undefined ? 0.06 : 0.04;
+  }
+  for (const o of ondes) { o.r += (o.max - o.r) * 0.25; o.vie -= 0.06; }
+  for (const t of textes) { t.y -= 1; t.vie -= 0.02; }
+  particules = particules.filter(p => p.vie > 0); ondes = ondes.filter(o => o.vie > 0); textes = textes.filter(t => t.vie > 0);
+}
+
+function texteFlottant(txt, x, y, c) { textes.push({ txt, x: x + (Math.random() - 0.5) * 20, y, c, vie: 1 }); }
+// ---------- 13. DESSIN : monde ----------
+function dessinerJeu() {
+  ecran(); ctx.fillStyle = '#16351f'; ctx.fillRect(0, 0, W, H);
+  const s = secousse; secousse = secousse < 0.3 ? 0 : secousse * 0.85;
+  monde((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
+  const T = TUILE, d = map.def, vw = W / zoom / 2 + T, vh = H / zoom / 2 + T * 2;
+  const x0 = Math.max(0, Math.floor((cam.x - vw) / T)), x1 = Math.min(map.l - 1, Math.ceil((cam.x + vw) / T));
+  const y0 = Math.max(0, Math.floor((cam.y - vh) / T)), y1 = Math.min(map.h - 1, Math.ceil((cam.y + vh) / T));
+  const tuiles = f => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) f(tuile(x, y), x, y, x * T, y * T); };
+
+  tuiles((c, x, y, px, py) => { // sol
+    if (c === 'W') {
+      ctx.fillStyle = d.eau || '#3aa6e0'; ctx.fillRect(px, py, T, T);
+      if (tuile(x, y - 1) !== 'W') { ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(px, py, T, 10); }
+      const o = Math.sin(temps * 0.05 + x + y) * 5;
+      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(px + 12, py + 30 + o); ctx.quadraticCurveTo(px + 32, py + 22 + o, px + 52, py + 30 + o); ctx.stroke();
+    } else {
+      ctx.fillStyle = (x + y) % 2 ? d.herbe1 : d.herbe2; ctx.fillRect(px, py, T, T);
+      if (((x * 73856093) ^ (y * 19349663)) % 5 === 0) {
+        ctx.strokeStyle = 'rgba(0,60,0,.25)'; ctx.lineWidth = 3; ctx.beginPath();
+        for (const k of [-6, 0, 6]) { ctx.moveTo(px + 32 + k, py + 40); ctx.lineTo(px + 32 + k * 1.5, py + 28); }
+        ctx.stroke();
+      }
+    }
+  });
+  ctx.fillStyle = 'rgba(0,0,0,.22)';
+  tuiles((c, x, y, px, py) => { if (c === '#') ctx.fillRect(px + 10, py + 10, T, T); });
+
+  dessinerVisee();
+  for (const b of bosses) if (b.charge > 0 && b.pv > 0) { // zone rouge = coup imminent
+    const k = 1 - b.charge / b.chargeMax, R = b.def.rayonAttaque;
+    ellipse(b.fx, b.fy, R, R * 0.8, 'rgba(255,40,40,.2)');
+    ellipse(b.fx, b.fy, R * k, R * 0.8 * k, 'rgba(255,40,40,.45)');
+  }
+
+  const objs = []; // tri par profondeur = effet 3D
+  tuiles((c, x, y, px, py) => { if (c === '#') objs.push([(y + 1) * T - 1, () => mur(px, py)]); });
+  objs.push([moi.y + moi.r * 0.5, () => dessinerEntite(moi, img(moi.perso.image), '#3aa0ff', moi.r * 2.9)]);
+  if (adv) objs.push([adv.y + adv.r * 0.5, () => dessinerEntite(adv, img(adv.perso.image), '#ff3b3b', adv.r * 2.9)]);
+  for (const b of bosses) if (b.pv > 0) objs.push([b.y + b.r * 0.5, () => dessinerEntite(b, img(b.def.image), '#ff7b1a', b.r * 2.9)]);
+  for (const p of projectiles) if (p.type !== 'lob') objs.push([p.y, () => dessinerProjectile(p)]);
+  objs.sort((a, b) => a[0] - b[0]).forEach(o => o[1]());
+
+  tuiles((c, x, y, px, py) => { if (c === 'B') buisson(px, py); });
+  for (const p of projectiles) if (p.type === 'lob') dessinerProjectile(p);
+  dessinerEffets();
+  barreVie(moi, '#3aa0ff', moi.nom);
+  if (adv && !(adv.cache && Math.hypot(adv.x - moi.x, adv.y - moi.y) > 170)) barreVie(adv, '#ff3b3b', adv.nom);
+  for (const b of bosses) if (b.pv > 0) barreVie(b, '#ff7b1a');
+  ecran(); dessinerHUD();
+}
+function buisson(px, py) {
+  const d = map.def, cx = px + 32, cy = py + 24, sw = Math.sin(temps * 0.04 + px * 0.1) * 2;
+  ctx.globalAlpha = Math.hypot(moi.x - cx, moi.y - cy - 8) < 70 ? 0.45 : 1;
+  ctx.fillStyle = d.buissonFonce || '#1f7a35';
+  for (const [dx, dy, r] of [[-20, 8, 24], [20, 8, 24], [0, 16, 26], [0, -6, 24]]) { ctx.beginPath(); ctx.arc(cx + dx + sw, cy + dy, r, 0, 7); ctx.fill(); }
+  ctx.fillStyle = d.buisson || '#2fae4a';
+  for (const [dx, dy, r] of [[-14, 2, 18], [14, 2, 18], [0, -8, 18], [0, 10, 18]]) { ctx.beginPath(); ctx.arc(cx + dx + sw, cy + dy, r, 0, 7); ctx.fill(); }
+  ctx.fillStyle = 'rgba(255,255,255,.2)';
+  for (const [dx, dy] of [[-12, -4], [10, -12], [4, 6]]) { ctx.beginPath(); ctx.arc(cx + dx + sw, cy + dy, 5, 0, 7); ctx.fill(); }
+  ctx.globalAlpha = 1;
+}
+function dessinerVisee() {
+  if (!joyD.actif) return;
+  const v = vec(joyD); if (v.d < 15) return;
+  const a = moi.arme, portee = moi.perso.portee;
+  ctx.save(); ctx.globalAlpha = 0.35; ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff';
+  if (a.type === 'lob') {
+    const dist = Math.max(80, portee * v.f), tx = moi.x + Math.cos(v.a) * dist, ty = moi.y + Math.sin(v.a) * dist, R = a.rayon || 70;
+    ctx.beginPath(); ctx.ellipse(tx, ty, R, R * 0.8, 0, 0, 7); ctx.fill();
+    ctx.setLineDash([10, 10]); ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(moi.x, moi.y);
+    ctx.quadraticCurveTo((moi.x + tx) / 2, (moi.y + ty) / 2 - dist * 0.35, tx, ty); ctx.stroke();
+  } else { ctx.translate(moi.x, moi.y); ctx.rotate(v.a); ctx.beginPath(); ctx.roundRect(0, -16, portee, 32, 16); ctx.fill(); }
+  ctx.restore();
+}
+function barreVie(e, couleur, nom) {
   const w = Math.max(56, e.r * 2.2), x = e.x - w / 2, y = e.y - e.r * 1.75 - 16;
   rect(x - 2, y - 2, w + 4, 12, 5, 'rgba(0,0,0,.6)');
   if (e.pv > 0) rect(x, y, w * e.pv / e.pvMax, 8, 4, couleur);
-  texte(Math.ceil(e.pv), e.x, y - 10, 13, '#fff');
-  if (e === joueur) {
-    rect(x - 2, y + 12, w + 4, 7, 3, 'rgba(0,0,0,.6)');
-    rect(x, y + 13, w * (1 - joueur.recharge / perso.delaiTir), 5, 2, '#ffa31a');
-  }
+  texte(Math.ceil(e.pv) + (nom ? '  ' + nom : ''), e.x, y - 10, 13, '#fff');
+  if (e === moi) { rect(x - 2, y + 12, w + 4, 7, 3, 'rgba(0,0,0,.6)'); rect(x, y + 13, w * (1 - moi.recharge / moi.perso.delaiTir), 5, 2, '#ffa31a'); }
 }
 
-// ---------- 13. DESSIN : interface ----------
+// ---------- 14. DESSIN : écrans ----------
+function bouton(x, y, w, h, txt, fond, action, taille = 14) {
+  rect(x, y, w, h, 12, fond, '#1a1030', 3); texte(txt, x + w / 2, y + h / 2, taille, '#fff');
+  if (action) zones.push({ x, y, w, h, action });
+}
+function fond(c1, c2) {
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, c1); g.addColorStop(1, c2);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.save(); ctx.translate(W / 2, H * 0.45); ctx.rotate(temps * 0.002); ctx.fillStyle = 'rgba(255,255,255,.05)';
+  for (let i = 0; i < 12; i++) { ctx.rotate(Math.PI / 6); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-60, -2000); ctx.lineTo(60, -2000); ctx.fill(); }
+  ctx.restore();
+}
 function dessinerHUD() {
   const bw = Math.min(420, W * 0.5), bx = (W - bw) / 2;
-  texte(CONFIG.boss.nom + (boss.rage ? ' 😡' : ''), W / 2, 18, 16, '#ffd23f');
-  rect(bx - 3, 30, bw + 6, 20, 8, 'rgba(0,0,0,.6)');
-  if (boss.pv > 0) rect(bx, 33, bw * boss.pv / boss.pvMax, 14, 6, '#ff3b3b');
-
-  const im = img(perso.image);
-  ctx.beginPath(); ctx.arc(38, 38, 28, 0, 7); ctx.fillStyle = perso.couleur; ctx.fill();
+  let y = 18;
+  if (bosses.length) {
+    const pv = bosses.reduce((s, b) => s + Math.max(0, b.pv), 0), max = bosses.reduce((s, b) => s + b.pvMax, 0);
+    const titre = bosses.length > 1 ? `BOSS ${bosses.filter(b => b.pv > 0).length}/${bosses.length}` : bosses[0].def.nom;
+    texte(titre + (bosses.some(b => b.rage && b.pv > 0) ? ' 😡' : ''), W / 2, y, 16, '#ffd23f');
+    rect(bx - 3, y + 12, bw + 6, 20, 8, 'rgba(0,0,0,.6)');
+    if (pv > 0) rect(bx, y + 15, bw * pv / max, 14, 6, '#ff7b1a');
+    y += 44;
+  }
+  if (adv) {
+    texte('⚔️ ' + adv.nom, W / 2, y, 16, '#ff8080');
+    rect(bx - 3, y + 12, bw + 6, 20, 8, 'rgba(0,0,0,.6)');
+    if (adv.pv > 0) rect(bx, y + 15, bw * adv.pv / adv.pvMax, 14, 6, '#ff3b3b');
+  }
+  const im = img(moi.perso.image);
+  ctx.beginPath(); ctx.arc(38, 38, 28, 0, 7); ctx.fillStyle = moi.perso.couleur; ctx.fill();
   ctx.lineWidth = 4; ctx.strokeStyle = '#1a1030'; ctx.stroke();
   if (pret(im)) ctx.drawImage(im, 14, 14, 48, 48);
-  texte(perso.nom, 74, 26, 16, '#fff', 'left');
-  texte(Math.ceil(joueur.pv) + ' PV', 74, 48, 13, '#8fd3ff', 'left');
-
+  texte(moi.nom, 74, 26, 16, '#fff', 'left');
+  texte(Math.ceil(moi.pv) + ' PV', 74, 48, 13, '#8fd3ff', 'left');
   dessinerJoystick(joyG, '#ffffff');
   dessinerJoystick(joyD, '#ffb000');
-  if (!('ontouchstart' in window)) texte('ZQSD/flèches : bouger • Clic : tirer • Espace : tir auto • Échap : menu', W / 2, H - 16, 12, '#fff');
+  if (!('ontouchstart' in window)) texte('ZQSD/flèches : bouger • Clic : tirer • Espace : tir auto • Échap : quitter', W / 2, H - 16, 12, '#fff');
 }
 function dessinerJoystick(j, c) {
   if (!j.actif) return;
@@ -508,27 +669,30 @@ function dessinerJoystick(j, c) {
   ctx.globalAlpha = 0.8; ctx.beginPath(); ctx.arc(j.ox + Math.cos(v.a) * l, j.oy + Math.sin(v.a) * l, 24, 0, 7); ctx.fill();
   ctx.globalAlpha = 1;
 }
-
 function dessinerMenu() {
   ecran(); zones = [];
-  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#2b1d6b'); g.addColorStop(1, '#0f5fa8');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  ctx.save(); ctx.translate(W / 2, H * 0.45); ctx.rotate(temps * 0.002); ctx.fillStyle = 'rgba(255,255,255,.05)';
-  for (let i = 0; i < 12; i++) { ctx.rotate(Math.PI / 6); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-60, -2000); ctx.lineTo(60, -2000); ctx.fill(); }
-  ctx.restore();
-  texte('BASTORY', W / 2, H * 0.11, Math.min(60, W / 10), '#ffd23f');
+  fond('#2b1d6b', '#0f5fa8');
+  if (etat === 'AUTH') return;
+  const m = modeChoisi();
+  texte('BASTORY', W / 2, H * 0.08, Math.min(52, W / 11), '#ffd23f');
+  texte('👤 ' + nomJoueur(), 12, 20, 13, '#fff', 'left');
+  bouton(12, 34, 110, 26, 'Déconnexion', 'rgba(0,0,0,.4)', () => auth.signOut(), 12);
+  bouton(W - 104, 10, 94, 32, '⚙️ Admin', 'rgba(0,0,0,.4)', () => location.href = 'admin.html', 13);
+  const my = H * 0.08 + 30;
+  bouton(W / 2 - 150, my, 300, 40, '🎮 ' + m.nom + (modes().length > 1 ? '  ▶' : ''), m.type === '1v1' ? '#e74c3c' : '#27ae60', () => modeIndex = (modeIndex + 1) % modes().length, 16);
+  texte((m.description || '') + (m.boss && m.nbBoss > 0 ? `  •  ${m.nbBoss} boss` : ''), W / 2, my + 54, 12, '#e8e0ff');
 
-  const n = CONFIG.persos.length, gap = 14, cw = Math.min(210, (W - 30) / n - gap), ch = Math.min(280, H * 0.56);
-  const y0 = H * 0.2, x0 = (W - (n * cw + (n - 1) * gap)) / 2;
+  const n = CONFIG.persos.length, gap = 14, cw = Math.min(200, (W - 30) / n - gap), y0 = my + 72, ch = Math.min(250, H - y0 - 76);
+  const x0 = (W - (n * cw + (n - 1) * gap)) / 2;
   CONFIG.persos.forEach((p, i) => {
     const x = x0 + i * (cw + gap), a = CONFIG.armes[p.arme] || {}, im = img(p.image), is = Math.min(cw * 0.7, ch * 0.4);
     rect(x, y0, cw, ch, 18, p.couleur, '#1a1030', 4);
     rect(x + 6, y0 + 6, cw - 12, is + 10, 12, 'rgba(255,255,255,.2)');
     if (pret(im)) ctx.drawImage(im, x + cw / 2 - is / 2, y0 + 11 + Math.sin(temps * 0.05 + i) * 4, is, is);
-    let y = y0 + is + 32;
-    texte(p.nom, x + cw / 2, y, Math.min(22, cw / 7), '#fff');
-    texte(a.nom || p.arme, x + cw / 2, y + 22, 12, '#ffe8a3');
-    y += 38;
+    let y = y0 + is + 30;
+    texte(p.nom, x + cw / 2, y, Math.min(20, cw / 7), '#fff');
+    texte(a.nom || p.arme, x + cw / 2, y + 20, 12, '#ffe8a3');
+    y += 36;
     for (const [lab, val] of [['PV', p.pvMax / 8000], ['VIT', p.vitesse / 8], ['DÉG', p.degats / 3000]]) {
       if (y + 10 > y0 + ch) break;
       texte(lab, x + 12, y + 4, 10, '#fff', 'left');
@@ -536,31 +700,32 @@ function dessinerMenu() {
       rect(x + 44, y, (cw - 56) * Math.min(1, val), 9, 4, '#ffd23f');
       y += 16;
     }
-    zones.push({ x, y: y0, w: cw, h: ch, action: () => lancer(p) });
+    zones.push({ x, y: y0, w: cw, h: ch, action: () => { persoIndex = i; if (m.type === '1v1') chercherAdversaire(); else { hote = true; demarrer(mapChoisie(m), null); } } });
   });
-
-  const mb = { w: 280, h: 42 }; mb.x = W / 2 - mb.w / 2; mb.y = Math.min(H - 70, y0 + ch + 14);
-  rect(mb.x, mb.y, mb.w, mb.h, 14, '#ffd23f', '#1a1030', 4);
-  texte('🗺️ ' + (CONFIG.maps[mapIndex] || {}).nom + '  ▶', W / 2, mb.y + mb.h / 2, 16, '#fff');
-  zones.push({ ...mb, action: () => mapIndex = (mapIndex + 1) % CONFIG.maps.length });
-
-  rect(W - 104, 10, 94, 32, 10, 'rgba(0,0,0,.35)');
-  texte('⚙️ Admin', W - 57, 26, 13, '#fff');
-  zones.push({ x: W - 104, y: 10, w: 94, h: 32, action: () => location.href = 'admin.html' });
-  if (!window.CONFIG_DISTANTE) texte('Hors ligne : config par défaut', 10, 26, 11, '#ffb000', 'left');
-  texte('Gauche : bouger • Droite : viser, relâcher pour tirer (tap = visée auto)', W / 2, H - 14, 11, '#fff');
+  const fixe = m.map >= 0 && CONFIG.maps[m.map];
+  bouton(W / 2 - 140, y0 + ch + 12, 280, 38, '🗺️ ' + CONFIG.maps[mapChoisie(m)].nom + (fixe || CONFIG.maps.length < 2 ? '' : '  ▶'), '#d4a017',
+         fixe ? null : () => mapIndex = (mapIndex + 1) % CONFIG.maps.length, 15);
+  texte('Choisis ton perso pour jouer', W / 2, H - 12, 11, '#fff');
 }
-
+function dessinerAttente() {
+  ecran(); zones = [];
+  fond('#3b0d1f', '#2b1d6b');
+  texte('⚔️ ' + (mode ? mode.nom : ''), W / 2, H * 0.3, 30, '#ffd23f');
+  texte("Recherche d'un adversaire" + '.'.repeat(1 + Math.floor(temps / 30) % 3), W / 2, H / 2, 20, '#fff');
+  bouton(W / 2 - 90, H * 0.65, 180, 44, 'Annuler', '#e74c3c', () => { quitterSalle(); etat = 'MENU'; }, 16);
+}
 function dessinerFin() {
   ecran();
   ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.fillRect(0, 0, W, H);
-  texte(etat === 'VICTOIRE' ? 'VICTOIRE !' : 'DÉFAITE...', W / 2, H / 2, Math.min(64, W / 8), etat === 'VICTOIRE' ? '#ffd23f' : '#ff4d4d');
-  texte("Touchez l'écran pour revenir au menu", W / 2, H / 2 + 60, 18, '#fff');
+  texte(etat === 'VICTOIRE' ? 'VICTOIRE !' : 'DÉFAITE...', W / 2, H / 2 - 20, Math.min(64, W / 8), etat === 'VICTOIRE' ? '#ffd23f' : '#ff4d4d');
+  if (messageFin) texte(messageFin, W / 2, H / 2 + 30, 18, '#fff');
+  texte("Touchez l'écran pour revenir au menu", W / 2, H / 2 + 70, 15, '#ddd');
 }
 
-// ---------- 14. BOUCLE ----------
+// ---------- 15. BOUCLE ----------
 function boucle() {
-  if (etat === 'MENU') { temps++; dessinerMenu(); }
+  if (etat === 'AUTH' || etat === 'MENU') { temps++; dessinerMenu(); }
+  else if (etat === 'ATTENTE') { temps++; dessinerAttente(); rafraichirAttente(); }
   else { if (etat === 'JEU') maj(); else temps++; dessinerJeu(); if (etat !== 'JEU') dessinerFin(); }
   requestAnimationFrame(boucle);
 }

@@ -1,4 +1,4 @@
-// ⚙️ DONNÉES DU JEU — modifiables via admin.html (Exporter) ou à la main
+// ⚙️ DONNÉES DU JEU — config de secours (la version en ligne est dans Firebase, éditable via admin.html)
 const CONFIG_PAR_DEFAUT = {
   "persos": [
     {
@@ -56,16 +56,6 @@ const CONFIG_PAR_DEFAUT = {
       "couleur": "#ffe14a"
     }
   },
-  "boss": {
-    "nom": "TROLL",
-    "image": "images/boss.png",
-    "pvMax": 10000,
-    "vitesse": 1.6,
-    "degats": 3000,
-    "delaiAttaque": 60,
-    "rayonAttaque": 90,
-    "taille": 48
-  },
   "maps": [
     {
       "nom": "Clairière",
@@ -99,5 +89,57 @@ const CONFIG_PAR_DEFAUT = {
         "##############################"
       ]
     }
+  ],
+  "bosses": {
+    "troll": {
+      "nom": "TROLL",
+      "image": "images/boss.png",
+      "pvMax": 10000,
+      "vitesse": 1.6,
+      "degats": 3000,
+      "delaiAttaque": 60,
+      "rayonAttaque": 90,
+      "taille": 48
+    }
+  },
+  "modes": [
+    {
+      "nom": "Chasse au boss",
+      "description": "Bats le boss en solo",
+      "type": "solo",
+      "actif": true,
+      "boss": true,
+      "nbBoss": 1,
+      "typeBoss": "aleatoire",
+      "map": -1
+    },
+    {
+      "nom": "Horde de trolls",
+      "description": "Survis à plusieurs boss",
+      "type": "solo",
+      "actif": true,
+      "boss": true,
+      "nbBoss": 3,
+      "typeBoss": "aleatoire",
+      "map": -1
+    },
+    {
+      "nom": "Duel 1V1",
+      "description": "Affronte un joueur en ligne",
+      "type": "1v1",
+      "actif": true,
+      "boss": false,
+      "nbBoss": 0,
+      "typeBoss": "aleatoire",
+      "map": -1
+    }
   ]
 };
+
+// Met à niveau une ancienne config (1 boss → plusieurs boss, ajout des modes de jeu)
+function migrerConfig(c) {
+  if (!c.bosses) c.bosses = { troll: c.boss || CONFIG_PAR_DEFAUT.bosses.troll };
+  delete c.boss;
+  if (!c.modes || !c.modes.length) c.modes = JSON.parse(JSON.stringify(CONFIG_PAR_DEFAUT.modes));
+  return c;
+}

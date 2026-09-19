@@ -22,6 +22,7 @@
   .carte h3 { margin:0 0 10px; display:flex; justify-content:space-between; align-items:center; }
   .form label { display:grid; grid-template-columns:130px 1fr auto; gap:8px; align-items:center; margin:6px 0; font-size:13px; }
   input, select { width:100%; padding:6px; border-radius:6px; border:1px solid var(--bord); background:#15112b; color:var(--txt); }
+  input[type=checkbox] { width:22px; height:22px; }
   input[type=color] { padding:2px; height:32px; }
   #login { position:fixed; inset:0; z-index:20; background:#0d0a1f; display:flex; align-items:center; justify-content:center; }
   #login form { background:var(--carte); border:2px solid var(--bord); border-radius:16px; padding:28px; width:min(340px,90vw); display:flex; flex-direction:column; gap:12px; }
@@ -73,8 +74,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
 const clone = o => JSON.parse(JSON.stringify(o));
-let cfg = clone(CONFIG_PAR_DEFAUT);
-let onglet = 'persos', mapSel = 0, pinceau = '#', peint = false;
+let cfg = migrerConfig(clone(CONFIG_PAR_DEFAUT));
+let onglet = 'modes', mapSel = 0, pinceau = '#', peint = false;
 const $ = s => document.querySelector(s);
 const el = (tag, { dataset, ...props } = {}, ...enfants) => { const e = Object.assign(document.createElement(tag), props); if (dataset) Object.assign(e.dataset, dataset); e.append(...enfants); return e; };
 const toast = t => { $('#toast').textContent = t; $('#toast').style.opacity = 1; setTimeout(() => $('#toast').style.opacity = 0, 2200); };
@@ -82,7 +83,12 @@ const modifie = () => $('#modif').textContent = '● modifications non enregistr
 
 // ---------- Champs éditables (ajouter une ligne ici = nouveau champ dans la console) ----------
 const optArmes = () => Object.entries(cfg.armes).map(([k, a]) => [k, a.nom]);
+const optBoss = () => [['aleatoire', '🎲 Aléatoire'], ...Object.entries(cfg.bosses).map(([k, b]) => [k, b.nom])];
+const optMaps = () => [[-1, 'Au choix du joueur'], ...cfg.maps.map((m, i) => [i, m.nom])];
 const CH = {
+  mode:  [['nom','Nom','text'],['description','Description','text'],['actif','Visible dans le jeu','check'],
+          ['type','Type de jeu','select',[['solo','🧍 Solo'],['1v1','⚔️ Multijoueur 1V1']]],
+          ['boss','Boss activés','check'],['nbBoss','Nombre de boss (max 10)','number'],['typeBoss','Quel boss','select',optBoss],['map','Map','select',optMaps]],
   perso: [['nom','Nom','text'],['image','Image (chemin/URL)','image'],['couleur','Couleur','color'],['pvMax','Points de vie','number'],
           ['vitesse','Vitesse (2-8)','number'],['arme','Arme','select',optArmes],['degats','Dégâts','number'],['portee','Portée (px)','number'],['delaiTir','Recharge (60 = 1 s)','number']],
   arme:  [['nom','Nom','text'],['image','Image (vide = boule)','image'],
@@ -99,10 +105,13 @@ function formulaire(obj, champs) {
   for (const [k, lab, type, opts] of champs) {
     let inp, prev = '';
     if (type === 'select') { inp = el('select'); (typeof opts === 'function' ? opts() : opts).forEach(([v, t]) => inp.add(new Option(t, v))); }
-    else inp = el('input', { type: type === 'image' ? 'text' : type, step: 'any' });
+    else inp = el('input', { type: type === 'image' ? 'text' : type === 'check' ? 'checkbox' : type, step: 'any' });
     if (type === 'image') { prev = el('img', { className: 'apercu', src: obj[k] || '' }); prev.onerror = () => prev.style.opacity = .2; prev.onload = () => prev.style.opacity = 1; }
-    inp.value = obj[k] ?? '';
-    inp.oninput = () => { obj[k] = type === 'number' ? (parseFloat(inp.value) || 0) : inp.value; if (prev) prev.src = inp.value; modifie(); };
+    if (type === 'check') inp.checked = !!obj[k]; else inp.value = obj[k] ?? '';
+    inp.oninput = inp.onchange = () => {
+      obj[k] = type === 'number' ? (parseFloat(inp.value) || 0) : type === 'check' ? inp.checked : typeof obj[k] === 'number' ? +inp.value : inp.value;
+      if (prev) prev.src = inp.value; modifie();
+    };
     f.append(el('label', {}, el('span', { textContent: lab }), inp,
       type === 'image' ? el('span', { className: 'img-outils' }, prev, boutonUpload(src => { inp.value = src; inp.oninput(); })) : ''));
   }
@@ -157,7 +166,30 @@ const VUES = {
       modifie(); afficher();
     } })), g);
   },
-  boss(z) { z.append(el('div', { className: 'grille-cartes' }, carte('👹 Boss', formulaire(cfg.boss, CH.boss)))); },
+  modes(z) {
+    const g = el('div', { className: 'grille-cartes' });
+    cfg.modes.forEach((m, i) => g.append(carte((m.type === '1v1' ? '⚔️ ' : '🧍 ') + m.nom, formulaire(m, CH.mode), () => {
+      if (cfg.modes.length > 1 && confirm('Supprimer le mode ' + m.nom + ' ?')) { cfg.modes.splice(i, 1); modifie(); afficher(); }
+    })));
+    z.append(el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouveau mode', onclick: () => {
+      cfg.modes.push({ nom: 'Nouveau mode', description: '', type: 'solo', actif: true, boss: true, nbBoss: 1, typeBoss: 'aleatoire', map: -1 });
+      modifie(); afficher();
+    } })), el('p', { className: 'aide', textContent: 'Solo : on gagne quand tous les boss sont vaincus. 1V1 : on gagne quand l\'adversaire tombe (les boss, si activés, attaquent les deux joueurs).' }), g);
+  },
+  boss(z) {
+    const g = el('div', { className: 'grille-cartes' });
+    for (const [k, b] of Object.entries(cfg.bosses)) g.append(carte('👹 ' + b.nom + ' (' + k + ')', formulaire(b, CH.boss), () => {
+      if (Object.keys(cfg.bosses).length < 2) return alert('Il faut garder au moins un boss.');
+      if (cfg.modes.some(m => m.typeBoss === k)) return alert('Boss utilisé par un mode : change d\'abord le mode.');
+      if (confirm('Supprimer ' + b.nom + ' ?')) { delete cfg.bosses[k]; modifie(); afficher(); }
+    }));
+    z.append(el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouveau boss', onclick: () => {
+      const id = (prompt('Identifiant du boss (ex : dragon)') || '').trim().toLowerCase().replace(/\W/g, '');
+      if (!id || cfg.bosses[id]) return;
+      cfg.bosses[id] = { ...clone(Object.values(cfg.bosses)[0]), nom: id.toUpperCase() };
+      modifie(); afficher();
+    } })), g);
+  },
   maps(z) {
     mapSel = Math.min(mapSel, cfg.maps.length - 1);
     const m = cfg.maps[mapSel];
@@ -184,17 +216,15 @@ const VUES = {
       if (!cible || !cible.dataset || cible.dataset.x === undefined) return;
       const x = +cible.dataset.x, y = +cible.dataset.y;
       if (m.grille[y][x] === pinceau) return;
-      if (pinceau === 'P' || pinceau === 'E') m.grille = m.grille.map(r => r.replaceAll(pinceau, '.'));
       m.grille[y] = m.grille[y].slice(0, x) + pinceau + m.grille[y].slice(x + 1);
       modifie();
-      if (pinceau === 'P' || pinceau === 'E') afficher();
-      else { cible.style.background = couleur(pinceau); cible.textContent = ''; }
+      cible.style.background = couleur(pinceau); cible.textContent = pinceau === 'P' ? 'J' : pinceau === 'E' ? 'B' : '';
     };
     grid.onpointerdown = e => { peint = true; peindre(e.target); };
     grid.onpointermove = e => { if (peint) peindre(document.elementFromPoint(e.clientX, e.clientY)); };
     onpointerup = () => peint = false;
 
-    z.append(pal, el('p', { className: 'aide', textContent: 'Choisis un élément puis clique/glisse sur la grille. Un seul départ joueur et un seul départ boss par map.' }),
+    z.append(pal, el('p', { className: 'aide', textContent: 'Choisis un élément puis clique/glisse sur la grille. Départ joueur : le 1er sert en solo, le 2e au 2e joueur en 1V1. Départs boss : autant que tu veux (sinon placés au hasard).' }),
       el('div', { className: 'editeur' }, grid), el('br'), el('div', { className: 'grille-cartes' }, carte('🎨 Couleurs de la map', formulaire(m, CH.map))));
   }
 };
@@ -211,7 +241,7 @@ function bordure(m) { const l = m.grille[0].length, h = m.grille.length; m.grill
 
 function afficher() {
   $('#onglets').innerHTML = '';
-  for (const [k, t] of [['persos', '🧍 Persos'], ['armes', '🗡 Armes'], ['boss', '👹 Boss'], ['maps', '🗺 Maps']])
+  for (const [k, t] of [['modes', '🎮 Modes'], ['persos', '🧍 Persos'], ['armes', '🗡 Armes'], ['boss', '👹 Boss'], ['maps', '🗺 Maps']])
     $('#onglets').append(el('button', { textContent: t, className: k === onglet ? 'on' : '', onclick: () => { onglet = k; afficher(); } }));
   $('#zone').innerHTML = '';
   VUES[onglet]($('#zone'));
@@ -235,7 +265,7 @@ auth.onAuthStateChanged(u => { user = u; majAuth(); });
 async function chargerEnLigne() {
   try {
     const d = await DOC.get();
-    if (d.exists) { cfg = JSON.parse(d.data().json); toast('Version en ligne chargée'); }
+    if (d.exists) { cfg = migrerConfig(JSON.parse(d.data().json)); toast('Version en ligne chargée'); }
     else toast('Rien en ligne : connecte-toi et publie la 1re version');
   } catch (e) { toast('Firebase inaccessible → config.js'); }
   $('#modif').textContent = ''; afficher();
@@ -252,13 +282,13 @@ $('#bSave').onclick = async () => {
 };
 $('#bJouer').onclick = () => open('index.html', '_blank');
 $('#bExport').onclick = () => {
-  const txt = '// ⚙️ DONNÉES DU JEU — sauvegarde console admin Bastory\nconst CONFIG_PAR_DEFAUT = ' + JSON.stringify(cfg, null, 2) + ';\n';
+  const txt = '// ⚙️ DONNÉES DU JEU — sauvegarde console admin Bastory\nconst CONFIG_PAR_DEFAUT = ' + JSON.stringify(cfg, null, 2) + ';\n\n' + migrerConfig.toString() + '\n';
   el('a', { href: URL.createObjectURL(new Blob([txt], { type: 'text/javascript' })), download: 'config.js' }).click();
   toast('Sauvegarde téléchargée');
 };
 $('#bImport').onclick = () => $('#fichier').click();
 $('#fichier').onchange = async e => {
-  try { const t = await e.target.files[0].text(); cfg = JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)); modifie(); afficher(); toast('Importé — pense à publier'); }
+  try { const t = await e.target.files[0].text(); cfg = migrerConfig(JSON.parse(t.slice(t.indexOf('{'), t.indexOf('};') + 1))); modifie(); afficher(); toast('Importé — pense à publier'); }
   catch (err) { alert('Fichier invalide'); }
 };
 $('#bReset').onclick = () => { if (confirm('Annuler les modifications non publiées ?')) chargerEnLigne(); };

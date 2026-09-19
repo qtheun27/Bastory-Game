@@ -7,8 +7,25 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <script src="config.js"></script>          <!-- Config de secours (hors ligne) -->
-    <script src="firebase-config.js"></script> <!-- Identifiants Firebase -->
+    <!-- Écran de connexion / inscription -->
+    <div id="auth">
+      <form id="authForm">
+        <h1>BASTORY</h1>
+        <input id="aPseudo" placeholder="Pseudo (pour créer un compte)" maxlength="16">
+        <input id="aEmail" type="email" placeholder="Email" autocomplete="username">
+        <input id="aMdp" type="password" placeholder="Mot de passe" autocomplete="current-password">
+        <button type="submit">Se connecter</button>
+        <button type="button" id="bInscription" class="sec">Créer un compte</button>
+        <button type="button" id="bGoogle" class="google">Continuer avec Google</button>
+        <div id="authErr"></div>
+      </form>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
     <script>
     // Charge la config en direct depuis Firebase, puis lance le jeu
     (async () => {
@@ -16,7 +33,7 @@
         const c = FIREBASE_CONFIG, stop = new AbortController(); setTimeout(() => stop.abort(), 4000);
         const r = await fetch(`https://firestore.googleapis.com/v1/projects/${c.projectId}/databases/(default)/documents/bastory/config?key=${c.apiKey}`, { cache: 'no-store', signal: stop.signal });
         if (r.ok) window.CONFIG_DISTANTE = JSON.parse((await r.json()).fields.json.stringValue);
-      } catch (e) { console.warn('Firebase indisponible → config.js utilisé', e); }
+      } catch (e) { console.warn('Config en ligne indisponible → config.js', e); }
       const s = document.createElement('script'); s.src = 'jeu.js'; document.body.appendChild(s);
     })();
     </script>
