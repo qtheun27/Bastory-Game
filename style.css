@@ -1,0 +1,13 @@
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden; /* Empêche de faire défiler la page */
+    background-color: #27ae60; /* Couleur du terrain (vert) */
+    touch-action: none; /* Désactive les gestes de la tablette (zoom, balayage) pour laisser le contrôle au jeu */
+}
+
+canvas {
+    display: block; /* Retire les marges invisibles autour du canvas */
+}
