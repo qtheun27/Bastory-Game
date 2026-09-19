@@ -23,6 +23,12 @@
   .form label { display:grid; grid-template-columns:130px 1fr auto; gap:8px; align-items:center; margin:6px 0; font-size:13px; }
   input, select { width:100%; padding:6px; border-radius:6px; border:1px solid var(--bord); background:#15112b; color:var(--txt); }
   input[type=color] { padding:2px; height:32px; }
+  #login { position:fixed; inset:0; z-index:20; background:#0d0a1f; display:flex; align-items:center; justify-content:center; }
+  #login form { background:var(--carte); border:2px solid var(--bord); border-radius:16px; padding:28px; width:min(340px,90vw); display:flex; flex-direction:column; gap:12px; }
+  #login h2 { margin:0 0 6px; color:var(--acc); text-align:center; }
+  #login input { padding:12px; font-size:16px; }
+  #login button { padding:12px; font-size:16px; }
+  #loginErr { color:#ff6b6b; font-size:13px; min-height:16px; }
   #auth { display:flex; gap:6px; align-items:center; font-size:13px; }
   .img-outils { display:flex; gap:4px; align-items:center; }
   .apercu { width:40px; height:40px; object-fit:contain; background:#fff2; border-radius:6px; }
@@ -49,6 +55,13 @@
   <span id="modif"></span>
   <input type="file" id="fichier" accept=".js,.json" hidden>
 </header>
+<div id="login"><form id="loginForm">
+  <h2>⚙️ Bastory Admin</h2>
+  <input id="lEmail" type="email" placeholder="Email" autocomplete="username" required>
+  <input id="lPass" type="password" placeholder="Mot de passe" autocomplete="current-password" required>
+  <button type="submit">🔑 Se connecter</button>
+  <div id="loginErr"></div>
+</form></div>
 <nav id="onglets"></nav>
 <main id="zone"></main>
 <div id="toast"></div>
@@ -209,14 +222,15 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth(), DOC = firebase.firestore().doc('bastory/config');
 let user = null;
 function majAuth() {
-  const z = $('#auth'); z.innerHTML = '';
-  if (user) z.append(el('span', { textContent: '👤 ' + user.email }), el('button', { className: 'sec', textContent: 'Déconnexion', onclick: () => auth.signOut() }));
-  else {
-    const m = el('input', { type: 'email', placeholder: 'Email admin', style: 'width:170px' }), p = el('input', { type: 'password', placeholder: 'Mot de passe', style: 'width:130px' });
-    z.append(m, p, el('button', { textContent: '🔑 Connexion', onclick: () => auth.signInWithEmailAndPassword(m.value, p.value).catch(e => alert('Connexion refusée : ' + e.message)) }));
-  }
-  $('#bSave').disabled = !user; $('#bSave').style.opacity = user ? 1 : .4;
+  $('#login').style.display = user ? 'none' : 'flex'; // écran de connexion obligatoire
+  $('#auth').innerHTML = '';
+  if (user) $('#auth').append(el('span', { textContent: '👤 ' + user.email }), el('button', { className: 'sec', textContent: 'Déconnexion', onclick: () => auth.signOut() }));
 }
+$('#loginForm').onsubmit = e => {
+  e.preventDefault(); $('#loginErr').textContent = '';
+  const msg = { 'auth/invalid-email': 'Email mal formé', 'auth/invalid-credential': 'Email ou mot de passe incorrect', 'auth/wrong-password': 'Mot de passe incorrect', 'auth/user-not-found': 'Compte inconnu', 'auth/too-many-requests': 'Trop d\'essais, réessaie plus tard' };
+  auth.signInWithEmailAndPassword($('#lEmail').value.trim(), $('#lPass').value).catch(err => $('#loginErr').textContent = msg[err.code] || err.message);
+};
 auth.onAuthStateChanged(u => { user = u; majAuth(); });
 async function chargerEnLigne() {
   try {
