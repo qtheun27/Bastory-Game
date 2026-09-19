@@ -69,6 +69,7 @@
 
 <script src="config.js"></script>
 <script src="firebase-config.js"></script>
+<script src="profil.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -87,18 +88,28 @@ const optBoss = () => [['aleatoire', '🎲 Aléatoire'], ...Object.entries(cfg.b
 const optMaps = () => [[-1, 'Au choix du joueur'], ...cfg.maps.map((m, i) => [i, m.nom])];
 const CH = {
   mode:  [['nom','Nom','text'],['description','Description','text'],['actif','Visible dans le jeu','check'],
-          ['type','Type de jeu','select',[['solo','🧍 Solo'],['1v1','⚔️ Multijoueur 1V1']]],
+          ['type','Type de jeu','select',[['solo','🧍 Solo'],['multi','👥 Multijoueur en ligne']]],
+          ['joueursMin','Joueurs minimum (multi)','number'],['joueursMax','Joueurs maximum (multi)','number'],
+          ['equipes','Équipes (multi)','select',[['chacun','Chacun pour soi'],['deux','2 équipes'],['coop','Tous ensemble (coop)']]],
+          ['pointsVictoire','Points par victoire','number'],['pointsDefaite','Points par défaite','number'],
           ['boss','Boss activés','check'],['nbBoss','Nombre de boss (max 10)','number'],['typeBoss','Quel boss','select',optBoss],['map','Map','select',optMaps]],
-  perso: [['nom','Nom','text'],['image','Image (chemin/URL)','image'],['couleur','Couleur','color'],['pvMax','Points de vie','number'],
-          ['vitesse','Vitesse (2-8)','number'],['arme','Arme','select',optArmes],['degats','Dégâts','number'],['portee','Portée (px)','number'],['delaiTir','Recharge (60 = 1 s)','number']],
+  perso: [['nom','Nom','text'],['image','Image jeu (vue du dessus)','image'],['imageCarte','Image carte (menu, fin)','image'],['couleur','Couleur','color'],['pvMax','Points de vie','number'],
+          ['vitesse','Vitesse (2-8)','number'],['arme','Arme','select',optArmes],['degats','Dégâts','number'],['portee','Portée (px)','number'],['delaiTir','Cadence : délai entre 2 tirs (60 = 1 s)','number'],
+          ['munitions','Nombre de munitions','number'],['recharge','Recharge d\'1 munition (60 = 1 s)','number']],
   arme:  [['nom','Nom','text'],['image','Image (vide = boule)','image'],
           ['type','Trajectoire','select',[['lob','Lancer en cloche (passe les murs)'],['retour','Aller-retour'],['droit','Tir droit']]],
           ['effet','Animation d\'impact','select',[['explosion','💥 Explosion'],['entaille','⚔️ Entaille'],['etincelle','✨ Étincelles'],['impact','🔨 Onde de choc']]],
           ['vitesse','Vitesse','number'],['taille','Taille','number'],['rayon','Rayon explosion','number'],['couleur','Couleur effet','color']],
-  boss:  [['nom','Nom','text'],['image','Image','image'],['pvMax','Points de vie','number'],['vitesse','Vitesse','number'],['degats','Dégâts du coup','number'],
+  boss:  [['nom','Nom','text'],['image','Image jeu (vue du dessus)','image'],['imageCarte','Image carte (fin de partie)','image'],['pvMax','Points de vie','number'],['vitesse','Vitesse','number'],['degats','Dégâts du coup','number'],
           ['delaiAttaque','Recharge (60 = 1 s)','number'],['rayonAttaque','Rayon du coup','number'],['taille','Taille (rayon)','number']],
   map:   [['nom','Nom','text'],['herbe1','Herbe 1','color'],['herbe2','Herbe 2','color'],['mur','Mur (dessus)','color'],['murFace','Mur (face)','color'],
-          ['buisson','Buisson','color'],['buissonFonce','Buisson foncé','color'],['eau','Eau','color']]
+          ['buisson','Buisson','color'],['buissonFonce','Buisson foncé','color'],['eau','Eau','color'],
+          ['casseMurs','Murs cassables','check'],['casseBuissons','Buissons cassables','check'],['pvBloc','Solidité d\'un mur (dégâts)','number'],
+          ['chanceObjet','% objet rare (mur/buisson)','number'],['chanceCoffre','% objet rare (coffre 🎁)','number']],
+  pouvoir: [['nom','Nom','text'],['icone','Icône (emoji)','text'],['couleur','Couleur','color'],
+          ['effet','Effet','select',[['vitesse','🏃 Vitesse × valeur'],['degats','💪 Dégâts × valeur'],['bouclier','🛡️ Dégâts reçus × valeur'],
+            ['soin','❤️ Soin instantané (0.4 = 40 % PV)'],['munitions','♾️ Munitions illimitées'],['invisible','👻 Invisible (comme dans un buisson)']]],
+          ['valeur','Valeur','number'],['duree','Durée (secondes)','number'],['rarete','Fréquence (+ grand = + fréquent)','number']]
 };
 function formulaire(obj, champs) {
   const f = el('div', { className: 'form' });
@@ -149,7 +160,7 @@ const VUES = {
       if (cfg.persos.length > 1 && confirm('Supprimer ' + p.nom + ' ?')) { cfg.persos.splice(i, 1); modifie(); afficher(); }
     })));
     z.append(el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouveau perso', onclick: () => {
-      cfg.persos.push({ nom: 'NOUVEAU', image: 'images/', couleur: '#e67e22', pvMax: 5000, vitesse: 5, arme: Object.keys(cfg.armes)[0], degats: 1000, portee: 350, delaiTir: 30 });
+      cfg.persos.push({ nom: 'NOUVEAU', image: '', imageCarte: '', munitions: 3, recharge: 60, couleur: '#e67e22', pvMax: 5000, vitesse: 5, arme: Object.keys(cfg.armes)[0], degats: 1000, portee: 350, delaiTir: 30 });
       modifie(); afficher();
     } })), g);
   },
@@ -168,13 +179,25 @@ const VUES = {
   },
   modes(z) {
     const g = el('div', { className: 'grille-cartes' });
-    cfg.modes.forEach((m, i) => g.append(carte((m.type === '1v1' ? '⚔️ ' : '🧍 ') + m.nom, formulaire(m, CH.mode), () => {
+    cfg.modes.forEach((m, i) => g.append(carte((m.type === 'multi' ? '👥 ' : '🧍 ') + m.nom, formulaire(m, CH.mode), () => {
       if (cfg.modes.length > 1 && confirm('Supprimer le mode ' + m.nom + ' ?')) { cfg.modes.splice(i, 1); modifie(); afficher(); }
     })));
     z.append(el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouveau mode', onclick: () => {
-      cfg.modes.push({ nom: 'Nouveau mode', description: '', type: 'solo', actif: true, boss: true, nbBoss: 1, typeBoss: 'aleatoire', map: -1 });
+      cfg.modes.push({ nom: 'Nouveau mode', description: '', type: 'solo', actif: true, joueursMin: 1, joueursMax: 1, equipes: 'chacun', boss: true, nbBoss: 1, typeBoss: 'aleatoire', map: -1, pointsVictoire: 30, pointsDefaite: 5 });
       modifie(); afficher();
-    } })), el('p', { className: 'aide', textContent: 'Solo : on gagne quand tous les boss sont vaincus. 1V1 : on gagne quand l\'adversaire tombe (les boss, si activés, attaquent les deux joueurs).' }), g);
+    } })), el('p', { className: 'aide', textContent: 'Solo/coop : on gagne quand tous les boss sont vaincus. Chacun pour soi / 2 équipes : on gagne quand tous les adversaires tombent (les boss attaquent tout le monde). Multi : départ dès que le max est atteint, ou 10 s après le minimum.' }), g);
+  },
+  pouvoirs(z) {
+    const g = el('div', { className: 'grille-cartes' });
+    for (const [k, p] of Object.entries(cfg.pouvoirs)) g.append(carte((p.icone || '✨') + ' ' + p.nom, formulaire(p, CH.pouvoir), () => {
+      if (confirm('Supprimer ' + p.nom + ' ?')) { delete cfg.pouvoirs[k]; modifie(); afficher(); }
+    }));
+    z.append(el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouveau pouvoir', onclick: () => {
+      const id = (prompt('Identifiant du pouvoir (ex : geant)') || '').trim().toLowerCase().replace(/\W/g, '');
+      if (!id || cfg.pouvoirs[id]) return;
+      cfg.pouvoirs[id] = { nom: id, icone: '✨', couleur: '#ffffff', effet: 'vitesse', valeur: 1.5, duree: 8, rarete: 1 };
+      modifie(); afficher();
+    } })), el('p', { className: 'aide', textContent: 'Les pouvoirs apparaissent quand on casse un élément (réglages dans chaque map) ou un coffre 🎁. On les ramasse en marchant dessus.' }), g);
   },
   boss(z) {
     const g = el('div', { className: 'grille-cartes' });
@@ -205,12 +228,12 @@ const VUES = {
       el('button', { className: 'sec', textContent: 'Redimensionner', onclick: () => { redim(m, +larg.value, +haut.value); modifie(); afficher(); } }),
       el('button', { className: 'sec', textContent: '▭ Bordure de murs', onclick: () => { bordure(m); modifie(); afficher(); } })));
 
-    const PAL = [['.', '🟩 Herbe'], ['#', '🟫 Mur'], ['B', '🌳 Buisson'], ['W', '🟦 Eau'], ['P', '🧍 Départ joueur'], ['E', '👹 Départ boss']];
+    const PAL = [['.', '🟩 Herbe'], ['#', '🟫 Mur'], ['B', '🌳 Buisson'], ['W', '🟦 Eau'], ['P', '🧍 Départ joueur'], ['E', '👹 Départ boss'], ['C', '🎁 Coffre (objet rare)']];
     const pal = el('div', { className: 'outils palette' });
     PAL.forEach(([c, t]) => pal.append(el('button', { textContent: t, className: c === pinceau ? 'on' : '', onclick: () => { pinceau = c; afficher(); } })));
 
     const grid = el('div', { className: 'grid', style: `grid-template-columns:repeat(${m.grille[0].length},22px)` });
-    const couleur = c => ({ '#': m.mur, 'B': m.buissonFonce, 'W': m.eau, 'P': '#3498db', 'E': '#e74c3c' }[c] || m.herbe1);
+    const couleur = c => ({ '#': m.mur, 'B': m.buissonFonce, 'W': m.eau, 'P': '#3498db', 'E': '#e74c3c', 'C': '#f1c40f' }[c] || m.herbe1);
     m.grille.forEach((r, y) => [...r].forEach((c, x) => grid.append(el('div', { className: 'c', textContent: c === 'P' ? 'J' : c === 'E' ? 'B' : '', style: 'background:' + couleur(c), dataset: { x, y } }))));
     const peindre = cible => {
       if (!cible || !cible.dataset || cible.dataset.x === undefined) return;
@@ -241,7 +264,7 @@ function bordure(m) { const l = m.grille[0].length, h = m.grille.length; m.grill
 
 function afficher() {
   $('#onglets').innerHTML = '';
-  for (const [k, t] of [['modes', '🎮 Modes'], ['persos', '🧍 Persos'], ['armes', '🗡 Armes'], ['boss', '👹 Boss'], ['maps', '🗺 Maps']])
+  for (const [k, t] of [['modes', '🎮 Modes'], ['persos', '🧍 Persos'], ['armes', '🗡 Armes'], ['boss', '👹 Boss'], ['pouvoirs', '✨ Pouvoirs'], ['maps', '🗺 Maps']])
     $('#onglets').append(el('button', { textContent: t, className: k === onglet ? 'on' : '', onclick: () => { onglet = k; afficher(); } }));
   $('#zone').innerHTML = '';
   VUES[onglet]($('#zone'));
@@ -254,7 +277,9 @@ let user = null;
 function majAuth() {
   $('#login').style.display = user ? 'none' : 'flex'; // écran de connexion obligatoire
   $('#auth').innerHTML = '';
-  if (user) $('#auth').append(el('span', { textContent: '👤 ' + user.email }), el('button', { className: 'sec', textContent: 'Déconnexion', onclick: () => auth.signOut() }));
+  if (user) $('#auth').append(el('span', { textContent: '👤 ' + (user.displayName || 'Admin') }),
+    el('button', { className: 'sec', textContent: 'Profil', onclick: () => ouvrirProfil(auth, majAuth) }),
+    el('button', { className: 'sec', textContent: 'Déconnexion', onclick: () => auth.signOut() }));
 }
 $('#loginForm').onsubmit = e => {
   e.preventDefault(); $('#loginErr').textContent = '';
@@ -276,7 +301,7 @@ $('#bSave').onclick = async () => {
   const json = JSON.stringify(cfg);
   if (json.length > 950000) return alert(`Config trop lourde (${Math.round(json.length / 1024)} Ko, max 1 Mo). Utilise des images plus légères.`);
   try {
-    await DOC.set({ json, maj: firebase.firestore.FieldValue.serverTimestamp(), par: user.email });
+    await DOC.set({ json, maj: firebase.firestore.FieldValue.serverTimestamp(), par: user.displayName || user.uid });
     $('#modif').textContent = ''; toast('🚀 Publié ! Le jeu est à jour pour tout le monde');
   } catch (e) { alert('Publication refusée : ' + e.message); }
 };

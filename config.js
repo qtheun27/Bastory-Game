@@ -10,7 +10,10 @@ const CONFIG_PAR_DEFAUT = {
       "arme": "bombe",
       "degats": 2000,
       "portee": 300,
-      "delaiTir": 45
+      "delaiTir": 45,
+      "imageCarte": "",
+      "munitions": 3,
+      "recharge": 60
     },
     {
       "nom": "BORA",
@@ -21,7 +24,10 @@ const CONFIG_PAR_DEFAUT = {
       "arme": "boomerang",
       "degats": 1250,
       "portee": 450,
-      "delaiTir": 22
+      "delaiTir": 22,
+      "imageCarte": "",
+      "munitions": 3,
+      "recharge": 45
     }
   ],
   "armes": {
@@ -70,24 +76,29 @@ const CONFIG_PAR_DEFAUT = {
         "##############################",
         "#............BBBB............#",
         "#..BBB..................BBB..#",
-        "#..B.....##........##.....B..#",
+        "#..B...C.##........##.....B..#",
         "#........##..WWWW..##........#",
         "#............WWWW............#",
         "#....###..............###....#",
         "#....#......BB..BB......#....#",
         "#.BB........B....B........BB.#",
-        "#.P....##............##....E.#",
-        "#......##............##......#",
+        "#.P....##.....C......##....E.#",
+        "#......##......C.....##......#",
         "#.BB........B....B........BB.#",
         "#....#......BB..BB......#....#",
         "#....###..............###....#",
         "#............WWWW............#",
         "#........##..WWWW..##........#",
-        "#..B.....##........##.....B..#",
+        "#..B.....##........##.C...B..#",
         "#..BBB..................BBB..#",
         "#............BBBB............#",
         "##############################"
-      ]
+      ],
+      "casseMurs": true,
+      "casseBuissons": true,
+      "pvBloc": 3000,
+      "chanceObjet": 10,
+      "chanceCoffre": 100
     }
   ],
   "bosses": {
@@ -99,7 +110,8 @@ const CONFIG_PAR_DEFAUT = {
       "degats": 3000,
       "delaiAttaque": 60,
       "rayonAttaque": 90,
-      "taille": 48
+      "taille": 48,
+      "imageCarte": ""
     }
   },
   "modes": [
@@ -108,38 +120,149 @@ const CONFIG_PAR_DEFAUT = {
       "description": "Bats le boss en solo",
       "type": "solo",
       "actif": true,
+      "joueursMin": 1,
+      "joueursMax": 1,
+      "equipes": "chacun",
       "boss": true,
       "nbBoss": 1,
       "typeBoss": "aleatoire",
-      "map": -1
+      "map": -1,
+      "pointsVictoire": 20,
+      "pointsDefaite": 2
     },
     {
       "nom": "Horde de trolls",
       "description": "Survis à plusieurs boss",
       "type": "solo",
       "actif": true,
+      "joueursMin": 1,
+      "joueursMax": 1,
+      "equipes": "chacun",
       "boss": true,
       "nbBoss": 3,
       "typeBoss": "aleatoire",
-      "map": -1
+      "map": -1,
+      "pointsVictoire": 50,
+      "pointsDefaite": 5
     },
     {
       "nom": "Duel 1V1",
       "description": "Affronte un joueur en ligne",
-      "type": "1v1",
+      "type": "multi",
       "actif": true,
+      "joueursMin": 2,
+      "joueursMax": 2,
+      "equipes": "chacun",
       "boss": false,
       "nbBoss": 0,
       "typeBoss": "aleatoire",
-      "map": -1
+      "map": -1,
+      "pointsVictoire": 30,
+      "pointsDefaite": 5
+    },
+    {
+      "nom": "Équipes 2V2",
+      "description": "Deux équipes s'affrontent",
+      "type": "multi",
+      "actif": true,
+      "joueursMin": 4,
+      "joueursMax": 4,
+      "equipes": "deux",
+      "boss": false,
+      "nbBoss": 0,
+      "typeBoss": "aleatoire",
+      "map": -1,
+      "pointsVictoire": 40,
+      "pointsDefaite": 5
+    },
+    {
+      "nom": "Coop contre les boss",
+      "description": "Ensemble contre les boss",
+      "type": "multi",
+      "actif": true,
+      "joueursMin": 2,
+      "joueursMax": 4,
+      "equipes": "coop",
+      "boss": true,
+      "nbBoss": 2,
+      "typeBoss": "aleatoire",
+      "map": -1,
+      "pointsVictoire": 40,
+      "pointsDefaite": 5
     }
-  ]
+  ],
+  "pouvoirs": {
+    "turbo": {
+      "nom": "Turbo",
+      "icone": "⚡",
+      "couleur": "#ffe14a",
+      "effet": "vitesse",
+      "valeur": 1.6,
+      "duree": 8,
+      "rarete": 3
+    },
+    "force": {
+      "nom": "Super force",
+      "icone": "💪",
+      "couleur": "#ff5a3c",
+      "effet": "degats",
+      "valeur": 2,
+      "duree": 8,
+      "rarete": 2
+    },
+    "bouclier": {
+      "nom": "Bouclier",
+      "icone": "🛡️",
+      "couleur": "#5ad1ff",
+      "effet": "bouclier",
+      "valeur": 0.3,
+      "duree": 6,
+      "rarete": 2
+    },
+    "soin": {
+      "nom": "Potion de soin",
+      "icone": "❤️",
+      "couleur": "#ff7aa8",
+      "effet": "soin",
+      "valeur": 0.4,
+      "duree": 0,
+      "rarete": 3
+    },
+    "rafale": {
+      "nom": "Munitions infinies",
+      "icone": "♾️",
+      "couleur": "#b67aff",
+      "effet": "munitions",
+      "valeur": 1,
+      "duree": 6,
+      "rarete": 1
+    },
+    "fantome": {
+      "nom": "Fantôme",
+      "icone": "👻",
+      "couleur": "#dddddd",
+      "effet": "invisible",
+      "valeur": 1,
+      "duree": 6,
+      "rarete": 1
+    }
+  }
 };
 
-// Met à niveau une ancienne config (1 boss → plusieurs boss, ajout des modes de jeu)
+// Met à niveau une ancienne config (ajoute les nouveaux paramètres avec des valeurs par défaut)
 function migrerConfig(c) {
-  if (!c.bosses) c.bosses = { troll: c.boss || CONFIG_PAR_DEFAUT.bosses.troll };
+  const D = CONFIG_PAR_DEFAUT, copie = o => JSON.parse(JSON.stringify(o));
+  const def = (o, d) => { for (const k in d) if (o[k] === undefined) o[k] = d[k]; return o; };
+  if (!c.bosses) c.bosses = { troll: c.boss || copie(D.bosses.troll) };
   delete c.boss;
-  if (!c.modes || !c.modes.length) c.modes = JSON.parse(JSON.stringify(CONFIG_PAR_DEFAUT.modes));
+  if (!c.modes || !c.modes.length) c.modes = copie(D.modes);
+  if (!c.pouvoirs) c.pouvoirs = copie(D.pouvoirs);
+  c.modes.forEach(m => {
+    if (m.type === '1v1') { m.type = 'multi'; m.joueursMin = m.joueursMin || 2; m.joueursMax = m.joueursMax || 2; }
+    def(m, { joueursMin: 1, joueursMax: 1, equipes: 'chacun', pointsVictoire: 30, pointsDefaite: 5 });
+  });
+  c.persos.forEach(p => def(p, { imageCarte: '', munitions: 3, recharge: 60 }));
+  Object.values(c.bosses).forEach(b => def(b, { imageCarte: '' }));
+  c.maps.forEach(m => def(m, { casseMurs: true, casseBuissons: true, pvBloc: 3000, chanceObjet: 10, chanceCoffre: 100 }));
   return c;
 }
