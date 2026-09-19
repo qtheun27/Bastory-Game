@@ -5,9 +5,8 @@
 // =====================================================================
 
 // ---------- 1. CONFIG ----------
-const CLE_CONFIG = 'bastory_config';
-const CONFIG_LOCALE = (() => { try { return localStorage.getItem(CLE_CONFIG); } catch (e) { return null; } })();
-const CONFIG = CONFIG_LOCALE ? JSON.parse(CONFIG_LOCALE) : JSON.parse(JSON.stringify(CONFIG_PAR_DEFAUT));
+// Priorité : config en ligne (Firebase) → sinon config.js
+const CONFIG = window.CONFIG_DISTANTE || JSON.parse(JSON.stringify(CONFIG_PAR_DEFAUT));
 const TUILE = 64, HAUT_MUR = 28;
 
 // ---------- 2. IMAGES ----------
@@ -548,7 +547,7 @@ function dessinerMenu() {
   rect(W - 104, 10, 94, 32, 10, 'rgba(0,0,0,.35)');
   texte('⚙️ Admin', W - 57, 26, 13, '#fff');
   zones.push({ x: W - 104, y: 10, w: 94, h: 32, action: () => location.href = 'admin.html' });
-  if (CONFIG_LOCALE) texte('Config locale (admin) active', 10, 26, 11, '#9cff57', 'left');
+  if (!window.CONFIG_DISTANTE) texte('Hors ligne : config par défaut', 10, 26, 11, '#ffb000', 'left');
   texte('Gauche : bouger • Droite : viser, relâcher pour tirer (tap = visée auto)', W / 2, H - 14, 11, '#fff');
 }
 

@@ -23,6 +23,8 @@
   .form label { display:grid; grid-template-columns:130px 1fr auto; gap:8px; align-items:center; margin:6px 0; font-size:13px; }
   input, select { width:100%; padding:6px; border-radius:6px; border:1px solid var(--bord); background:#15112b; color:var(--txt); }
   input[type=color] { padding:2px; height:32px; }
+  #auth { display:flex; gap:6px; align-items:center; font-size:13px; }
+  .img-outils { display:flex; gap:4px; align-items:center; }
   .apercu { width:40px; height:40px; object-fit:contain; background:#fff2; border-radius:6px; }
   .outils { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0; }
   .palette button { background:#15112b; color:var(--txt); border:2px solid transparent; }
@@ -38,11 +40,12 @@
 <body>
 <header>
   <h1>⚙️ Bastory Admin</h1>
-  <button id="bSave">💾 Enregistrer</button>
+  <span id="auth"></span>
+  <button id="bSave">🚀 Publier en ligne</button>
   <button id="bJouer" class="sec">▶ Tester le jeu</button>
-  <button id="bExport" class="sec">⬇ Exporter config.js</button>
+  <button id="bExport" class="sec">⬇ Sauvegarde</button>
   <button id="bImport" class="sec">⬆ Importer</button>
-  <button id="bReset" class="danger">↺ Réinitialiser</button>
+  <button id="bReset" class="danger">↺ Annuler</button>
   <span id="modif"></span>
   <input type="file" id="fichier" accept=".js,.json" hidden>
 </header>
@@ -51,10 +54,13 @@
 <div id="toast"></div>
 
 <script src="config.js"></script>
+<script src="firebase-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
-const CLE = 'bastory_config';
 const clone = o => JSON.parse(JSON.stringify(o));
-let cfg = (() => { try { const s = localStorage.getItem(CLE); if (s) return JSON.parse(s); } catch (e) {} return clone(CONFIG_PAR_DEFAUT); })();
+let cfg = clone(CONFIG_PAR_DEFAUT);
 let onglet = 'persos', mapSel = 0, pinceau = '#', peint = false;
 const $ = s => document.querySelector(s);
 const el = (tag, { dataset, ...props } = {}, ...enfants) => { const e = Object.assign(document.createElement(tag), props); if (dataset) Object.assign(e.dataset, dataset); e.append(...enfants); return e; };
@@ -84,9 +90,28 @@ function formulaire(obj, champs) {
     if (type === 'image') { prev = el('img', { className: 'apercu', src: obj[k] || '' }); prev.onerror = () => prev.style.opacity = .2; prev.onload = () => prev.style.opacity = 1; }
     inp.value = obj[k] ?? '';
     inp.oninput = () => { obj[k] = type === 'number' ? (parseFloat(inp.value) || 0) : inp.value; if (prev) prev.src = inp.value; modifie(); };
-    f.append(el('label', {}, el('span', { textContent: lab }), inp, prev));
+    f.append(el('label', {}, el('span', { textContent: lab }), inp,
+      type === 'image' ? el('span', { className: 'img-outils' }, prev, boutonUpload(src => { inp.value = src; inp.oninput(); })) : ''));
   }
   return f;
+}
+// 📷 Upload d'image : redimensionnée à 256 px et stockée directement dans la config Firebase
+function boutonUpload(cb) {
+  const f = el('input', { type: 'file', accept: 'image/*', hidden: true });
+  f.onchange = async () => { if (f.files[0]) cb(await reduireImage(f.files[0])); f.value = ''; };
+  return el('span', {}, f, el('button', { type: 'button', className: 'sec', textContent: '📷', title: 'Uploader une image', onclick: e => { e.preventDefault(); f.click(); } }));
+}
+function reduireImage(file, max = 256) {
+  return new Promise((ok, ko) => {
+    const i = new Image();
+    i.onload = () => {
+      const k = Math.min(1, max / Math.max(i.width, i.height)), c = el('canvas', { width: Math.round(i.width * k), height: Math.round(i.height * k) });
+      c.getContext('2d').drawImage(i, 0, 0, c.width, c.height);
+      let d = c.toDataURL('image/webp', 0.9); if (!d.startsWith('data:image/webp')) d = c.toDataURL('image/png');
+      URL.revokeObjectURL(i.src); ok(d);
+    };
+    i.onerror = ko; i.src = URL.createObjectURL(file);
+  });
 }
 function carte(titre, contenu, onSuppr) {
   const h = el('h3', { textContent: titre });
@@ -179,25 +204,52 @@ function afficher() {
   VUES[onglet]($('#zone'));
 }
 
+// ---------- Firebase ----------
+firebase.initializeApp(FIREBASE_CONFIG);
+const auth = firebase.auth(), DOC = firebase.firestore().doc('bastory/config');
+let user = null;
+function majAuth() {
+  const z = $('#auth'); z.innerHTML = '';
+  if (user) z.append(el('span', { textContent: '👤 ' + user.email }), el('button', { className: 'sec', textContent: 'Déconnexion', onclick: () => auth.signOut() }));
+  else {
+    const m = el('input', { type: 'email', placeholder: 'Email admin', style: 'width:170px' }), p = el('input', { type: 'password', placeholder: 'Mot de passe', style: 'width:130px' });
+    z.append(m, p, el('button', { textContent: '🔑 Connexion', onclick: () => auth.signInWithEmailAndPassword(m.value, p.value).catch(e => alert('Connexion refusée : ' + e.message)) }));
+  }
+  $('#bSave').disabled = !user; $('#bSave').style.opacity = user ? 1 : .4;
+}
+auth.onAuthStateChanged(u => { user = u; majAuth(); });
+async function chargerEnLigne() {
+  try {
+    const d = await DOC.get();
+    if (d.exists) { cfg = JSON.parse(d.data().json); toast('Version en ligne chargée'); }
+    else toast('Rien en ligne : connecte-toi et publie la 1re version');
+  } catch (e) { toast('Firebase inaccessible → config.js'); }
+  $('#modif').textContent = ''; afficher();
+}
+
 // ---------- Actions ----------
-const enregistrer = () => { localStorage.setItem(CLE, JSON.stringify(cfg)); $('#modif').textContent = ''; toast('Enregistré sur cet appareil ✔'); };
-$('#bSave').onclick = enregistrer;
-$('#bJouer').onclick = () => { enregistrer(); location.href = 'index.html'; };
+$('#bSave').onclick = async () => {
+  const json = JSON.stringify(cfg);
+  if (json.length > 950000) return alert(`Config trop lourde (${Math.round(json.length / 1024)} Ko, max 1 Mo). Utilise des images plus légères.`);
+  try {
+    await DOC.set({ json, maj: firebase.firestore.FieldValue.serverTimestamp(), par: user.email });
+    $('#modif').textContent = ''; toast('🚀 Publié ! Le jeu est à jour pour tout le monde');
+  } catch (e) { alert('Publication refusée : ' + e.message); }
+};
+$('#bJouer').onclick = () => open('index.html', '_blank');
 $('#bExport').onclick = () => {
-  const txt = '// ⚙️ DONNÉES DU JEU — générées par la console admin Bastory\nconst CONFIG_PAR_DEFAUT = ' + JSON.stringify(cfg, null, 2) + ';\n';
-  const a = el('a', { href: URL.createObjectURL(new Blob([txt], { type: 'text/javascript' })), download: 'config.js' });
-  a.click(); toast('config.js téléchargé → remplace-le sur GitHub');
+  const txt = '// ⚙️ DONNÉES DU JEU — sauvegarde console admin Bastory\nconst CONFIG_PAR_DEFAUT = ' + JSON.stringify(cfg, null, 2) + ';\n';
+  el('a', { href: URL.createObjectURL(new Blob([txt], { type: 'text/javascript' })), download: 'config.js' }).click();
+  toast('Sauvegarde téléchargée');
 };
 $('#bImport').onclick = () => $('#fichier').click();
 $('#fichier').onchange = async e => {
-  try { const t = await e.target.files[0].text(); cfg = JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)); modifie(); afficher(); toast('Importé — pense à enregistrer'); }
+  try { const t = await e.target.files[0].text(); cfg = JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)); modifie(); afficher(); toast('Importé — pense à publier'); }
   catch (err) { alert('Fichier invalide'); }
 };
-$('#bReset').onclick = () => {
-  if (!confirm('Revenir à la version publiée (config.js) ? Les modifications locales seront perdues.')) return;
-  localStorage.removeItem(CLE); cfg = clone(CONFIG_PAR_DEFAUT); $('#modif').textContent = ''; afficher(); toast('Réinitialisé');
-};
-afficher();
+$('#bReset').onclick = () => { if (confirm('Annuler les modifications non publiées ?')) chargerEnLigne(); };
+onbeforeunload = e => { if ($('#modif').textContent) e.preventDefault(); };
+afficher(); majAuth(); chargerEnLigne();
 </script>
 </body>
 </html>
