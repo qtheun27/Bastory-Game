@@ -187,12 +187,21 @@ function demarrer(mapIdx, liste) {
   projectiles = []; particules = []; textes = []; ondes = []; objets = []; degatsTuiles = {}; retours = []; levees = {};
   cam.x = moi.x; cam.y = moi.y; finDans = 0; resultat = ''; messageFin = ''; finInfo = null;
   joyG.actif = joyD.actif = false;
-  etat = 'JEU';
+  etat = 'INTRO'; introT = temps; kills = {}; nuages = []; dots = []; fantomes = []; suivi = null;
+  moi.spawn = { x: moi.x, y: moi.y }; Object.values(autres).forEach(j => j.spawn = { x: j.x, y: j.y });
 }
+const cleP = p => String(p.nom || 'perso').replace(/[.~*/\[\]`]/g, '_'); // clé des points par perso
 function verifierFin() {
   if (resultat) return;
   const tous = [moi, ...Object.values(autres)], vivant = j => j.pv > 0 && !j.parti;
   const allies = tous.filter(j => j.eq === moi.eq), ennemis = tous.filter(j => j.eq !== moi.eq);
+  if (mode.duree > 0 && temps - debutJeu >= mode.duree * 60) { // ⏱ temps écoulé
+    if (!ennemis.length) return finir(bosses.length && bosses.every(b => b.pv <= 0) ? 'VICTOIRE' : 'DEFAITE', 'Temps écoulé');
+    const score = eq => tous.filter(j => j.eq === eq).reduce((s, j) => s + (kills[j.uid] || 0), 0);
+    const mien = score(moi.eq), leur = Math.max(...[...new Set(ennemis.map(j => j.eq))].map(score));
+    return finir(mien > leur ? 'VICTOIRE' : mien < leur ? 'DEFAITE' : 'EGALITE', `Temps écoulé • ${mien} - ${leur}`);
+  }
+  if (mode.reapparition && ennemis.length) return; // avec réapparition, le match se joue au temps
   if (ennemis.length) {
     if (!ennemis.some(vivant)) finir('VICTOIRE', ennemis.length > 1 ? 'Équipe adverse éliminée' : 'Tu as battu ' + ennemis[0].nom);
     else if (!allies.some(vivant)) finir('DEFAITE', ennemis.filter(vivant).map(j => j.nom).join(', ') + ' gagne');
@@ -201,18 +210,19 @@ function verifierFin() {
 }
 function finir(r, msg) {
   if (resultat) return;
-  resultat = r; messageFin = msg || ''; finDans = 70; envoyerEtat(true);
+  resultat = r; messageFin = msg || ''; finDans = 70; envoyerEtat(true); moi.revivre = 0;
   const tous = [moi, ...Object.values(autres)], ennemis = tous.filter(j => j.eq !== moi.eq), allies = tous.filter(j => j.eq === moi.eq);
-  const [g, p] = ennemis.length ? (r === 'VICTOIRE' ? [allies, ennemis] : [ennemis, allies]) : (r === 'VICTOIRE' ? [allies, bosses] : [bosses, allies]);
+  const [g, p] = ennemis.length ? (r !== 'DEFAITE' ? [allies, ennemis] : [ennemis, allies]) : (r === 'VICTOIRE' ? [allies, bosses] : [bosses, allies]);
   const carte = e => e.def ? { im: img(e.def.imageCarte || e.def.image), nom: e.def.nom } : { im: carteDe(e.perso), nom: e.nom };
   const uniques = l => l.filter((e, i) => !e.def || l.findIndex(o => o.id === e.id) === i).slice(0, 5).map(carte);
   finInfo = { gagnants: uniques(g), perdants: uniques(p), points: +(r === 'VICTOIRE' ? mode.pointsVictoire : mode.pointsDefaite) || 0, t0: temps + 70 };
   if (db && user) {
     const inc = firebase.firestore.FieldValue.increment;
-    db.collection('joueurs').doc(user.uid).set({ pseudo: nomJoueur(), points: inc(finInfo.points), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0) }, { merge: true }).catch(e => console.warn(e));
+    db.collection('joueurs').doc(user.uid).set({ pseudo: nomJoueur(), points: inc(finInfo.points), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0),
+      persos: { [cleP(moi.perso)]: { points: inc(finInfo.points), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0) } } }, { merge: true }).catch(e => console.warn(e));
   }
 }
-function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; mesPoints = v.points || 0; mesStats = { points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0 }; }, () => {}); }
+function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; mesPoints = v.points || 0; mesStats = { points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {} }; }, () => {}); }
 
 // ---------- 8. MULTIJOUEUR (Realtime Database) ----------
 // Salle d'attente → départ quand le max est atteint (ou 10 s après avoir atteint le minimum).
@@ -252,7 +262,7 @@ async function chercherPartie() {
     demarrer(d.map, d.liste);
   });
   s.ref.child('evts').on('child_added', snap => { const e = snap.val(); if (salle === s && etat === 'JEU' && e && (e.par || e.de) !== user.uid) recevoir(e); });
-  s.ref.child('bots').on('value', snap => { if (salle === s && etat === 'JEU' && !hote) for (const [uid, d] of Object.entries(snap.val() || {})) if (autres[uid]) Object.assign(autres[uid], { tx: d.x, ty: d.y, angle: d.a, pv: d.pv, cache: d.c, marche: d.m }); });
+  s.ref.child('bots').on('value', snap => { if (salle === s && etat === 'JEU' && !hote) for (const [uid, d] of Object.entries(snap.val() || {})) if (autres[uid]) { transitionPV(autres[uid], d.pv); Object.assign(autres[uid], { tx: d.x, ty: d.y, angle: d.a, pv: d.pv, cache: d.c, marche: d.m }); } });
   s.ref.child('boss').on('value', snap => { if (salle === s && etat === 'JEU' && !hote) majBossDistants(snap.val() || []); });
 }
 function lancerSalle(avecBots) {
@@ -307,7 +317,7 @@ function majAutres(js) {
     if (j.bot) continue; // les bots sont envoyés par l'hôte
     const d = js[uid];
     if (!d) { j.parti = true; j.pv = 0; continue; }
-    if (d.x !== undefined) Object.assign(j, { tx: d.x, ty: d.y, angle: d.a, pv: d.pv, cache: d.c, marche: d.m, bo: d.bo ? d.bo.split(',') : [] });
+    if (d.x !== undefined) { transitionPV(j, d.pv); Object.assign(j, { tx: d.x, ty: d.y, angle: d.a, pv: d.pv, cache: d.c, marche: d.m, bo: d.bo ? d.bo.split(',') : [] }); }
   }
 }
 function majBossDistants(liste) {
@@ -325,6 +335,7 @@ function recevoir(e) {
   else if (e.t === 'fr') frappe(e, false);
   else if (e.t === 'ca') casser(e.tx, e.ty, e.o);
   else if (e.t === 'pr') objets = objets.filter(o => o.tx !== e.tx || o.ty !== e.ty);
+  else if (e.t === 'mort' && e.k) kills[e.k] = (kills[e.k] || 0) + 1;
 }
 
 // ---------- 9. CONTRÔLES ----------
@@ -342,7 +353,7 @@ function vec(j) { const dx = j.x - j.ox, dy = j.y - j.oy, d = Math.hypot(dx, dy)
 canvas.addEventListener('touchstart', e => {
   e.preventDefault(); pleinEcran();
   for (const t of e.changedTouches) {
-    if (etat !== 'JEU') { clic(t.clientX, t.clientY); continue; }
+    if (etat !== 'JEU' || moi.pv <= 0) { clic(t.clientX, t.clientY); continue; }
     const j = t.clientX < W / 2 ? joyG : joyD;
     if (!j.actif) Object.assign(j, { actif: true, id: t.identifier, ox: t.clientX, oy: t.clientY, x: t.clientX, y: t.clientY });
   }
@@ -363,12 +374,12 @@ function finTouche(e) {
 canvas.addEventListener('touchend', finTouche);
 canvas.addEventListener('touchcancel', finTouche);
 canvas.addEventListener('mousedown', e => {
-  if (etat !== 'JEU') return clic(e.clientX, e.clientY);
+  if (etat !== 'JEU' || moi.pv <= 0) return clic(e.clientX, e.clientY);
   const m = versMonde(e.clientX, e.clientY), d = Math.hypot(m.x - moi.x, m.y - moi.y);
   tirer(Math.atan2(m.y - moi.y, m.x - moi.x), Math.min(1, d / moi.perso.portee));
 });
 function clic(x, y) {
-  if (etat === 'VICTOIRE' || etat === 'DEFAITE') { if (finInfo && temps - finInfo.t0 < 40) return; quitterSalle(); etat = 'MENU'; return; }
+  if ((etat === 'VICTOIRE' || etat === 'DEFAITE' || etat === 'EGALITE') && finInfo && temps - finInfo.t0 < 40) return;
   x -= sa.l; y -= sa.t;
   const z = zones.find(z => x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h);
   if (z) z.action();
@@ -447,6 +458,7 @@ function majProjectiles() {
         }
       }
     }
+    if (fini && (+p.arme.nuage || 0) > 0 && p.type !== 'retour') nuages.push({ x: p.x, y: p.y, r: +p.arme.rayonNuage || 90, fin: temps + p.arme.nuage * 60, debut: temps, c: p.arme.couleur || '#9aa0a6', deg: +p.arme.degatsNuage || 0, de: p.de, arme: p.arme });
     if (fini) projectiles.splice(i, 1);
   }
 }
@@ -458,16 +470,21 @@ function exploser(p) {
   if (auteur(p)) abimerZone(p.x, p.y, r, p.deg);
 }
 function impact(e, p, x, y, avecEffet) {
-  const a = p.arme, pr = entite(p.de), deg = p.deg, ang = Math.atan2(e.y - y, e.x - x), kb = a.effet === 'explosion' ? 6 : 3;
+  const a = p.arme, deg = p.deg, ang = Math.atan2(e.y - y, e.x - x);
   if (avecEffet) effet(a.effet, e.x, e.y - 10, p.sombre ? '#2a0033' : a.couleur, 40, ang);
   if (p.sombre) effetSombre(e.x, e.y - 10);
-  if (e === moi) return toucherMoi(deg, x, y);
+  if ((+a.retard || 0) > 0 || (+a.poisonDuree || 0) > 0) return planifier(e, p, deg, ang); // ⏳ dégâts à retardement / poison
+  degats(e, p.de, deg, x, y, ang, a);
+}
+function degats(e, de, deg, x, y, ang, a) { // applique les dégâts selon qui a l'autorité
+  const pr = entite(de), kb = a && a.effet === 'explosion' ? 6 : 3;
+  if (e === moi) return toucherMoi(deg, x, y, de);
   e.flash = 8;
-  texteFlottant('-' + deg, e.x, e.y - e.r * 1.4, a.couleur || '#fff');
-  if (e.bot) { if (hote) blesserBot(e, deg, ang); return; } // les bots sont gérés par l'hôte
+  texteFlottant('-' + deg, e.x, e.y - e.r * 1.4, (a && a.couleur) || '#fff');
+  if (e.bot) { if (hote) { e.dernier = de; blesserBot(e, deg, ang); } return; } // les bots sont gérés par l'hôte
   if (!e.def) return;                                 // autre joueur : il gère ses PV lui-même
   if (hote) { e.kx += Math.cos(ang) * kb; e.ky += Math.sin(ang) * kb; }
-  if (p.de === moi.uid || (hote && pr && pr.bot)) hote ? blesserBoss(e, deg) : envoyer({ t: 'db', i: e.i, deg }); // les dégâts des invités passent par l'hôte
+  if (de === moi.uid || (hote && pr && pr.bot)) hote ? blesserBoss(e, deg) : envoyer({ t: 'db', i: e.i, deg }); // les dégâts des invités passent par l'hôte
 }
 const entite = uid => uid === moi.uid ? moi : autres[uid] || (String(uid).startsWith('boss') ? bosses[+String(uid).slice(4)] : null);
 const auteur = p => { const e = entite(p.de); return p.de === moi.uid || (hote && !!e && (!!e.def || !!e.bot)); }; // qui décide des murs cassés
@@ -488,7 +505,7 @@ function effetSombre(x, y) { // aura noire des armes de boss
 function blesserBot(j, deg, ang) {
   if (j.pv <= 0) return;
   j.pv = Math.max(0, j.pv - deg); j.flash = 8; j.kx += Math.cos(ang) * 10; j.ky += Math.sin(ang) * 10;
-  if (j.pv === 0) effet('explosion', j.x, j.y, '#888', 60);
+  if (j.pv === 0) { mourir(j); if (mode.reapparition) j.revivre = temps + (+mode.delaiReapparition || 3) * 60; }
 }
 function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses distances et tourne autour
   if (j.flash > 0) j.flash--;
@@ -520,17 +537,18 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     deplacer(j, Math.cos(a) * v, Math.sin(a) * v); j.marche += v; tourner(j, a, 0.1);
   }
 }
-function toucherMoi(deg, x, y) {
-  if (moi.pv <= 0) return;
+function toucherMoi(deg, x, y, de) {
+  if (moi.pv <= 0 || moi.invuln > temps) return;
+  if (de) moi.dernier = de;
   deg = Math.round(deg * bonus(moi, 'bouclier'));     // bouclier = dégâts réduits
   moi.pv = Math.max(0, moi.pv - deg); moi.flash = 8;
   const ang = Math.atan2(moi.y - y, moi.x - x);
   moi.kx += Math.cos(ang) * 14; moi.ky += Math.sin(ang) * 14;
   texteFlottant('-' + deg, moi.x, moi.y - 50, '#ff4d4d');
-  if (moi.pv === 0) { effet('explosion', moi.x, moi.y, '#888', 60); envoyerEtat(true); }
+  if (moi.pv === 0) mourir(moi);
 }
 function blesserBoss(b, deg) { if (b.pv <= 0) return; b.pv = Math.max(0, b.pv - deg); b.flash = 8; if (b.pv === 0) mortBoss(b); }
-function mortBoss(b) { effet('explosion', b.x, b.y, '#7fbf3f', 130); secousse = 22; }
+function mortBoss(b) { effet('explosion', b.x, b.y, '#7fbf3f', 130); secousse = 22; animMort(b, img(b.def.image)); }
 function frappe(e, local) { // coup de massue d'un boss (local = calculé ici par l'hôte)
   effet('impact', e.x, e.y, '#f5deb3', e.r);
   if (moi.pv > 0 && Math.hypot(moi.x - e.x, moi.y - e.y) < e.r + moi.r * 0.5) toucherMoi(e.deg, e.x, e.y);
@@ -645,13 +663,14 @@ function maj() {
   if (moi.recharge > 0) moi.recharge--;
   if (moi.flash > 0) moi.flash--;
   moi.mun = Math.min(+moi.perso.munitions || 3, moi.mun + 1 / (+moi.perso.recharge || 60)); // recharge des munitions
-  moi.cache = tuileA(moi.x, moi.y) === 'B' || !!pouvoirActif(moi, 'invisible');
+  moi.cache = tuileA(moi.x, moi.y) === 'B' || !!pouvoirActif(moi, 'invisible') || nuages.some(n => Math.hypot(n.x - moi.x, n.y - moi.y) < n.r);
   for (const o of objets) if (moi.pv > 0 && Math.hypot(o.x - moi.x, o.y - moi.y) < 42) {
     objets = objets.filter(x => x !== o); envoyer({ t: 'pr', tx: o.tx, ty: o.ty }); activerPouvoir(o.id); break;
   }
   for (const j of Object.values(autres)) {
     if (j.bot && hote) iaBot(j);
     else { j.x += (j.tx - j.x) * 0.35; j.y += (j.ty - j.y) * 0.35; if (j.flash > 0) j.flash--; }
+    if (j.bot && hote && j.revivre && temps >= j.revivre) revivre(j);
   }
   for (const b of bosses) {
     if (hote) iaBoss(b);
@@ -664,8 +683,10 @@ function maj() {
   });
   majProjectiles(); majEffets();
   const vw = W / zoom, vh = H / zoom, cible = (p, v, m) => m <= v ? m / 2 : Math.max(v / 2, Math.min(m - v / 2, p));
-  cam.x += (cible(moi.x, vw, map.l * TUILE) - cam.x) * 0.12;
-  cam.y += (cible(moi.y, vh, map.h * TUILE) - cam.y) * 0.12;
+  const vue = cibleCamera();
+  cam.x += (cible(vue.x, vw, map.l * TUILE) - cam.x) * 0.12;
+  cam.y += (cible(vue.y, vh, map.h * TUILE) - cam.y) * 0.12;
+  majEvenements();
   envoyerEtat(false);
   verifierFin();
   if (finDans > 0 && --finDans === 0) { etat = resultat; joyG.actif = joyD.actif = false; }
@@ -916,7 +937,8 @@ function dessinerJeu() {
                                    const f = levees[x + ',' + y] !== undefined ? Math.min(1, (temps - levees[x + ',' + y]) / 12) : 1;
                                    ctx.save(); ctx.translate(0, (1 - f) * 40); mur(px, py); fissures(x, y, px, py); ctx.restore(); }]);
                                  if (c === 'C') objs.push([(y + 1) * T - 1, () => { coffre(px, py); fissures(x, y, px, py); }]); });
-  for (const j of joueurs()) if (visible(j) && (j.pv > 0 || j === moi))
+  dessinerNuages();
+  for (const j of joueurs()) if (visible(j) && j.pv > 0)
     objs.push([j.y + j.r * 0.5, () => { aura(j); dessinerEntite(j, img(j.perso.image), j === moi ? '#3aa0ff' : j.eq === moi.eq ? '#2ecc71' : '#ff3b3b', j.r * 2.9); }]);
   for (const b of bosses) if (b.pv > 0) objs.push([b.y + b.r * 0.5, () => dessinerEntite(b, img(b.def.image), '#ff7b1a', b.r * 2.9)]);
   for (const p of projectiles) if (p.type !== 'lob' && p.type !== 'terrain') objs.push([p.y, () => dessinerProjectile(p)]);
@@ -1007,6 +1029,7 @@ function fond(c1, c2) {
   ctx.restore();
 }
 function dessinerHUD() {
+  zones = []; hudExtra();
   const bw = Math.min(420, W * 0.5), bx = (W - bw) / 2;
   let y = 18;
   if (bosses.length) {
@@ -1222,6 +1245,8 @@ function menuPersos() {
     ['⚡', 'Cadence', 1 - (p.delaiTir || 30) / 90, ((p.delaiTir || 30) / 60).toFixed(2) + 's', '#b57bff'], ['♻️', 'Recharge', 1 - (p.recharge || 60) / 150, ((p.recharge || 60) / 60).toFixed(1) + 's', '#ff7ab6']];
   const sy = py + is + 22 * u, pas = Math.min(24 * u, (ph - is - 90 * u) / st.length);
   st.forEach((s, k) => statBarre(px + 12 * u, sy + k * pas, panW - 24 * u, ...s));
+  const sp = (mesStats.persos || {})[cleP(p)] || {};
+  texte(`🏆 ${sp.points || 0} pts  •  ⭐ ${sp.victoires || 0} victoires  •  🎮 ${sp.parties || 0} parties avec ce perso`, px + panW / 2, py + ph - 76 * u, 11 * u, '#ffe8a3');
   const choisi = persoVue === persoIndex, bh = 44 * u;
   bouton3D(px + 20 * u, py + ph - bh - 12 * u, panW - 40 * u, bh, choisi ? '#9aa5b8' : '#4cd964', choisi ? '#5d6778' : '#1f9d3a', choisi ? null : () => { persoIndex = persoVue; allerA('accueil'); });
   texte(choisi ? '✔ SÉLECTIONNÉ' : 'CHOISIR', px + panW / 2, py + ph - bh / 2 - 12 * u, 18 * u, '#fff');
@@ -1326,7 +1351,8 @@ function dessinerAttente() {
 function dessinerFin() { // animation de victoire / défaite avec les gagnants et les perdants
   ecran();
   const t = Math.max(0, temps - (finInfo ? finInfo.t0 : temps)), vic = etat === 'VICTOIRE', G = finInfo ? finInfo.gagnants : [], P = finInfo ? finInfo.perdants : [];
-  ctx.fillStyle = 'rgba(0,0,0,.75)'; ctx.fillRect(0, 0, W, H);
+  zones = [];
+  ctx.fillStyle = 'rgba(0,0,0,.75)'; ctx.fillRect(-100, -100, W + 200, H + 200);
   const cy = H * 0.42;
   ctx.save(); ctx.translate(W / 2, cy); ctx.rotate(t * 0.01); ctx.fillStyle = vic ? 'rgba(255,210,63,.12)' : 'rgba(255,60,60,.08)';
   for (let i = 0; i < 16; i++) { ctx.rotate(Math.PI / 8); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-40, -1500); ctx.lineTo(40, -1500); ctx.fill(); }
@@ -1338,7 +1364,7 @@ function dessinerFin() { // animation de victoire / défaite avec les gagnants e
   }
   const sc = Math.min(1, t / 15) * (1 + Math.max(0, Math.sin(Math.min(t, 30) / 30 * Math.PI)) * 0.25);
   ctx.save(); ctx.translate(W / 2, H * 0.1); ctx.scale(sc, sc);
-  texte(vic ? 'VICTOIRE !' : 'DÉFAITE...', 0, 0, Math.min(56, W / 9), vic ? '#ffd23f' : '#ff4d4d'); ctx.restore();
+  texte(vic ? 'VICTOIRE !' : etat === 'EGALITE' ? 'ÉGALITÉ' : 'DÉFAITE...', 0, 0, Math.min(56, W / 9), vic ? '#ffd23f' : '#ff4d4d'); ctx.restore();
   const tg = Math.min(H * 0.26, 150, (W - 40) / Math.max(1, G.length) / 1.15);
   G.forEach((c, i) => { // gagnants : rebondissent avec une couronne
     const x = W / 2 + (i - (G.length - 1) / 2) * tg * 1.15, y = cy + Math.sin(t * 0.12 + i) * 8 - Math.max(0, 25 - t) * 12;
@@ -1358,14 +1384,139 @@ function dessinerFin() { // animation de victoire / défaite avec les gagnants e
   });
   if (messageFin) texte(messageFin, W / 2, H * 0.19, 16, '#fff');
   if (finInfo && t > 20) texte('+' + finInfo.points + ' 🏆', W / 2, H * 0.62 - Math.min(20, (t - 20)), 22, '#9cff57');
-  if (t > 40) texte("Touchez l'écran pour revenir au menu", W / 2, H - 20, 14, '#ddd');
+  if (t > 40) { // boutons de fin
+    const u = U(), bw = 170 * u, bh = 50 * u, y = H - bh - 14 * u;
+    bouton3D(W / 2 - bw - 10 * u, y, bw, bh, '#ffe14a', '#f0a000', () => { quitterSalle(); etat = 'MENU'; lancerPartie(); }); texte('🔁 REJOUER', W / 2 - bw / 2 - 10 * u, y + bh / 2, 17 * u, '#fff');
+    bouton3D(W / 2 + 10 * u, y, bw, bh, '#8e7bff', '#5b3fd6', () => { quitterSalle(); etat = 'MENU'; allerA('accueil'); }); texte('🏠 MENU', W / 2 + bw / 2 + 10 * u, y + bh / 2, 17 * u, '#fff');
+  }
+}
+
+
+// ---------- 16. ÉVÉNEMENTS DE PARTIE : intro, mort, réapparition, spectateur, poison, fumée ----------
+let introT = 0, debutJeu = 0, kills = {}, nuages = [], dots = [], fantomes = [], suivi = null;
+function animMort(e, im) { // le perso tourne, rétrécit et s'envole en fondu
+  fantomes.push({ im: im || img(e.perso ? e.perso.image : ''), x: e.x, y: e.y, a: e.angle || 0, t: temps, taille: e.r * 2.9 });
+  for (let i = 0; i < 20; i++) particule(e.x, e.y, i % 2 ? '#ffffff' : '#9aa0ff', 6, 6, 1.4, 'rond');
+  ondes.push({ x: e.x, y: e.y, r: 8, max: 90, c: '#ffffff', vie: 1, ep: 8 });
+}
+function animReap(e) { // colonne de lumière à la réapparition
+  ondes.push({ x: e.x, y: e.y, r: 4, max: 80, c: '#7dff9c', vie: 1, ep: 10 });
+  for (let i = 0; i < 24; i++) particule(e.x, e.y, i % 2 ? '#7dff9c' : '#ffffff', 5, 6, 1.2, 'rond', { g: -0.12 });
+  fantomes.push({ lumiere: true, x: e.x, y: e.y, t: temps });
+}
+function mourir(j) {
+  effet('explosion', j.x, j.y, '#888', 60); animMort(j);
+  if (j === moi) {
+    envoyerEtat(true);
+    if (moi.dernier && moi.dernier !== moi.uid) { kills[moi.dernier] = (kills[moi.dernier] || 0) + 1; envoyer({ t: 'mort', k: moi.dernier }); }
+    if (mode.reapparition && !resultat) moi.revivre = temps + (+mode.delaiReapparition || 3) * 60;
+  } else if (j.bot && hote && j.dernier) { kills[j.dernier] = (kills[j.dernier] || 0) + 1; envoyer({ t: 'mort', k: j.dernier }); }
+}
+function revivre(j) {
+  const sp = j.spawn || caseLibre([]);
+  Object.assign(j, { x: sp.x, y: sp.y, tx: sp.x, ty: sp.y, pv: j.pvMax, revivre: 0, invuln: temps + 120, mun: +j.perso.munitions || 3, bonus: {} });
+  animReap(j); if (j === moi) envoyerEtat(true);
+}
+function transitionPV(j, pv) { // détecte la mort / réapparition des autres joueurs
+  if (j.pv > 0 && pv <= 0) animMort(j); else if (j.pv <= 0 && pv > 0) animReap(j);
+}
+function planifier(e, p, deg, ang) { // dégâts à retardement et/ou poison étalé dans le temps
+  const a = p.arme, retard = (+a.retard || 0) * 60, n = (+a.poisonDuree || 0) > 0 ? Math.max(1, Math.round(a.poisonDuree * 2)) : 1;
+  for (let k = 0; k < n; k++) dots.push({ e, de: p.de, deg: Math.round(deg / n), t: temps + retard + k * 30, a, ang });
+  e.empoisonne = temps + retard + n * 30; e.couleurPoison = a.couleur || '#7dff4a';
+}
+function majEvenements() {
+  if (moi.revivre && temps >= moi.revivre && !resultat) revivre(moi);
+  for (const d of dots) if (temps >= d.t && !d.fait) { d.fait = true; if (d.e.pv > 0) degats(d.e, d.de, d.deg, d.e.x, d.e.y + 1, d.ang, d.a); }
+  dots = dots.filter(d => !d.fait);
+  for (const n of nuages) if ((temps - n.debut) % 30 === 29 && n.deg > 0) { // le nuage blesse toutes les ½ s
+    const pr = entite(n.de), eq = pr ? pr.eq : -1;
+    for (const e of [...bosses.filter(b => b.pv > 0 && !(pr && pr.def)), ...joueurs().filter(j => j.pv > 0 && j.eq !== eq)])
+      if (Math.hypot(e.x - n.x, e.y - n.y) < n.r) degats(e, n.de, Math.round(n.deg / 2), n.x, n.y, 0, n.arme);
+  }
+  nuages = nuages.filter(n => temps < n.fin);
+  fantomes = fantomes.filter(f => temps - f.t < 60);
+}
+function cibleCamera() { // mort : on suit un allié en vie (ou n'importe qui)
+  if (moi.pv > 0) return moi;
+  const allies = joueurs().filter(j => j !== moi && j.pv > 0 && j.eq === moi.eq), l = allies.length ? allies : joueurs().filter(j => j !== moi && j.pv > 0);
+  let s = l.find(j => j.uid === suivi); if (!s && l.length) { s = l[0]; suivi = s.uid; }
+  return s || moi;
+}
+function dessinerNuages() {
+  for (const n of nuages) {
+    const k = Math.min(1, (n.fin - temps) / 60, (temps - n.debut) / 15);
+    for (let i = 0; i < 9; i++) {
+      const a = i / 9 * Math.PI * 2 + temps * 0.01, d = n.r * 0.55;
+      ctx.globalAlpha = 0.28 * k; ellipse(n.x + Math.cos(a) * d, n.y + Math.sin(a) * d * 0.7, n.r * 0.55, n.r * 0.42, n.c);
+    }
+    ctx.globalAlpha = 0.35 * k; ellipse(n.x, n.y, n.r * 0.7, n.r * 0.5, n.c); ctx.globalAlpha = 1;
+  }
+  for (const f of fantomes) {
+    const t = (temps - f.t) / 60;
+    if (f.lumiere) { const g = ctx.createLinearGradient(0, f.y - 200, 0, f.y); g.addColorStop(0, 'rgba(125,255,156,0)'); g.addColorStop(1, `rgba(125,255,156,${0.5 * (1 - t)})`); ctx.fillStyle = g; ctx.fillRect(f.x - 30, f.y - 200, 60, 200); continue; }
+    if (!pret(f.im)) continue;
+    ctx.save(); ctx.globalAlpha = 1 - t; ctx.translate(f.x, f.y - t * 80); ctx.rotate(f.a + Math.PI / 2 + t * 6);
+    const s = f.taille * (1 - t * 0.6); ctx.drawImage(f.im, -s / 2, -s / 2, s, s); ctx.restore();
+  }
+  for (const e of [...joueurs(), ...bosses]) if (e.empoisonne > temps && e.pv > 0 && temps % 6 === 0) // bulles de poison
+    particule(e.x + (Math.random() - 0.5) * e.r, e.y - e.r, e.couleurPoison, 1, 5, 1, 'rond', { g: -0.1 });
+  if (moi.invuln > temps && moi.pv > 0) { ctx.globalAlpha = 0.4 + 0.3 * Math.sin(temps * 0.4); ctx.strokeStyle = '#7dff9c'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(moi.x, moi.y - 8, moi.r * 1.5, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
+}
+function hudExtra() { // chrono, score et mode spectateur
+  const u = U();
+  if (mode.duree > 0 && etat === 'JEU') {
+    const r = Math.max(0, mode.duree - Math.floor((temps - debutJeu) / 60)), txt = Math.floor(r / 60) + ':' + String(r % 60).padStart(2, '0');
+    rect(W - 104 * u, 10 * u, 92 * u, 34 * u, 17 * u, r <= 10 ? 'rgba(200,30,30,.8)' : 'rgba(0,0,0,.5)');
+    texte('⏱ ' + txt, W - 58 * u, 27 * u, 16 * u, '#fff');
+  }
+  const tous = [moi, ...Object.values(autres)], en = tous.filter(j => j.eq !== moi.eq);
+  if (mode.reapparition && en.length) {
+    const sc = eq => tous.filter(j => j.eq === eq).reduce((s, j) => s + (kills[j.uid] || 0), 0);
+    texte(`🔵 ${sc(moi.eq)}  —  ${Math.max(...[...new Set(en.map(j => j.eq))].map(sc))} 🔴`, W - 58 * u, 58 * u, 14 * u, '#fff');
+  }
+  if (moi.pv > 0 || resultat) return;
+  const v = cibleCamera(), l = joueurs().filter(j => j !== moi && j.pv > 0 && (j.eq === moi.eq || !joueurs().some(a => a !== moi && a.eq === moi.eq && a.pv > 0)));
+  const bw = 320 * u, bx = W / 2 - bw / 2, by = H - 72 * u;
+  rect(bx, by, bw, 56 * u, 16 * u, 'rgba(0,0,0,.6)', '#ffd23f', 2);
+  texte(moi.revivre ? `💀 Réapparition dans ${Math.ceil((moi.revivre - temps) / 60)} s` : '💀 Tu es éliminé', W / 2, by + 16 * u, 13 * u, '#ffb3b3');
+  if (v !== moi) {
+    texte('👁️ ' + v.nom, W / 2, by + 38 * u, 15 * u, '#fff');
+    if (l.length > 1) {
+      const suiv = d => { const i = l.findIndex(j => j.uid === v.uid); suivi = l[(i + d + l.length) % l.length].uid; };
+      bouton3D(bx + 8 * u, by + 24 * u, 40 * u, 26 * u, '#8e7bff', '#5b3fd6', () => suiv(-1)); texte('◀', bx + 28 * u, by + 37 * u, 13 * u, '#fff');
+      bouton3D(bx + bw - 48 * u, by + 24 * u, 40 * u, 26 * u, '#8e7bff', '#5b3fd6', () => suiv(1)); texte('▶', bx + bw - 28 * u, by + 37 * u, 13 * u, '#fff');
+    }
+  }
+}
+function dessinerIntro() { // présentation des joueurs puis 3-2-1-GO
+  const u = U(), t = temps - introT, tous = [moi, ...Object.values(autres)];
+  const eqA = tous.filter(j => j.eq === moi.eq), eqB = tous.filter(j => j.eq !== moi.eq);
+  const droite = eqB.length ? eqB.map(j => ({ im: carteDe(j.perso), nom: j.nom, c: '#ff5a5a' })) : bosses.map(b => ({ im: img(b.def.imageCarte || b.def.image), nom: b.def.nom, c: '#ff9f1a' }));
+  const gauche = eqA.map(j => ({ im: carteDe(j.perso), nom: j.nom, c: j === moi ? '#3aa0ff' : '#2ecc71' }));
+  if (t < 150) {
+    const k = Math.min(1, t / 20), sortie = Math.max(0, (t - 130) / 20);
+    ctx.fillStyle = `rgba(5,8,30,${0.8 * (1 - sortie)})`; ctx.fillRect(-100, -100, W + 200, H + 200);
+    texte(mode.nom, W / 2, 34 * u, 24 * u, '#ffd23f');
+    const carte = (c, x, y, s) => { rect(x - s / 2, y - s / 2, s, s * 1.2, 14 * u, c.c, '#1a1030', 3 * u); if (pret(c.im)) ctx.drawImage(c.im, x - s * 0.42, y - s * 0.45, s * 0.84, s * 0.84); texte(c.nom, x, y + s * 0.5, 12 * u, '#fff'); };
+    const col = (l, cote) => { const s = Math.min(110 * u, (H - 120 * u) / Math.max(1, l.length) / 1.3); l.forEach((c, i) => {
+      const x = W / 2 + cote * (W * 0.25) - cote * (1 - k) * W * 0.4 + cote * sortie * W * 0.5, y = 80 * u + s * 0.6 + i * s * 1.35 + (l.length === 1 ? (H - 160 * u) / 2 - s * 0.6 : 0);
+      carte(c, x, y, s); }); };
+    col(gauche, -1); if (droite.length) col(droite, 1);
+    if (droite.length) { const sc = 1 + Math.sin(t * 0.2) * 0.08; ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(sc * k, sc * k); texte('VS', 0, 0, 60 * u, '#ffd23f'); ctx.restore(); }
+  } else { // compte à rebours
+    const n = Math.ceil((230 - t) / 27), f = ((230 - t) % 27) / 27, txt = n > 0 && t < 211 ? String(Math.min(3, n)) : 'GO !';
+    ctx.save(); ctx.translate(W / 2, H / 2); const sc = 0.6 + (1 - f) * 0.8; ctx.scale(sc, sc); ctx.globalAlpha = Math.min(1, f * 2 + 0.3);
+    texte(txt, 0, 0, 90 * u, txt === 'GO !' ? '#7dff9c' : '#ffd23f'); ctx.restore();
+  }
 }
 
 // ---------- 15. BOUCLE ----------
 function boucle() {
   if (etat === 'AUTH' || etat === 'MENU') { temps++; zoneSure(dessinerMenu); }
   else if (etat === 'ATTENTE') { temps++; zoneSure(dessinerAttente); rafraichirAttente(); }
-  else { if (etat === 'JEU') maj(); else temps++; dessinerJeu(); if (etat !== 'JEU') dessinerFin(); }
+  else if (etat === 'INTRO') { temps++; majEffets(); dessinerJeu(); zoneSure(dessinerIntro); if (temps - introT > 230) { etat = 'JEU'; debutJeu = temps; } }
+  else { if (etat === 'JEU') maj(); else temps++; dessinerJeu(); if (etat !== 'JEU') zoneSure(dessinerFin); }
   requestAnimationFrame(boucle);
 }
 boucle();

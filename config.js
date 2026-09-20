@@ -120,6 +120,46 @@ const CONFIG_PAR_DEFAUT = {
       "chaine": 3,
       "perteChaine": 0.7,
       "porteeChaine": 350
+    },
+    "fumigene": {
+      "nom": "Grenade fumigène",
+      "image": "",
+      "type": "lob",
+      "effet": "fumee",
+      "vitesse": 9,
+      "taille": 16,
+      "rayon": 70,
+      "couleur": "#9aa0a6",
+      "rebonds": 0,
+      "bonusRebond": 1.2,
+      "chaine": 0,
+      "perteChaine": 0.7,
+      "porteeChaine": 350,
+      "retard": 0,
+      "poisonDuree": 0,
+      "nuage": 5,
+      "rayonNuage": 95,
+      "degatsNuage": 250
+    },
+    "dard": {
+      "nom": "Dard empoisonné",
+      "image": "",
+      "type": "droit",
+      "effet": "poison",
+      "vitesse": 14,
+      "taille": 10,
+      "rayon": 0,
+      "couleur": "#7dff4a",
+      "rebonds": 0,
+      "bonusRebond": 1.2,
+      "chaine": 0,
+      "perteChaine": 0.7,
+      "porteeChaine": 350,
+      "retard": 0.5,
+      "poisonDuree": 4,
+      "nuage": 0,
+      "rayonNuage": 90,
+      "degatsNuage": 0
     }
   },
   "maps": [
@@ -194,7 +234,10 @@ const CONFIG_PAR_DEFAUT = {
       "pointsDefaite": 2,
       "typesBoss": [],
       "bots": true,
-      "attenteBots": 15
+      "attenteBots": 15,
+      "reapparition": false,
+      "delaiReapparition": 3,
+      "duree": 0
     },
     {
       "nom": "Horde de trolls",
@@ -211,7 +254,10 @@ const CONFIG_PAR_DEFAUT = {
       "pointsDefaite": 5,
       "typesBoss": [],
       "bots": true,
-      "attenteBots": 15
+      "attenteBots": 15,
+      "reapparition": false,
+      "delaiReapparition": 3,
+      "duree": 0
     },
     {
       "nom": "Duel 1V1",
@@ -228,7 +274,10 @@ const CONFIG_PAR_DEFAUT = {
       "pointsDefaite": 5,
       "typesBoss": [],
       "bots": true,
-      "attenteBots": 15
+      "attenteBots": 15,
+      "reapparition": true,
+      "delaiReapparition": 3,
+      "duree": 150
     },
     {
       "nom": "Équipes 2V2",
@@ -245,7 +294,10 @@ const CONFIG_PAR_DEFAUT = {
       "pointsDefaite": 5,
       "typesBoss": [],
       "bots": true,
-      "attenteBots": 15
+      "attenteBots": 15,
+      "reapparition": true,
+      "delaiReapparition": 3,
+      "duree": 150
     },
     {
       "nom": "Coop contre les boss",
@@ -262,7 +314,10 @@ const CONFIG_PAR_DEFAUT = {
       "pointsDefaite": 5,
       "typesBoss": [],
       "bots": true,
-      "attenteBots": 15
+      "attenteBots": 15,
+      "reapparition": false,
+      "delaiReapparition": 3,
+      "duree": 0
     }
   ],
   "pouvoirs": {
@@ -321,7 +376,7 @@ const CONFIG_PAR_DEFAUT = {
       "rarete": 1
     }
   },
-  "version": 4
+  "version": 5
 };
 
 // Met à niveau une ancienne config (ajoute les nouveaux paramètres avec des valeurs par défaut)
@@ -338,6 +393,9 @@ function migrerConfig(c) {
   });
   if ((c.version || 0) < 3) { if (!c.armes.seisme) c.armes.seisme = copie(D.armes.seisme); c.version = 3; }
   if (c.version < 4) { ['ricochet', 'eclair'].forEach(k => { if (!c.armes[k]) c.armes[k] = copie(D.armes[k]); }); c.version = 4; }
+  if (c.version < 5) { ['fumigene', 'dard'].forEach(k => { if (!c.armes[k]) c.armes[k] = copie(D.armes[k]); }); c.version = 5; }
+  c.modes.forEach(m => def(m, { reapparition: false, delaiReapparition: 3, duree: 0 }));
+  Object.values(c.armes).forEach(a => def(a, { retard: 0, poisonDuree: 0, nuage: 0, rayonNuage: 90, degatsNuage: 150 }));
   c.modes.forEach(m => def(m, { bots: true, attenteBots: 15 }));
   Object.values(c.armes).forEach(a => def(a, { rebonds: 0, bonusRebond: 1.2, chaine: 0, perteChaine: 0.7, porteeChaine: 350 }));
   Object.values(c.bosses).forEach(b => def(b, { arme: '', porteeTir: 400, degatsTir: 1500, cadenceTir: 90 }));
