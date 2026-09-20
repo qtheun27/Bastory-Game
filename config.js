@@ -739,7 +739,7 @@ function migrerConfig(c) {
     def(m, { joueursMin: 1, joueursMax: 1, equipes: 'chacun', pointsVictoire: 30, pointsDefaite: 5, bots: true, attenteBots: 15, reapparition: false, delaiReapparition: 3, duree: 0,
              objectif: 'standard', tempsZone: 30, pvCristal: 20000, degatsCristal: 800, porteeCristal: 350, cadenceCristal: 60, botsObjets: true, niveauBoss: 1, niveauBots: 1, botsAdaptatifs: true });
   });
-  c.persos.forEach(p => def(p, { imageCarte: '', munitions: 3, recharge: 60, element: '', modele: '', modeleEchelle: 1, modeleRotation: 0, animRepos: '', animMarche: '', animAttaque: '' }));
+  c.persos.forEach(p => def(p, { imageCarte: '', munitions: 3, recharge: 60, element: '', modele: '', modeleEchelle: 1, modeleRotation: 0, animRepos: '', animMarche: '', animAttaque: '', animTouche: '', animMort: '', animReleve: '' }));
   Object.values(c.bosses).forEach(b => def(b, { imageCarte: '', arme: '', porteeTir: 400, degatsTir: 1500, cadenceTir: 90 }));
   Object.values(c.armes).forEach(a => def(a, { rebonds: 0, bonusRebond: 1.2, chaine: 0, perteChaine: 0.7, porteeChaine: 350, retard: 0, poisonDuree: 0, nuage: 0, rayonNuage: 90, degatsNuage: 150 }));
   c.maps.forEach(m => def(m, { casseMurs: true, casseBuissons: true, pvBloc: 3000, chanceObjet: 10, chanceCoffre: 100 }));

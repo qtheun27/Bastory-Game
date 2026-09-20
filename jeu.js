@@ -481,6 +481,7 @@ function clic(x, y) {
 
 // ---------- 10. TIRS & DÉGÂTS ----------
 function creerProjectile(j, angle, force, x, y, deg) {
+  if (j.perso) j.anim = { n: 'attaque', t: temps }; // 🎬 animation d'attaque
   const a = j.arme, v = a.vitesse || 10;
   const p = { rebonds: +a.rebonds || 0, chaine: +a.chaine || 0, sombre: !!j.def, type: a.type, arme: a, perso: j.perso, deg: deg || j.perso.degats, de: j.uid, x, y, vx: Math.cos(angle) * v, vy: Math.sin(angle) * v, dist: 0, rot: 0, z: 0, vie: 0, retour: false, touches: new Set() };
   if (a.type === 'terrain') Object.assign(p, { cases: casesTerrain(a, x, y, angle, Math.max(TUILE, j.perso.portee * force)), t: 0 });
@@ -923,6 +924,15 @@ function ellipse(x, y, rx, ry, fill) { ctx.beginPath(); ctx.ellipse(x, y, Math.m
 
 
 function mur(px, py) { ctx.drawImage(spriteBloc(map.def, false), px - 2, py - HAUT_MUR - 2); }
+const DUREE_ANIM = { attaque: 24, touche: 18, mort: 45, releve: 40 }; // durée des animations spéciales (images à 60/s)
+function animSpeciale(e, sp) { // quelle animation spéciale jouer maintenant ?
+  if (!sp.spec) return null;
+  if (e.pv <= 0) { if (!e.mortT) e.mortT = temps; return sp.spec.lignes.mort ? { n: 'mort', t: e.mortT } : null; }
+  e.mortT = 0;
+  if (e.flash >= 7 && (!e.anim || e.anim.n !== 'touche' || temps - e.anim.t > 8) && (!e.anim || e.anim.n !== 'attaque')) e.anim = { n: 'touche', t: temps };
+  if (e.anim && temps - e.anim.t < DUREE_ANIM[e.anim.n] && sp.spec.lignes[e.anim.n]) return e.anim;
+  return null;
+}
 function dessiner3D(e, sp, anneau, taille) { // perso 3D : on choisit la vignette selon la direction et la pose de marche
   ombreDouce(e.x, e.y + e.r * 0.45, e.r * 1.15, e.r * 0.62);
   ctx.strokeStyle = anneau; ctx.lineWidth = 3; ctx.globalAlpha = 0.8; ctx.beginPath(); ctx.ellipse(e.x, e.y + e.r * 0.45, e.r * 1.05, e.r * 0.6, 0, 0, 7); ctx.stroke();
@@ -932,8 +942,13 @@ function dessiner3D(e, sp, anneau, taille) { // perso 3D : on choisit la vignett
   const k = (taille * 1.45) / (sp.bas - sp.haut), s = sp.S * k, x = e.x - s / 2, y = e.y + e.r * 0.5 - sp.bas * k - (e.alt || 0); // pieds posés sur l'anneau (ou en vol)
   e.topY = y + sp.haut * k; e.topT = temps; ctx.imageSmoothingQuality = 'high';
   ctx.globalAlpha = e.cache ? 0.5 : 1;
-  ctx.drawImage(sp.planche, d * sp.S, po * sp.S, sp.S, sp.S, x, y, s, s);
-  if (e.flash > 0) { ctx.globalAlpha = (e.flash / 8) * 0.9; ctx.drawImage(blanc(sp.planche), d * sp.S, po * sp.S, sp.S, sp.S, x, y, s, s); }
+  const an = animSpeciale(e, sp);
+  if (an) { // 🎬 attaque / coup reçu / mort / relevé
+    const sc = sp.spec, [l0, nb] = sc.lignes[an.n], f = Math.min(nb - 1, Math.floor((temps - an.t) / DUREE_ANIM[an.n] * nb)), d8 = Math.round(a / (Math.PI * 2) * sc.DIRS) % sc.DIRS;
+    if (e.pv <= 0) ctx.globalAlpha = Math.max(0.35, 1 - (temps - an.t) / 240);
+    ctx.drawImage(sc.planche, d8 * sc.S, (l0 + f) * sc.S, sc.S, sc.S, x, y, s, s);
+  } else ctx.drawImage(sp.planche, d * sp.S, po * sp.S, sp.S, sp.S, x, y, s, s);
+  if (e.flash > 0 && !an) { ctx.globalAlpha = (e.flash / 8) * 0.9; ctx.drawImage(blanc(sp.planche), d * sp.S, po * sp.S, sp.S, sp.S, x, y, s, s); }
   ctx.globalAlpha = 1;
 }
 function dessinerEntite(e, im, anneau, taille) {
@@ -1169,7 +1184,7 @@ function dessinerJeu() {
                                    ctx.save(); ctx.translate(0, (1 - f) * 40); mur(px, py); fissures(x, y, px, py); ctx.restore(); }]);
                                  if (c === 'C') objs.push([(y + 1) * T - 1, () => { coffre(px, py); fissures(x, y, px, py); }]); });
   dessinerNuages();
-  for (const j of joueurs()) if (visible(j) && j.pv > 0)
+  for (const j of joueurs()) if (visible(j) && (j.pv > 0 || ((obtenir3D(j.perso) || {}).spec || { lignes: {} }).lignes.mort))
     objs.push([j.y + j.r * 0.5, () => { aura(j); dessinerEntite(j, img(j.perso.image), j === moi ? '#3aa0ff' : j.eq === moi.eq ? '#2ecc71' : '#ff3b3b', j.r * 2.9); }]);
   for (const b of bosses) if (b.pv > 0) objs.push([b.y + b.r * 0.5, () => b.def.cristal ? dessinerCristal(b) : dessinerEntite(b, img(b.def.image), '#ff7b1a', b.r * 2.9)]);
   for (const p of projectiles) if (p.type !== 'lob' && p.type !== 'terrain') objs.push([p.y, () => dessinerProjectile(p)]);
@@ -1838,6 +1853,7 @@ function animMort(e, im) { // le perso tourne, rétrécit et s'envole en fondu
   ondes.push({ x: e.x, y: e.y, r: 8, max: 90, c: '#ffffff', vie: 1, ep: 8 });
 }
 function animReap(e) { // colonne de lumière à la réapparition
+  e.anim = { n: 'releve', t: temps }; e.mortT = 0;
   ondes.push({ x: e.x, y: e.y, r: 4, max: 80, c: '#7dff9c', vie: 1, ep: 10 });
   for (let i = 0; i < 24; i++) particule(e.x, e.y, i % 2 ? '#7dff9c' : '#ffffff', 5, 6, 1.2, 'rond', { g: -0.12 });
   fantomes.push({ lumiere: true, x: e.x, y: e.y, t: temps });

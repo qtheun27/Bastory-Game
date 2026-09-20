@@ -25,7 +25,7 @@ const Modele3D = (() => {
     scene.add(new THREE.HemisphereLight(0xffffff, 0x4b4070, 0.5));
     const soleil = new THREE.DirectionalLight(0xfff1dc, 1.5); soleil.position.set(-2, 5, 3); scene.add(soleil);
     const contre = new THREE.DirectionalLight(0x8fd3ff, 0.8); contre.position.set(3, 2, -3); scene.add(contre);
-    camera = new THREE.PerspectiveCamera(30, 1, 0.1, 60); camera.position.set(0, 4.3, 4.0); camera.lookAt(0, 0.95, 0); // vue 3/4 du dessus
+    camera = new THREE.PerspectiveCamera(30, 1, 0.1, 60); camera.position.set(0, 5.3, 4.9); camera.lookAt(0, 0.9, 0); // vue 3/4 du dessus (avec de la marge pour les grands gestes)
     loader = new THREE.GLTFLoader();
     return true;
   }
@@ -38,23 +38,34 @@ const Modele3D = (() => {
     const gltf = await new Promise((ok, ko) => loader.parse(buf.slice(0), '', ok, ko));
     const racine = new THREE.Group(), obj = gltf.scene; racine.add(obj);
     // mise à l'échelle automatique : le perso mesure ~2 unités, pieds au sol, centré
-    const boite = new THREE.Box3().setFromObject(obj), taille = boite.getSize(new THREE.Vector3()), centre = boite.getCenter(new THREE.Vector3());
+    obj.updateMatrixWorld(true);
+    let boite = new THREE.Box3(); const v = new THREE.Vector3();
+    obj.traverse(o => { if (o.isBone) boite.expandByPoint(o.getWorldPosition(v)); }); // modèle animé : on mesure le squelette (la géométrie brute n'est pas à l'échelle)
+    if (boite.isEmpty()) boite = new THREE.Box3().setFromObject(obj);
+    else { const h = boite.max.y - boite.min.y; boite.max.y += h * 0.12; boite.min.y -= h * 0.04; } // sommet de la tête et plante des pieds
+    const taille = boite.getSize(new THREE.Vector3()), centre = boite.getCenter(new THREE.Vector3());
     const k = 2 / Math.max(0.01, taille.y) * (+p.modeleEchelle || 1);
     obj.scale.setScalar(k); obj.position.set(-centre.x * k, -boite.min.y * k, -centre.z * k);
     obj.traverse(o => { if (o.isMesh) { o.frustumCulled = false; if (o.material) o.material.envMapIntensity = 1; } });
     const mixer = new THREE.AnimationMixer(obj), clips = gltf.animations || [];
-    const trouver = (nom, motif) => clips.find(c => nom && c.name === nom) || clips.find(c => motif.test(c.name));
+    // choix des animations : nom donné dans l'admin, sinon détection automatique (par ordre de préférence)
+    const trouver = (nom, ...motifs) => clips.find(c => nom && c.name === nom) || motifs.map(m => clips.find(c => m.test(c.name))).find(Boolean);
     const anims = {
-      repos: trouver(p.animRepos, /idle|stand|repos|breath/i),
-      marche: trouver(p.animMarche, /walk|run|marche|move|fly|swim/i),
-      attaque: trouver(p.animAttaque, /attack|shoot|cast|throw|attaque|punch/i)
+      repos: trouver(p.animRepos, /idle/i, /breath|repos/i),
+      marche: trouver(p.animMarche, /walk(?!.*inplace)/i, /walk/i, /run|marche|move|fly|swim/i),
+      attaque: trouver(p.animAttaque, /attack|swing|smash|punch|slash|shoot|cast|throw/i),
+      touche: trouver(p.animTouche, /hit|hurt|react|damage|impact/i),
+      mort: trouver(p.animMort, /dead|death|dying|die/i),
+      releve: trouver(p.animReleve, /stand.?up|get.?up|revive|rise|power.?up/i)
     };
-    return { racine, mixer, anims, decalage: (+p.modeleRotation || 0) * Math.PI / 180, liberer: () => obj.traverse(o => { if (o.geometry) o.geometry.dispose(); }) };
+    let hanches = null; obj.traverse(o => { if (!hanches && o.isBone && /hips|pelvis/i.test(o.name)) hanches = o; });
+    return { racine, mixer, anims, hanches, repos: hanches && hanches.position.clone(), decalage: (+p.modeleRotation || 0) * Math.PI / 180, liberer: () => obj.traverse(o => { if (o.geometry) o.geometry.dispose(); }) };
   }
   function poser(m, anim, t) { // place le modèle à l'instant t d'une animation
     m.mixer.stopAllAction();
     const clip = m.anims[anim] || m.anims.repos;
-    if (clip) { const a = m.mixer.clipAction(clip); a.reset(); a.play(); m.mixer.setTime(t * clip.duration); }
+    if (clip) { const a = m.mixer.clipAction(clip); a.reset(); a.play(); m.mixer.setTime(Math.min(t, 0.999) * clip.duration);
+      if (m.hanches) { m.hanches.position.x = m.repos.x; m.hanches.position.z = m.repos.z; } } // le perso reste sur place (pas de glissade)
     else m.racine.position.y = anim === 'marche' ? Math.abs(Math.sin(t * Math.PI * 2)) * 0.06 : 0; // pas d'animation : petit rebond
   }
   function photo(m, angle, anim, t, taille) {
@@ -80,8 +91,19 @@ const Modele3D = (() => {
       for (let f = 0; f < MARCHE; f++) x.drawImage(photo(m, a, 'marche', f / MARCHE, S), d * S, (f + 1) * S);
     }
     const face = document.createElement('canvas'); face.width = face.height = S; face.getContext('2d').drawImage(planche, 4 * S, 0, S, S, 0, 0, S, S);
-    const cad = cadrage(face); m.liberer();
-    return { planche, S, DIRS, POSES: MARCHE + 1, MARCHE, haut: cad.haut, bas: cad.bas, face };
+    const cad = cadrage(face);
+    // 🎬 animations spéciales (attaque, coup reçu, mort, relevé) : 8 directions, taille réduite pour ménager la mémoire
+    const S2 = 160, D2 = 8, NB = { attaque: 5, touche: 3, mort: 6, releve: 5 }, lignes = {}, liste = Object.keys(NB).filter(k => m.anims[k]);
+    let spec = null;
+    if (liste.length) {
+      const total = liste.reduce((t, k) => t + NB[k], 0), c2 = document.createElement('canvas'); c2.width = S2 * D2; c2.height = S2 * total; const x2 = c2.getContext('2d');
+      let ligne = 0;
+      for (const k of liste) { lignes[k] = [ligne, NB[k]];
+        for (let f = 0; f < NB[k]; f++, ligne++) for (let d = 0; d < D2; d++) x2.drawImage(photo(m, d / D2 * Math.PI * 2, k, f / (NB[k] - 1), S2), d * S2, ligne * S2); }
+      spec = { planche: c2, S: S2, DIRS: D2, lignes };
+    }
+    m.liberer();
+    return { planche, S, DIRS, POSES: MARCHE + 1, MARCHE, haut: cad.haut, bas: cad.bas, face, spec };
   }
   async function visage(p) { // image de face (cartes, portraits)
     const m = await charger(p); if (!m) return null;
