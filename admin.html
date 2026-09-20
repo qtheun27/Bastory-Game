@@ -5,46 +5,49 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bastory — Console Admin</title>
 <style>
-  :root { --bg:#1b1535; --carte:#2a2250; --txt:#f3f0ff; --acc:#ffd23f; --bord:#443a7a; }
-  * { box-sizing: border-box; }
-  body { margin:0; font-family: system-ui, Arial, sans-serif; background:var(--bg); color:var(--txt); }
-  header { position:sticky; top:0; z-index:5; background:#120e26; padding:10px 14px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; border-bottom:2px solid var(--bord); }
-  header h1 { font-size:18px; margin:0 12px 0 0; color:var(--acc); }
-  button { background:var(--acc); color:#1a1030; border:0; border-radius:8px; padding:8px 12px; font-weight:700; cursor:pointer; }
-  button.sec { background:#443a7a; color:var(--txt); }
-  button.danger { background:#e74c3c; color:#fff; }
-  nav { display:flex; gap:6px; padding:10px 14px; flex-wrap:wrap; }
-  nav button { background:#443a7a; color:var(--txt); }
-  nav button.on { background:var(--acc); color:#1a1030; }
-  main { padding:0 14px 40px; }
-  .grille-cartes { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
-  .carte { background:var(--carte); border:1px solid var(--bord); border-radius:12px; padding:12px; }
-  .carte h3 { margin:0 0 10px; display:flex; justify-content:space-between; align-items:center; }
-  .form label { display:grid; grid-template-columns:130px 1fr auto; gap:8px; align-items:center; margin:6px 0; font-size:13px; }
-  input, select { width:100%; padding:6px; border-radius:6px; border:1px solid var(--bord); background:#15112b; color:var(--txt); }
-  .form .ligne { display:grid; grid-template-columns:130px 1fr; gap:8px; margin:6px 0; font-size:13px; }
-  .multi { display:flex; flex-wrap:wrap; gap:4px 12px; }
-  .form label.mc { display:flex; gap:6px; margin:0; }
-  input[type=checkbox] { width:22px; height:22px; }
-  input[type=color] { padding:2px; height:32px; }
-  #login { position:fixed; inset:0; z-index:20; background:#0d0a1f; display:flex; align-items:center; justify-content:center; }
-  #login form { background:var(--carte); border:2px solid var(--bord); border-radius:16px; padding:28px; width:min(340px,90vw); display:flex; flex-direction:column; gap:12px; }
-  #login h2 { margin:0 0 6px; color:var(--acc); text-align:center; }
-  #login input { padding:12px; font-size:16px; }
-  #login button { padding:12px; font-size:16px; }
-  #loginErr { color:#ff6b6b; font-size:13px; min-height:16px; }
-  #auth { display:flex; gap:6px; align-items:center; font-size:13px; }
-  .img-outils { display:flex; gap:4px; align-items:center; }
-  .apercu { width:40px; height:40px; object-fit:contain; background:#fff2; border-radius:6px; }
-  .outils { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0; }
-  .palette button { background:#15112b; color:var(--txt); border:2px solid transparent; }
-  .palette button.on { border-color:var(--acc); }
-  .editeur { overflow:auto; max-width:100%; border:2px solid var(--bord); border-radius:8px; background:#000; touch-action:none; }
+  /* 🎨 Style "liquid glass" inspiré d'Apple */
+  :root { --txt:#f5f7ff; --doux:rgba(255,255,255,.62); --verre:rgba(255,255,255,.1); --verre2:rgba(255,255,255,.16); --bord:rgba(255,255,255,.22);
+          --acc:#0a84ff; --ok:#30d158; --danger:#ff453a; --flou:blur(22px) saturate(180%); --r:18px;
+          font-family:-apple-system,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif; }
+  * { box-sizing:border-box; }
+  body { margin:0; color:var(--txt); min-height:100vh; -webkit-font-smoothing:antialiased;
+         background: radial-gradient(900px 600px at 10% 10%, #2f5bff55, transparent 60%), radial-gradient(800px 600px at 90% 20%, #b44cff55, transparent 60%),
+                     radial-gradient(900px 700px at 60% 100%, #ff4f9a44, transparent 60%), linear-gradient(135deg,#0a0f24,#141c3d); background-attachment:fixed; }
+  header { position:sticky; top:0; z-index:5; display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:12px 18px;
+           background:rgba(20,24,50,.45); backdrop-filter:var(--flou); -webkit-backdrop-filter:var(--flou); border-bottom:1px solid var(--bord); }
+  header h1 { font-size:19px; font-weight:700; margin:0 14px 0 0; letter-spacing:-.3px; }
+  button { font:600 14px inherit; font-family:inherit; color:#fff; border:1px solid rgba(255,255,255,.28); border-radius:999px; padding:8px 16px; cursor:pointer;
+           background:linear-gradient(180deg,#3a9bff,#0a6cff); box-shadow:0 6px 18px rgba(10,132,255,.35), inset 0 1px 0 rgba(255,255,255,.45); transition:transform .15s, filter .15s; }
+  button:hover { filter:brightness(1.08); } button:active { transform:scale(.96); } button:disabled { opacity:.4; cursor:not-allowed; }
+  button.sec { background:var(--verre2); box-shadow:inset 0 1px 0 rgba(255,255,255,.25); backdrop-filter:var(--flou); -webkit-backdrop-filter:var(--flou); }
+  button.danger { background:linear-gradient(180deg,#ff6b61,#e5352b); box-shadow:0 6px 18px rgba(255,69,58,.3), inset 0 1px 0 rgba(255,255,255,.4); }
+  nav { display:flex; gap:6px; padding:14px 18px; flex-wrap:wrap; }
+  nav button { background:var(--verre); box-shadow:none; } nav button.on { background:rgba(255,255,255,.92); color:#111; }
+  main { padding:0 18px 48px; }
+  .grille-cartes { display:grid; grid-template-columns:repeat(auto-fill,minmax(310px,1fr)); gap:16px; }
+  .carte { background:var(--verre); border:1px solid var(--bord); border-radius:var(--r); padding:16px; backdrop-filter:var(--flou); -webkit-backdrop-filter:var(--flou);
+           box-shadow:0 10px 30px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.18); }
+  .carte h3 { margin:0 0 12px; display:flex; justify-content:space-between; align-items:center; font-weight:700; letter-spacing:-.2px; }
+  .carte h3 button { padding:6px 10px; }
+  .form label { display:grid; grid-template-columns:140px 1fr auto; gap:10px; align-items:center; margin:8px 0; font-size:13px; color:var(--doux); }
+  input, select { width:100%; padding:9px 12px; border-radius:12px; border:1px solid var(--bord); background:rgba(0,0,0,.25); color:var(--txt); font:500 14px inherit; font-family:inherit; outline:none; transition:border .15s, box-shadow .15s; }
+  input:focus, select:focus { border-color:var(--acc); box-shadow:0 0 0 3px rgba(10,132,255,.3); }
+  input[type=checkbox] { width:22px; height:22px; accent-color:var(--ok); } input[type=color] { padding:3px; height:36px; }
+  .apercu { width:42px; height:42px; object-fit:contain; background:rgba(255,255,255,.08); border-radius:12px; border:1px solid var(--bord); }
+  .img-outils { display:flex; gap:6px; align-items:center; }
+  .outils { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:12px 0; }
+  .palette button { background:var(--verre); box-shadow:none; } .palette button.on { background:rgba(255,255,255,.92); color:#111; }
+  .editeur { overflow:auto; max-width:100%; border:1px solid var(--bord); border-radius:var(--r); background:rgba(0,0,0,.35); touch-action:none; padding:6px; }
   .grid { display:grid; gap:1px; width:max-content; user-select:none; }
-  .c { width:22px; height:22px; font-size:12px; font-weight:900; display:flex; align-items:center; justify-content:center; color:#fff; }
-  .aide { font-size:13px; opacity:.75; }
-  #toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:#27ae60; color:#fff; padding:10px 16px; border-radius:10px; opacity:0; transition:.3s; pointer-events:none; }
-  #modif { color:#ff9f1a; font-size:13px; }
+  .c { width:22px; height:22px; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; color:#fff; border-radius:4px; }
+  .aide { font-size:13px; color:var(--doux); }
+  #toast { position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:rgba(48,209,88,.85); backdrop-filter:var(--flou); color:#fff; padding:12px 20px;
+           border-radius:999px; opacity:0; transition:.3s; pointer-events:none; font-weight:600; box-shadow:0 10px 30px rgba(0,0,0,.3); }
+  #modif { color:#ffd60a; font-size:13px; } #auth { display:flex; gap:8px; align-items:center; font-size:13px; color:var(--doux); }
+  #login { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center; background:rgba(5,8,25,.55); backdrop-filter:var(--flou); -webkit-backdrop-filter:var(--flou); }
+  #login form { background:var(--verre2); border:1px solid var(--bord); border-radius:26px; padding:30px; width:min(360px,90vw); display:flex; flex-direction:column; gap:12px; box-shadow:0 30px 80px rgba(0,0,0,.45); }
+  #login h2 { margin:0 0 6px; text-align:center; font-weight:700; letter-spacing:-.4px; } #login input, #login button { padding:13px; font-size:16px; }
+  #loginErr { color:#ff9f95; font-size:13px; min-height:16px; text-align:center; }
 </style>
 </head>
 <body>
@@ -96,6 +99,10 @@ const CH = {
           ['equipes','Équipes (multi)','select',[['chacun','Chacun pour soi'],['deux','2 équipes'],['coop','Tous ensemble (coop)']]],
           ['pointsVictoire','Points par victoire','number'],['pointsDefaite','Points par défaite','number'],
           ['reapparition','Réapparition après la mort','check'],['delaiReapparition','Délai de réapparition (s)','number'],['duree','Durée max de la partie (s, 0 = illimité)','number'],
+          ['objectif','Objectif de victoire','select',[['standard','⚔️ Éliminer (ou battre les boss)'],['zone','🎯 Tenir la zone (outil Zone sur la map)'],['bloc','💎 Détruire le cristal (outil Cristal sur la map)']]],
+          ['tempsZone','Zone : temps à tenir (s)','number'],['pvCristal','Cristal : points de vie','number'],['degatsCristal','Cristal : dégâts de ses tirs','number'],
+          ['porteeCristal','Cristal : portée de tir','number'],['cadenceCristal','Cristal : délai entre tirs (60 = 1 s)','number'],
+          ['botsObjets','Les bots ramassent les objets rares','check'],
           ['bots','Compléter avec des bots 🤖','check'],['attenteBots','Attente avant les bots (s)','number'],
           ['boss','Boss activés','check'],['nbBoss','Nombre de boss (max 10)','number'],
           ['typesBoss','Types de boss (aucun coché = au hasard)','multi',() => Object.entries(cfg.bosses).map(([k, b]) => [k, b.nom])],['map','Map','select',optMaps]],
@@ -288,12 +295,12 @@ const VUES = {
       el('button', { className: 'sec', textContent: 'Redimensionner', onclick: () => { redim(m, +larg.value, +haut.value); modifie(); afficher(); } }),
       el('button', { className: 'sec', textContent: '▭ Bordure de murs', onclick: () => { bordure(m); modifie(); afficher(); } })));
 
-    const PAL = [['.', '🟩 Herbe'], ['#', '🟫 Mur'], ['B', '🌳 Buisson'], ['W', '🟦 Eau'], ['P', '🧍 Départ joueur'], ['E', '👹 Départ boss'], ['C', '🎁 Coffre (objet rare)']];
+    const PAL = [['.', '🟩 Herbe'], ['#', '🟫 Mur'], ['B', '🌳 Buisson'], ['W', '🟦 Eau'], ['P', '🧍 Départ joueur'], ['E', '👹 Départ boss'], ['C', '🎁 Coffre (objet rare)'], ['Z', '🎯 Zone à tenir'], ['T', '💎 Cristal à détruire']];
     const pal = el('div', { className: 'outils palette' });
     PAL.forEach(([c, t]) => pal.append(el('button', { textContent: t, className: c === pinceau ? 'on' : '', onclick: () => { pinceau = c; afficher(); } })));
 
     const grid = el('div', { className: 'grid', style: `grid-template-columns:repeat(${m.grille[0].length},22px)` });
-    const couleur = c => ({ '#': m.mur, 'B': m.buissonFonce, 'W': m.eau, 'P': '#3498db', 'E': '#e74c3c', 'C': '#f1c40f' }[c] || m.herbe1);
+    const couleur = c => ({ '#': m.mur, 'B': m.buissonFonce, 'W': m.eau, 'P': '#3498db', 'E': '#e74c3c', 'C': '#f1c40f', 'Z': '#5ac8fa', 'T': '#b57bff' }[c] || m.herbe1);
     m.grille.forEach((r, y) => [...r].forEach((c, x) => grid.append(el('div', { className: 'c', textContent: c === 'P' ? 'J' : c === 'E' ? 'B' : '', style: 'background:' + couleur(c), dataset: { x, y } }))));
     const peindre = cible => {
       if (!cible || !cible.dataset || cible.dataset.x === undefined) return;

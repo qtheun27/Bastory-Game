@@ -181,10 +181,10 @@ const CONFIG_PAR_DEFAUT = {
         "#............WWWW............#",
         "#....###..............###....#",
         "#....#......BB..BB......#....#",
-        "#.BB........B....B........BB.#",
-        "#.P....##.....C......##....E.#",
-        "#......##......C.....##......#",
-        "#.BB........B....B........BB.#",
+        "#.BB........BZZZZB........BB.#",
+        "#.P.T..##...ZZCZZZ...##....E.#",
+        "#......##...ZZZCZZ...##..T...#",
+        "#.BB........BZZZZB........BB.#",
         "#....#......BB..BB......#....#",
         "#....###..............###....#",
         "#............WWWW............#",
@@ -237,7 +237,14 @@ const CONFIG_PAR_DEFAUT = {
       "attenteBots": 15,
       "reapparition": false,
       "delaiReapparition": 3,
-      "duree": 0
+      "duree": 0,
+      "objectif": "standard",
+      "tempsZone": 30,
+      "pvCristal": 20000,
+      "degatsCristal": 800,
+      "porteeCristal": 350,
+      "cadenceCristal": 60,
+      "botsObjets": true
     },
     {
       "nom": "Horde de trolls",
@@ -257,7 +264,14 @@ const CONFIG_PAR_DEFAUT = {
       "attenteBots": 15,
       "reapparition": false,
       "delaiReapparition": 3,
-      "duree": 0
+      "duree": 0,
+      "objectif": "standard",
+      "tempsZone": 30,
+      "pvCristal": 20000,
+      "degatsCristal": 800,
+      "porteeCristal": 350,
+      "cadenceCristal": 60,
+      "botsObjets": true
     },
     {
       "nom": "Duel 1V1",
@@ -277,7 +291,14 @@ const CONFIG_PAR_DEFAUT = {
       "attenteBots": 15,
       "reapparition": true,
       "delaiReapparition": 3,
-      "duree": 150
+      "duree": 150,
+      "objectif": "standard",
+      "tempsZone": 30,
+      "pvCristal": 20000,
+      "degatsCristal": 800,
+      "porteeCristal": 350,
+      "cadenceCristal": 60,
+      "botsObjets": true
     },
     {
       "nom": "Équipes 2V2",
@@ -297,7 +318,14 @@ const CONFIG_PAR_DEFAUT = {
       "attenteBots": 15,
       "reapparition": true,
       "delaiReapparition": 3,
-      "duree": 150
+      "duree": 150,
+      "objectif": "standard",
+      "tempsZone": 30,
+      "pvCristal": 20000,
+      "degatsCristal": 800,
+      "porteeCristal": 350,
+      "cadenceCristal": 60,
+      "botsObjets": true
     },
     {
       "nom": "Coop contre les boss",
@@ -317,7 +345,68 @@ const CONFIG_PAR_DEFAUT = {
       "attenteBots": 15,
       "reapparition": false,
       "delaiReapparition": 3,
-      "duree": 0
+      "duree": 0,
+      "objectif": "standard",
+      "tempsZone": 30,
+      "pvCristal": 20000,
+      "degatsCristal": 800,
+      "porteeCristal": 350,
+      "cadenceCristal": 60,
+      "botsObjets": true
+    },
+    {
+      "nom": "Zone de contrôle",
+      "description": "Tiens la zone centrale",
+      "type": "multi",
+      "actif": true,
+      "joueursMin": 2,
+      "joueursMax": 4,
+      "equipes": "deux",
+      "boss": false,
+      "nbBoss": 0,
+      "typeBoss": "aleatoire",
+      "map": -1,
+      "pointsVictoire": 40,
+      "pointsDefaite": 5,
+      "bots": true,
+      "attenteBots": 15,
+      "reapparition": true,
+      "delaiReapparition": 3,
+      "duree": 180,
+      "objectif": "zone",
+      "tempsZone": 40,
+      "pvCristal": 20000,
+      "degatsCristal": 800,
+      "porteeCristal": 350,
+      "cadenceCristal": 60,
+      "botsObjets": true
+    },
+    {
+      "nom": "Guerre des cristaux",
+      "description": "Détruis le cristal ennemi",
+      "type": "multi",
+      "actif": true,
+      "joueursMin": 2,
+      "joueursMax": 4,
+      "equipes": "deux",
+      "boss": false,
+      "nbBoss": 0,
+      "typeBoss": "aleatoire",
+      "map": -1,
+      "pointsVictoire": 40,
+      "pointsDefaite": 5,
+      "bots": true,
+      "attenteBots": 15,
+      "reapparition": true,
+      "delaiReapparition": 4,
+      "duree": 240,
+      "objectif": "bloc",
+      "tempsZone": 30,
+      "pvCristal": 20000,
+      "degatsCristal": 800,
+      "porteeCristal": 350,
+      "cadenceCristal": 60,
+      "botsObjets": true
     }
   ],
   "pouvoirs": {
@@ -376,7 +465,7 @@ const CONFIG_PAR_DEFAUT = {
       "rarete": 1
     }
   },
-  "version": 5
+  "version": 6
 };
 
 // Met à niveau une ancienne config (ajoute les nouveaux paramètres avec des valeurs par défaut)
@@ -395,6 +484,8 @@ function migrerConfig(c) {
   if (c.version < 4) { ['ricochet', 'eclair'].forEach(k => { if (!c.armes[k]) c.armes[k] = copie(D.armes[k]); }); c.version = 4; }
   if (c.version < 5) { ['fumigene', 'dard'].forEach(k => { if (!c.armes[k]) c.armes[k] = copie(D.armes[k]); }); c.version = 5; }
   c.modes.forEach(m => def(m, { reapparition: false, delaiReapparition: 3, duree: 0 }));
+  c.modes.forEach(m => def(m, { objectif: 'standard', tempsZone: 30, pvCristal: 20000, degatsCristal: 800, porteeCristal: 350, cadenceCristal: 60, botsObjets: true }));
+  if (c.version < 6) { D.modes.slice(-2).forEach(m => { if (!c.modes.some(x => x.nom === m.nom)) c.modes.push(copie(m)); }); c.version = 6; }
   Object.values(c.armes).forEach(a => def(a, { retard: 0, poisonDuree: 0, nuage: 0, rayonNuage: 90, degatsNuage: 150 }));
   c.modes.forEach(m => def(m, { bots: true, attenteBots: 15 }));
   Object.values(c.armes).forEach(a => def(a, { rebonds: 0, bonusRebond: 1.2, chaine: 0, perteChaine: 0.7, porteeChaine: 350 }));

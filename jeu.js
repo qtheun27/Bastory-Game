@@ -124,8 +124,14 @@ auth.onAuthStateChanged(u => {
 function chargerMap(def) {
   const l = Math.max(...def.grille.map(r => r.length));
   const g = def.grille.map(r => r.padEnd(l, '.'));
-  const m = { def, g, l, h: g.length, j: [], b: [] };
-  g.forEach((r, y) => { for (let x = 0; x < l; x++) { if (r[x] === 'P') m.j.push({ x, y }); if (r[x] === 'E') m.b.push({ x, y }); } });
+  const m = { def, g, l, h: g.length, j: [], b: [], t: [], z: 0 };
+  const obj = mode ? mode.objectif : '';
+  g.forEach((r, y) => { for (let x = 0; x < l; x++) {
+    if (r[x] === 'P') m.j.push({ x, y }); if (r[x] === 'E') m.b.push({ x, y });
+    if (r[x] === 'T') m.t.push({ x, y });   // 💎 cristal à détruire
+    if (r[x] === 'Z') m.z++;                 // 🎯 zone à tenir
+  } });
+  m.g = g.map(r => r.replace(/T/g, '.').replace(obj === 'zone' ? /$^/ : /Z/g, '.')); // la zone n'existe qu'en mode "zone"
   return m;
 }
 const tuile = (tx, ty) => (!map || tx < 0 || ty < 0 || tx >= map.l || ty >= map.h) ? '#' : map.g[ty][tx];
@@ -154,8 +160,9 @@ function creerJoueur(pi, x, y, uid, nom, eq) {
 }
 function creerBoss(id, x, y, i) {
   const ids = Object.keys(CONFIG.bosses);
-  if (!CONFIG.bosses[id]) id = ids[Math.floor(Math.random() * ids.length)]; // 'aleatoire' ou inconnu
-  const d = CONFIG.bosses[id];
+  if (id !== 'bloc' && !CONFIG.bosses[id]) id = ids[Math.floor(Math.random() * ids.length)]; // 'aleatoire' ou inconnu
+  const d = id === 'bloc' ? { nom: 'CRISTAL', cristal: true, image: '', pvMax: +mode.pvCristal || 20000, taille: 40, vitesse: 0, degats: 0, delaiAttaque: 9999, rayonAttaque: 0,
+    arme: CONFIG.armes.eclair ? 'eclair' : Object.keys(CONFIG.armes)[0], porteeTir: +mode.porteeCristal || 350, degatsTir: +mode.degatsCristal || 800, cadenceTir: +mode.cadenceCristal || 60 } : CONFIG.bosses[id];
   return { i, id, def: d, x, y, tx: x, ty: y, r: d.taille || 48, pv: d.pvMax, pvMax: d.pvMax, angle: Math.PI, recharge: 60,
            flash: 0, marche: 0, kx: 0, ky: 0, charge: 0, chargeMax: 1, rage: false, cx: x, cy: y, fx: x, fy: y,
            uid: 'boss' + i, eq: -1, tir: 60, arme: CONFIG.armes[d.arme] || null, perso: { portee: +d.porteeTir || 400, degats: +d.degatsTir || Math.round(d.degats / 2) } };
@@ -184,6 +191,12 @@ function demarrer(mapIdx, liste) {
     const types = (mode.typesBoss || []).filter(id => CONFIG.bosses[id]); // plusieurs types de boss, à tour de rôle
     bosses.push(creerBoss(types.length ? types[i % types.length] : 'aleatoire', e.x, e.y, i));
   }
+  if (hote && mode.objectif === 'bloc') (map.t.length ? map.t.map(t => ({ x: c(t.x), y: c(t.y) })) : [caseLibre(places)]).forEach(t => {
+    const b = creerBoss('bloc', t.x, t.y, bosses.length); // en équipes : chaque cristal appartient à l'équipe la plus proche
+    b.eq = pvp ? places.reduce((a, j) => Math.hypot(j.x - t.x, j.y - t.y) < Math.hypot(a.x - t.x, a.y - t.y) ? j : a).eq : -1;
+    bosses.push(b);
+  });
+  zoneProg = {};
   projectiles = []; particules = []; textes = []; ondes = []; objets = []; degatsTuiles = {}; retours = []; levees = {};
   cam.x = moi.x; cam.y = moi.y; finDans = 0; resultat = ''; messageFin = ''; finInfo = null;
   joyG.actif = joyD.actif = false;
@@ -200,6 +213,13 @@ function verifierFin() {
     const score = eq => tous.filter(j => j.eq === eq).reduce((s, j) => s + (kills[j.uid] || 0), 0);
     const mien = score(moi.eq), leur = Math.max(...[...new Set(ennemis.map(j => j.eq))].map(score));
     return finir(mien > leur ? 'VICTOIRE' : mien < leur ? 'DEFAITE' : 'EGALITE', `Temps écoulé • ${mien} - ${leur}`);
+  }
+  if (mode.objectif === 'zone') for (const [eq, t] of Object.entries(zoneProg)) if (t >= (+mode.tempsZone || 30) * 60)
+    return finir(+eq === moi.eq ? 'VICTOIRE' : 'DEFAITE', +eq === moi.eq ? 'Zone contrôlée !' : 'Zone perdue');
+  const cristaux = bosses.filter(b => b.def.cristal);
+  if (cristaux.length && ennemis.length) {
+    if (cristaux.some(b => b.eq === moi.eq && b.pv <= 0)) return finir('DEFAITE', 'Ton cristal est détruit');
+    if (cristaux.some(b => b.eq !== moi.eq && b.pv <= 0)) return finir('VICTOIRE', 'Cristal adverse détruit !');
   }
   if (mode.reapparition && ennemis.length) return; // avec réapparition, le match se joue au temps
   if (ennemis.length) {
@@ -262,7 +282,7 @@ async function chercherPartie() {
     demarrer(d.map, d.liste);
   });
   s.ref.child('evts').on('child_added', snap => { const e = snap.val(); if (salle === s && etat === 'JEU' && e && (e.par || e.de) !== user.uid) recevoir(e); });
-  s.ref.child('bots').on('value', snap => { if (salle === s && etat === 'JEU' && !hote) for (const [uid, d] of Object.entries(snap.val() || {})) if (autres[uid]) { transitionPV(autres[uid], d.pv); Object.assign(autres[uid], { tx: d.x, ty: d.y, angle: d.a, pv: d.pv, cache: d.c, marche: d.m }); } });
+  s.ref.child('bots').on('value', snap => { if (salle === s && etat === 'JEU' && !hote) for (const [uid, d] of Object.entries(snap.val() || {})) if (autres[uid]) { transitionPV(autres[uid], d.pv); Object.assign(autres[uid], { tx: d.x, ty: d.y, angle: d.a, pv: d.pv, cache: d.c, marche: d.m, bo: d.bo ? d.bo.split(',') : [] }); } });
   s.ref.child('boss').on('value', snap => { if (salle === s && etat === 'JEU' && !hote) majBossDistants(snap.val() || []); });
 }
 function lancerSalle(avecBots) {
@@ -309,8 +329,8 @@ function envoyerEtat(force) {
   if (!salle || !moi || (!force && temps % 4)) return;
   salle.ref.child('joueurs/' + user.uid).update({ x: Math.round(moi.x), y: Math.round(moi.y), a: +moi.angle.toFixed(2), pv: Math.round(moi.pv), c: moi.cache, m: Math.round(moi.marche), bo: bonusActifs(moi).join(',') });
   const bots = Object.values(autres).filter(j => j.bot);
-  if (hote && bots.length) salle.ref.child('bots').set(Object.fromEntries(bots.map(j => [j.uid, { x: Math.round(j.x), y: Math.round(j.y), a: +j.angle.toFixed(2), pv: Math.round(j.pv), c: j.cache, m: Math.round(j.marche) }])));
-  if (hote && bosses.length) salle.ref.child('boss').set(bosses.map(b => ({ id: b.id, x: Math.round(b.x), y: Math.round(b.y), a: +b.angle.toFixed(2), pv: b.pv, ch: b.charge, cm: b.chargeMax, fx: Math.round(b.fx), fy: Math.round(b.fy), rg: b.rage })));
+  if (hote && bots.length) salle.ref.child('bots').set(Object.fromEntries(bots.map(j => [j.uid, { x: Math.round(j.x), y: Math.round(j.y), a: +j.angle.toFixed(2), pv: Math.round(j.pv), c: j.cache, m: Math.round(j.marche), bo: bonusActifs(j).join(',') }])));
+  if (hote && bosses.length) salle.ref.child('boss').set(bosses.map(b => ({ id: b.id, x: Math.round(b.x), y: Math.round(b.y), a: +b.angle.toFixed(2), pv: b.pv, ch: b.charge, cm: b.chargeMax, fx: Math.round(b.fx), fy: Math.round(b.fy), rg: b.rage, e: b.eq })));
 }
 function majAutres(js) {
   for (const [uid, j] of Object.entries(autres)) {
@@ -323,6 +343,7 @@ function majAutres(js) {
 function majBossDistants(liste) {
   liste.forEach((d, i) => {
     const b = bosses[i] || (bosses[i] = creerBoss(d.id, d.x, d.y, i));
+    b.eq = d.e === undefined ? -1 : d.e;
     Object.assign(b, { tx: d.x, ty: d.y, angle: d.a, charge: d.ch, chargeMax: d.cm || 1, fx: d.fx, fy: d.fy, rage: d.rg });
     if (b.pv > 0 && d.pv <= 0) mortBoss(b);
     b.pv = d.pv;
@@ -416,7 +437,7 @@ function tirerAuto() {
 const visible = j => j === moi || j.eq === moi.eq || !j.cache || Math.hypot(j.x - moi.x, j.y - moi.y) < 170;
 function cibles(p) { // ce qu'un projectile peut toucher (boss + joueurs d'une autre équipe)
   const pr = entite(p.de), eq = pr ? pr.eq : -1;
-  const l = bosses.filter(b => b.pv > 0 && !(pr && pr.def)).map(b => ({ e: b, k: 'b' + b.i }));
+  const l = bosses.filter(b => b.pv > 0 && !(pr && pr.def) && b.eq !== eq).map(b => ({ e: b, k: 'b' + b.i }));
   for (const j of joueurs()) if (j.uid !== p.de && j.eq !== eq && j.pv > 0) l.push({ e: j, k: 'j' + j.uid });
   return l;
 }
@@ -503,7 +524,8 @@ function effetSombre(x, y) { // aura noire des armes de boss
   for (let i = 0; i < 16; i++) particule(x, y, i % 2 ? 'rgba(15,0,25,.9)' : '#6a00a8', 5, 12, 1.3, 'fumee');
 }
 function blesserBot(j, deg, ang) {
-  if (j.pv <= 0) return;
+  if (j.pv <= 0 || j.invuln > temps) return;
+  deg = Math.round(deg * bonus(j, 'bouclier'));
   j.pv = Math.max(0, j.pv - deg); j.flash = 8; j.kx += Math.cos(ang) * 10; j.ky += Math.sin(ang) * 10;
   if (j.pv === 0) { mourir(j); if (mode.reapparition) j.revivre = temps + (+mode.delaiReapparition || 3) * 60; }
 }
@@ -513,13 +535,20 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
   if (j.pv <= 0) return;
   j.mun = Math.min(+j.perso.munitions || 3, j.mun + 1 / (+j.perso.recharge || 60));
   if (j.recharge > 0) j.recharge--;
-  j.cache = tuileA(j.x, j.y) === 'B';
+  j.cache = tuileA(j.x, j.y) === 'B' || !!pouvoirActif(j, 'invisible');
+  if (mode.botsObjets !== false) for (const o of objets) { // 🤖 ramasse les objets rares
+    const d = Math.hypot(o.x - j.x, o.y - j.y);
+    if (d < 42) { objets = objets.filter(x => x !== o); envoyer({ t: 'pr', tx: o.tx, ty: o.ty }); activerPouvoir(o.id, j); break; }
+    if (d < 260 && !j.objet) j.objet = o;
+  }
+  if (j.objet && !objets.includes(j.objet)) j.objet = null;
   let c = null, dm = 1e9;
   for (const e of [...joueurs().filter(o => o.eq !== j.eq && o.pv > 0), ...bosses.filter(b => b.pv > 0)]) {
     const d = Math.hypot(e.x - j.x, e.y - j.y);
     if ((!e.cache || d < 170) && d < dm) { dm = d; c = e; }
   }
-  const v = j.perso.vitesse * 0.85;
+  const v = j.perso.vitesse * 0.85 * bonus(j, 'vitesse');
+  if (j.objet) { const a = Math.atan2(j.objet.y - j.y, j.objet.x - j.x); deplacer(j, Math.cos(a) * v, Math.sin(a) * v); j.marche += v; tourner(j, a, 0.15); if (!c || dm > 250) return; }
   if (c) {
     const a = Math.atan2(c.y - j.y, c.x - j.x), ideal = j.perso.portee * 0.7, cote = Math.sin(temps / 50 + j.x * 0.01) > 0 ? 1 : -1;
     const av = dm > ideal ? 1 : dm < ideal * 0.5 ? -1 : 0;
@@ -528,8 +557,9 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     if (dm < j.perso.portee && j.recharge <= 0 && j.mun >= 1 && Math.random() < 0.08) {
       const ang = a + (Math.random() - 0.5) * 0.25, f = Math.min(1, dm / j.perso.portee);
       j.mun -= 1; j.recharge = j.perso.delaiTir;
-      creerProjectile(j, ang, f, j.x, j.y, j.perso.degats);
-      envoyer({ t: 'tir', de: j.uid, a: +ang.toFixed(3), f: +f.toFixed(2), x: Math.round(j.x), y: Math.round(j.y), d: j.perso.degats });
+      const dg = Math.round(j.perso.degats * bonus(j, 'degats'));
+      creerProjectile(j, ang, f, j.x, j.y, dg);
+      envoyer({ t: 'tir', de: j.uid, a: +ang.toFixed(3), f: +f.toFixed(2), x: Math.round(j.x), y: Math.round(j.y), d: dg });
     }
   } else { // se promène sur la map
     if (!j.but || Math.hypot(j.but.x - j.x, j.but.y - j.y) < 30 || temps % 240 === 0) j.but = caseLibre([]);
@@ -600,10 +630,11 @@ function pouvoirActif(j, effet) {
 }
 const bonus = (j, effet) => { const p = pouvoirActif(j, effet); return p && !isNaN(+p.valeur) ? +p.valeur : 1; };
 const bonusActifs = j => Object.entries(j.bonus || {}).filter(([, fin]) => fin > temps).map(([id]) => id);
-function activerPouvoir(id) {
+function activerPouvoir(id, qui = moi) {
   const p = CONFIG.pouvoirs[id]; if (!p) return;
-  if (p.effet === 'soin') moi.pv = Math.min(moi.pvMax, moi.pv + moi.pvMax * (+p.valeur || 0.3));
-  else moi.bonus[id] = temps + (+p.duree || 8) * 60;
+  if (p.effet === 'soin') qui.pv = Math.min(qui.pvMax, qui.pv + qui.pvMax * (+p.valeur || 0.3));
+  else qui.bonus[id] = temps + (+p.duree || 8) * 60;
+  if (qui !== moi) return texteFlottant((p.icone || '✨') + ' ' + p.nom, qui.x, qui.y - 70, p.couleur || '#fff');
   texteFlottant((p.icone || '✨') + ' ' + p.nom, moi.x, moi.y - 70, p.couleur || '#fff');
   effet('etincelle', moi.x, moi.y, p.couleur || '#fff');
 }
@@ -694,10 +725,20 @@ function maj() {
 function iaBoss(b) {
   const D = b.def;
   if (b.flash > 0) b.flash--;
-  deplacer(b, b.kx, b.ky); b.kx *= 0.8; b.ky *= 0.8;
+  if (!D.cristal) deplacer(b, b.kx, b.ky); b.kx *= 0.8; b.ky *= 0.8;
   if (b.pv <= 0) return;
+  if (D.cristal) { // 💎 le cristal tire sur les ennemis proches
+    let c = null, dm = D.porteeTir;
+    for (const j of joueurs()) if (j.pv > 0 && j.eq !== b.eq) { const d = Math.hypot(j.x - b.x, j.y - b.y); if (d < dm) { dm = d; c = j; } }
+    if (c && b.tir-- <= 0) {
+      const a = Math.atan2(c.y - b.y, c.x - b.x); b.tir = D.cadenceTir;
+      creerProjectile(b, a, 1, b.x, b.y - 20, b.perso.degats);
+      envoyer({ t: 'tir', de: b.uid, a: +a.toFixed(3), f: 1, x: Math.round(b.x), y: Math.round(b.y - 20), d: b.perso.degats });
+    }
+    return;
+  }
   let cible = null, dmin = 1e9;
-  for (const j of joueurs()) if (j.pv > 0) {
+  for (const j of joueurs()) if (j.pv > 0 && j.eq !== b.eq) {
     const d = Math.hypot(j.x - b.x, j.y - b.y);
     if ((!j.cache || d < 170) && d < dmin) { dmin = d; cible = j; } // caché (buisson/fantôme) = invisible de loin
   }
@@ -787,10 +828,10 @@ function effet(type, x, y, couleur = '#fff', rayon = 60, angle = 0) {
 }
 
 // ---------- 12b. DESSIN : outils ----------
-function texte(t, x, y, taille, couleur, align = 'center') {
-  ctx.font = `900 ${taille}px "Arial Black", Arial, sans-serif`;
+function texte(t, x, y, taille, couleur, align = 'center') { // typographie façon Apple, légère ombre pour la lisibilité
+  ctx.font = `700 ${taille}px -apple-system, "SF Pro Display", "Segoe UI", Roboto, system-ui, sans-serif`;
   ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
-  ctx.lineWidth = Math.max(2, taille / 6); ctx.strokeStyle = '#1a1030'; ctx.strokeText(t, x, y);
+  ctx.lineWidth = Math.max(1.5, taille / 9); ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.strokeText(t, x, y);
   ctx.fillStyle = couleur; ctx.fillText(t, x, y);
 }
 function rect(x, y, w, h, r, fill, stroke, ep = 3) {
@@ -801,22 +842,10 @@ function rect(x, y, w, h, r, fill, stroke, ep = 3) {
 function ellipse(x, y, rx, ry, fill) { ctx.beginPath(); ctx.ellipse(x, y, Math.max(0, rx), Math.max(0, ry), 0, 0, 7); ctx.fillStyle = fill; ctx.fill(); }
 
 
-function mur(px, py) {
-  const T = TUILE, h = HAUT_MUR, d = map.def;
-  ctx.fillStyle = d.murFace || '#8e5a2b'; ctx.fillRect(px, py + T - h, T, h);
-  ctx.fillStyle = d.mur || '#c98a4b'; ctx.fillRect(px, py - h, T, T);
-  ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(px + 4, py - h + 4, T - 8, 6);
-  ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.lineWidth = 2; ctx.beginPath();
-  ctx.moveTo(px + 8, py - h + T / 3); ctx.lineTo(px + T - 8, py - h + T / 3);
-  ctx.moveTo(px + 8, py - h + 2 * T / 3); ctx.lineTo(px + T - 8, py - h + 2 * T / 3); ctx.stroke();
-  ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 3; ctx.strokeRect(px + 1.5, py - h + 1.5, T - 3, T + h - 3);
-  ctx.beginPath(); ctx.moveTo(px, py + T - h); ctx.lineTo(px + T, py + T - h); ctx.stroke();
-}
-
-
+function mur(px, py) { ctx.drawImage(spriteBloc(map.def, false), px - 2, py - HAUT_MUR - 2); }
 function dessinerEntite(e, im, anneau, taille) {
   if (e.rage) ellipse(e.x, e.y + e.r * 0.45, e.r * 1.5, e.r * 0.9, `rgba(255,0,0,${0.15 + 0.1 * Math.sin(temps * 0.2)})`);
-  ellipse(e.x, e.y + e.r * 0.45, e.r * 1.05, e.r * 0.6, 'rgba(0,0,0,.28)');
+  ombreDouce(e.x, e.y + e.r * 0.45, e.r * 1.15, e.r * 0.62);
   ctx.strokeStyle = anneau; ctx.lineWidth = 3; ctx.globalAlpha = 0.8; ctx.stroke(); ctx.globalAlpha = 1;
   ctx.save();
   ctx.globalAlpha = e.cache ? 0.5 : 1;
@@ -890,6 +919,86 @@ function majEffets() {
 }
 
 function texteFlottant(txt, x, y, c) { textes.push({ txt, x: x + (Math.random() - 0.5) * 20, y, c, vie: 1 }); }
+
+// ---------- 12c. GRAPHISMES : textures & sprites pré-calculés (rapides) ----------
+const cacheGfx = {};
+function ombrer(hex, k) { // éclaircit (k>0) ou assombrit (k<0) une couleur #rrggbb
+  const n = parseInt((hex || '#888888').slice(1), 16), f = c => Math.max(0, Math.min(255, Math.round(c + (k > 0 ? (255 - c) * k : c * k))));
+  return '#' + [f(n >> 16), f((n >> 8) & 255), f(n & 255)].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+function alea(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); } // hasard reproductible
+function motifHerbe(d) {
+  const k = 'h' + d.herbe1 + d.herbe2; if (cacheGfx[k]) return cacheGfx[k];
+  const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d');
+  x.fillStyle = d.herbe1; x.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 18; i++) for (const [ox, oy] of [[0, 0], [256, 0], [-256, 0], [0, 256], [0, -256]]) { // taches douces (raccord sans couture)
+    const cx = alea(i) * 256 + ox, cy = alea(i + 50) * 256 + oy, r = 30 + alea(i + 99) * 60, g = x.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, (i % 2 ? d.herbe2 : ombrer(d.herbe1, 0.12)) + '99'); g.addColorStop(1, d.herbe1 + '00'); x.fillStyle = g; x.fillRect(cx - r, cy - r, r * 2, r * 2);
+  }
+  for (let i = 0; i < 1400; i++) { // brins d'herbe
+    const px = alea(i + 7) * 256, py = alea(i + 3000) * 256, l = 3 + alea(i + 9000) * 6, a = -Math.PI / 2 + (alea(i + 5) - 0.5) * 0.8;
+    x.strokeStyle = alea(i + 77) > 0.5 ? 'rgba(255,255,255,.07)' : 'rgba(0,30,0,.12)'; x.lineWidth = 1.2;
+    x.beginPath(); x.moveTo(px, py); x.lineTo(px + Math.cos(a) * l, py + Math.sin(a) * l); x.stroke();
+  }
+  return cacheGfx[k] = ctx.createPattern(c, 'repeat');
+}
+function spriteBloc(d, estCoffre) { // mur / coffre en relief avec biseau et dégradés
+  const k = 'b' + estCoffre + d.mur + d.murFace; if (cacheGfx[k]) return cacheGfx[k];
+  const T = TUILE, h = HAUT_MUR, c = document.createElement('canvas'); c.width = T + 4; c.height = T + h + 4;
+  const x = c.getContext('2d'), haut = estCoffre ? '#c98a4b' : d.mur, face = estCoffre ? '#7a4a22' : d.murFace;
+  x.translate(2, 2);
+  let g = x.createLinearGradient(0, T - h, 0, T + h); g.addColorStop(0, face); g.addColorStop(1, ombrer(face, -0.35));
+  x.fillStyle = g; x.beginPath(); x.roundRect(0, h, T, T, 10); x.fill();                           // face avant
+  g = x.createLinearGradient(0, 0, T, T); g.addColorStop(0, ombrer(haut, 0.22)); g.addColorStop(1, ombrer(haut, -0.08));
+  x.fillStyle = g; x.beginPath(); x.roundRect(0, 0, T, T, 10); x.fill();                           // dessus
+  for (let i = 0; i < 40; i++) { x.fillStyle = `rgba(${alea(i) > 0.5 ? '255,255,255' : '0,0,0'},.06)`; x.fillRect(alea(i + 3) * T, alea(i + 8) * T, 3, 3); }
+  x.strokeStyle = 'rgba(255,255,255,.35)'; x.lineWidth = 2; x.beginPath(); x.roundRect(2, 2, T - 4, T - 4, 8); x.stroke(); // biseau clair
+  x.strokeStyle = 'rgba(0,0,0,.18)'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(8, T / 2); x.lineTo(T - 8, T / 2); x.stroke();
+  if (estCoffre) { x.fillStyle = '#f5c542'; x.fillRect(0, 22, T, 7); x.fillRect(T / 2 - 5, 0, 10, T); x.fillStyle = '#fff6c9'; x.fillRect(T / 2 - 5, 22, 10, 7); }
+  return cacheGfx[k] = c;
+}
+function spriteOmbre() {
+  if (cacheGfx.ombre) return cacheGfx.ombre;
+  const c = document.createElement('canvas'); c.width = TUILE + 30; c.height = TUILE + 30; const x = c.getContext('2d');
+  for (let i = 0; i < 8; i++) { x.fillStyle = 'rgba(0,0,0,.045)'; x.beginPath(); x.roundRect(14 - i * 1.5, 12 - i * 1.5, TUILE + i * 3, TUILE + i * 3, 12 + i); x.fill(); }
+  return cacheGfx.ombre = c;
+}
+function spriteBuisson(d) {
+  const k = 'bu' + d.buisson + d.buissonFonce; if (cacheGfx[k]) return cacheGfx[k];
+  const c = document.createElement('canvas'); c.width = 92; c.height = 96; const x = c.getContext('2d');
+  x.fillStyle = 'rgba(0,0,0,.25)'; x.beginPath(); x.ellipse(46, 80, 40, 12, 0, 0, 7); x.fill();
+  const boule = (bx, by, r, col) => { const g = x.createRadialGradient(bx - r * 0.35, by - r * 0.4, r * 0.1, bx, by, r); g.addColorStop(0, ombrer(col, 0.35)); g.addColorStop(0.6, col); g.addColorStop(1, ombrer(col, -0.35)); x.fillStyle = g; x.beginPath(); x.arc(bx, by, r, 0, 7); x.fill(); };
+  [[24, 56, 24], [68, 56, 24], [46, 64, 26], [46, 40, 24]].forEach(([a, b, r]) => boule(a, b, r, d.buissonFonce || '#1f7a35'));
+  [[30, 46, 18], [62, 46, 18], [46, 34, 18], [46, 56, 18]].forEach(([a, b, r]) => boule(a, b, r, d.buisson || '#2fae4a'));
+  for (let i = 0; i < 26; i++) { x.fillStyle = 'rgba(255,255,255,.14)'; x.beginPath(); x.ellipse(18 + alea(i) * 56, 22 + alea(i + 40) * 48, 3, 1.6, alea(i + 9) * 3, 0, 7); x.fill(); }
+  return cacheGfx[k] = c;
+}
+function ombreDouce(x, y, rx, ry) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, rx); g.addColorStop(0, 'rgba(0,0,0,.38)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.save(); ctx.translate(x, y); ctx.scale(1, ry / rx); ctx.translate(-x, -y); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, rx, 0, 7); ctx.fill(); ctx.restore();
+}
+function vignette() {
+  const k = 'v' + W + 'x' + H; if (cacheGfx[k]) return cacheGfx[k];
+  const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,20,.45)'); return cacheGfx[k] = g;
+}
+function verre(x, y, w, h, r, teinte) { // panneau "liquid glass"
+  const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, teinte || 'rgba(255,255,255,.18)'); g.addColorStop(1, 'rgba(255,255,255,.06)');
+  rect(x, y, w, h, r, g, 'rgba(255,255,255,.28)', 1);
+}
+function dessinerCristal(b) { // 💎 cristal flottant aux couleurs de son équipe
+  const col = b.eq === -1 ? '#b57bff' : b.eq === moi.eq ? '#5ac8fa' : '#ff5a6e', f = Math.sin(temps * 0.06) * 6, y = b.y - 30 + f;
+  ombreDouce(b.x, b.y + 18, 40, 14);
+  const halo = ctx.createRadialGradient(b.x, y, 4, b.x, y, 80); halo.addColorStop(0, col + '88'); halo.addColorStop(1, col + '00'); ctx.fillStyle = halo; ctx.fillRect(b.x - 80, y - 80, 160, 160);
+  const pts = [[0, -46], [26, -14], [18, 30], [-18, 30], [-26, -14]];
+  ctx.save(); ctx.translate(b.x, y); ctx.beginPath(); pts.forEach(([px, py], i) => i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)); ctx.closePath();
+  const g = ctx.createLinearGradient(-26, -46, 26, 30); g.addColorStop(0, ombrer(col, 0.6)); g.addColorStop(0.5, col); g.addColorStop(1, ombrer(col, -0.4));
+  ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.moveTo(0, -46); ctx.lineTo(8, -14); ctx.lineTo(0, 30); ctx.lineTo(-10, -14); ctx.closePath(); ctx.fill();
+  if (b.flash > 0) { ctx.fillStyle = `rgba(255,255,255,${b.flash / 8})`; ctx.beginPath(); pts.forEach(([px, py], i) => i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)); ctx.fill(); }
+  ctx.restore();
+}
+
 // ---------- 13. DESSIN : monde ----------
 function dessinerJeu() {
   ecran(); ctx.fillStyle = '#16351f'; ctx.fillRect(0, 0, W, H);
@@ -900,24 +1009,28 @@ function dessinerJeu() {
   const y0 = Math.max(0, Math.floor((cam.y - vh) / T)), y1 = Math.min(map.h - 1, Math.ceil((cam.y + vh) / T));
   const tuiles = f => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) f(tuile(x, y), x, y, x * T, y * T); };
 
-  tuiles((c, x, y, px, py) => { // sol
-    if (c === 'W') {
-      ctx.fillStyle = d.eau || '#3aa6e0'; ctx.fillRect(px, py, T, T);
-      if (tuile(x, y - 1) !== 'W') { ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(px, py, T, 10); }
-      const o = Math.sin(temps * 0.05 + x + y) * 5;
-      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(px + 12, py + 30 + o); ctx.quadraticCurveTo(px + 32, py + 22 + o, px + 52, py + 30 + o); ctx.stroke();
-    } else {
-      ctx.fillStyle = (x + y) % 2 ? d.herbe1 : d.herbe2; ctx.fillRect(px, py, T, T);
-      if (((x * 73856093) ^ (y * 19349663)) % 5 === 0) {
-        ctx.strokeStyle = 'rgba(0,60,0,.25)'; ctx.lineWidth = 3; ctx.beginPath();
-        for (const k of [-6, 0, 6]) { ctx.moveTo(px + 32 + k, py + 40); ctx.lineTo(px + 32 + k * 1.5, py + 28); }
-        ctx.stroke();
-      }
+  ctx.fillStyle = motifHerbe(d); ctx.fillRect(x0 * T, y0 * T, (x1 - x0 + 1) * T, (y1 - y0 + 1) * T); // herbe texturée
+  tuiles((c, x, y, px, py) => { // eau : dégradé, reflets animés et écume sur les bords
+    if (c === 'Z') { // 🎯 zone
+      const col = zoneControle === moi.eq ? '90,200,255' : typeof zoneControle === 'number' ? '255,90,90' : zoneControle ? '255,210,63' : '255,255,255';
+      ctx.fillStyle = `rgba(${col},${0.16 + 0.06 * Math.sin(temps * 0.08)})`; ctx.fillRect(px, py, T, T);
+      ctx.strokeStyle = `rgba(${col},.8)`; ctx.lineWidth = 3; ctx.beginPath();
+      if (tuile(x, y - 1) !== 'Z') { ctx.moveTo(px, py); ctx.lineTo(px + T, py); } if (tuile(x, y + 1) !== 'Z') { ctx.moveTo(px, py + T); ctx.lineTo(px + T, py + T); }
+      if (tuile(x - 1, y) !== 'Z') { ctx.moveTo(px, py); ctx.lineTo(px, py + T); } if (tuile(x + 1, y) !== 'Z') { ctx.moveTo(px + T, py); ctx.lineTo(px + T, py + T); }
+      ctx.stroke(); return;
     }
+    if (c !== 'W') return;
+    ctx.fillStyle = d.eau || '#3aa6e0'; ctx.fillRect(px, py, T, T);
+    ctx.fillStyle = `rgba(255,255,255,${0.05 + 0.04 * Math.sin(temps * 0.03 + x * 0.7 + y * 0.9)})`; ctx.fillRect(px, py, T, T); // scintillement
+    ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 2;
+    for (let k = 0; k < 2; k++) { const o = Math.sin(temps * 0.04 + x * 1.7 + y + k * 2) * 6; ctx.beginPath(); ctx.moveTo(px + 8, py + 22 + k * 22 + o); ctx.bezierCurveTo(px + 24, py + 14 + k * 22 + o, px + 40, py + 30 + k * 22 + o, px + 56, py + 20 + k * 22 + o); ctx.stroke(); }
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    if (tuile(x, y - 1) !== 'W') { ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.fillRect(px, py, T, 8); ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(px, py + 8, T, 2); }
+    if (tuile(x, y + 1) !== 'W') ctx.fillRect(px, py + T - 3, T, 3);
+    if (tuile(x - 1, y) !== 'W') ctx.fillRect(px, py, 3, T);
+    if (tuile(x + 1, y) !== 'W') ctx.fillRect(px + T - 3, py, 3, T);
   });
-  ctx.fillStyle = 'rgba(0,0,0,.22)';
-  tuiles((c, x, y, px, py) => { if (bloqueTir(c)) ctx.fillRect(px + 10, py + 10, T, T); });
+  tuiles((c, x, y, px, py) => { if (bloqueTir(c)) ctx.drawImage(spriteOmbre(), px - 6, py - 2); }); // ombres douces
   for (const o of objets) { // objets rares au sol
     const p = CONFIG.pouvoirs[o.id] || {}, b = Math.sin(temps * 0.1 + o.x) * 5;
     ellipse(o.x, o.y + 14, 16, 7, 'rgba(0,0,0,.3)');
@@ -940,7 +1053,7 @@ function dessinerJeu() {
   dessinerNuages();
   for (const j of joueurs()) if (visible(j) && j.pv > 0)
     objs.push([j.y + j.r * 0.5, () => { aura(j); dessinerEntite(j, img(j.perso.image), j === moi ? '#3aa0ff' : j.eq === moi.eq ? '#2ecc71' : '#ff3b3b', j.r * 2.9); }]);
-  for (const b of bosses) if (b.pv > 0) objs.push([b.y + b.r * 0.5, () => dessinerEntite(b, img(b.def.image), '#ff7b1a', b.r * 2.9)]);
+  for (const b of bosses) if (b.pv > 0) objs.push([b.y + b.r * 0.5, () => b.def.cristal ? dessinerCristal(b) : dessinerEntite(b, img(b.def.image), '#ff7b1a', b.r * 2.9)]);
   for (const p of projectiles) if (p.type !== 'lob' && p.type !== 'terrain') objs.push([p.y, () => dessinerProjectile(p)]);
   objs.sort((a, b) => a[0] - b[0]).forEach(o => o[1]());
 
@@ -949,16 +1062,10 @@ function dessinerJeu() {
   dessinerEffets();
   for (const j of joueurs()) if (j.pv > 0 && visible(j)) barreVie(j, j === moi ? '#3aa0ff' : j.eq === moi.eq ? '#2ecc71' : '#ff3b3b', j.nom);
   for (const b of bosses) if (b.pv > 0) barreVie(b, '#ff7b1a');
+  ecran(); ctx.fillStyle = vignette(); ctx.fillRect(0, 0, W, H); // vignette cinéma
   zoneSure(dessinerHUD);
 }
-function coffre(px, py) { // coffre mystère (contient souvent un super pouvoir)
-  const T = TUILE, h = HAUT_MUR;
-  ctx.fillStyle = '#8e5a2b'; ctx.fillRect(px + 4, py + T - h, T - 8, h);
-  ctx.fillStyle = '#c98a4b'; ctx.fillRect(px + 4, py - h + 6, T - 8, T - 6);
-  ctx.fillStyle = '#f1c40f'; ctx.fillRect(px + 4, py - h + 22, T - 8, 8); ctx.fillRect(px + T / 2 - 5, py - h + 6, 10, T - 6);
-  ctx.strokeStyle = '#3a220c'; ctx.lineWidth = 3; ctx.strokeRect(px + 5.5, py - h + 7.5, T - 11, T + h - 13);
-  ctx.font = '16px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('❔', px + T / 2, py - h + 44 + Math.sin(temps * 0.1) * 2);
-}
+function coffre(px, py) { ctx.drawImage(spriteBloc(map.def, true), px - 2, py - HAUT_MUR - 2); emoji('✨', px + 32, py - HAUT_MUR + 30 + Math.sin(temps * 0.1) * 2, 14); }
 function fissures(tx, ty, px, py) {
   const dg = degatsTuiles[tx + ',' + ty]; if (!dg) return;
   const k = Math.min(1, dg / (+map.def.pvBloc || 3000)), T = TUILE, y = py - HAUT_MUR;
@@ -977,14 +1084,9 @@ function aura(j) { // anneau coloré pour chaque super pouvoir actif
   ctx.globalAlpha = 1;
 }
 function buisson(px, py) {
-  const d = map.def, cx = px + 32, cy = py + 24, sw = Math.sin(temps * 0.04 + px * 0.1) * 2;
+  const cx = px + 32, cy = py + 24, sw = Math.sin(temps * 0.04 + px * 0.1) * 1.5;
   ctx.globalAlpha = Math.hypot(moi.x - cx, moi.y - cy - 8) < 70 ? 0.45 : 1;
-  ctx.fillStyle = d.buissonFonce || '#1f7a35';
-  for (const [dx, dy, r] of [[-20, 8, 24], [20, 8, 24], [0, 16, 26], [0, -6, 24]]) { ctx.beginPath(); ctx.arc(cx + dx + sw, cy + dy, r, 0, 7); ctx.fill(); }
-  ctx.fillStyle = d.buisson || '#2fae4a';
-  for (const [dx, dy, r] of [[-14, 2, 18], [14, 2, 18], [0, -8, 18], [0, 10, 18]]) { ctx.beginPath(); ctx.arc(cx + dx + sw, cy + dy, r, 0, 7); ctx.fill(); }
-  ctx.fillStyle = 'rgba(255,255,255,.2)';
-  for (const [dx, dy] of [[-12, -4], [10, -12], [4, 6]]) { ctx.beginPath(); ctx.arc(cx + dx + sw, cy + dy, 5, 0, 7); ctx.fill(); }
+  ctx.drawImage(spriteBuisson(map.def), px - 14 + sw, py - 22);
   ctx.globalAlpha = 1;
 }
 function dessinerVisee() {
@@ -1021,22 +1123,26 @@ function bouton(x, y, w, h, txt, fond, action, taille = 14) {
   rect(x, y, w, h, 12, fond, '#1a1030', 3); texte(txt, x + w / 2, y + h / 2, taille, '#fff');
   if (action) zones.push({ x, y, w, h, action });
 }
-function fond(c1, c2) {
-  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, c1); g.addColorStop(1, c2);
+function fond() { // fond "liquid glass" : grandes taches de couleur floues qui dérivent lentement
+  const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#0a0f24'); g.addColorStop(1, '#141c3d');
   ctx.fillStyle = g; ctx.fillRect(-100, -100, W + 200, H + 200);
-  ctx.save(); ctx.translate(W / 2, H * 0.45); ctx.rotate(temps * 0.002); ctx.fillStyle = 'rgba(255,255,255,.05)';
-  for (let i = 0; i < 12; i++) { ctx.rotate(Math.PI / 6); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-60, -2000); ctx.lineTo(60, -2000); ctx.fill(); }
-  ctx.restore();
+  const t = temps * 0.004, R = Math.max(W, H) * 0.55;
+  [['#3b82f6', 0.2, 0.3, 1], ['#a855f7', 0.8, 0.25, 1.3], ['#ec4899', 0.65, 0.85, 0.8], ['#14b8a6', 0.15, 0.85, 1.1]].forEach(([c, x, y, v], i) => {
+    const cx = W * (x + Math.sin(t * v + i) * 0.12), cy = H * (y + Math.cos(t * v * 0.8 + i * 2) * 0.12);
+    const r = ctx.createRadialGradient(cx, cy, 0, cx, cy, R); r.addColorStop(0, c + '88'); r.addColorStop(1, c + '00');
+    ctx.fillStyle = r; ctx.fillRect(-100, -100, W + 200, H + 200);
+  });
 }
 function dessinerHUD() {
   zones = []; hudExtra();
   const bw = Math.min(420, W * 0.5), bx = (W - bw) / 2;
   let y = 18;
-  if (bosses.length) {
-    const pv = bosses.reduce((s, b) => s + Math.max(0, b.pv), 0), max = bosses.reduce((s, b) => s + b.pvMax, 0);
-    const titre = bosses.length > 1 ? `BOSS ${bosses.filter(b => b.pv > 0).length}/${bosses.length}` : bosses[0].def.nom;
-    texte(titre + (bosses.some(b => b.rage && b.pv > 0) ? ' 😡' : ''), W / 2, y, 16, '#ffd23f');
-    rect(bx - 3, y + 12, bw + 6, 20, 8, 'rgba(0,0,0,.6)');
+  const bossV = bosses.filter(b => !b.def.cristal);
+  if (bossV.length) {
+    const pv = bossV.reduce((s, b) => s + Math.max(0, b.pv), 0), max = bossV.reduce((s, b) => s + b.pvMax, 0);
+    const titre = bossV.length > 1 ? `BOSS ${bossV.filter(b => b.pv > 0).length}/${bossV.length}` : bossV[0].def.nom;
+    texte(titre + (bossV.some(b => b.rage && b.pv > 0) ? ' 😡' : ''), W / 2, y, 16, '#ffd23f');
+    verre(bx - 3, y + 12, bw + 6, 20, 10);
     if (pv > 0) rect(bx, y + 15, bw * pv / max, 14, 6, '#ff7b1a');
     y += 44;
   }
@@ -1081,18 +1187,20 @@ const modesStyle = m => m.type === 'solo' ? ['🧍', '#4cd964', '#1f9d3a', 'Solo
   : m.equipes === 'deux' ? ['⚔️', '#ff9f43', '#d35400', 'Équipes'] : ['👥', '#ff6b6b', '#c0392b', 'Chacun pour soi'];
 function emoji(t, x, y, taille) { ctx.font = `${taille}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(t, x, y); }
 function allerA(e) { ecranMenu = e; pageMenu = 0; }
-function bouton3D(x, y, w, h, c1, c2, action, r) { // bouton en relief façon arcade
-  const u = U(); r = r || 14 * u;
-  rect(x, y + 5 * u, w, h, r, 'rgba(0,0,0,.35)');
-  const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, c1); g.addColorStop(1, c2);
-  rect(x, y, w, h, r, g, '#1a1030', 3 * u);
-  rect(x + 4 * u, y + 3 * u, w - 8 * u, h * 0.36, r * 0.7, 'rgba(255,255,255,.22)');
+function bouton3D(x, y, w, h, c1, c2, action, r) { // bouton "verre liquide" : teinte translucide, reflet, bord lumineux
+  const u = U(); r = r || Math.min(h / 2, 18 * u);
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 18 * u; ctx.shadowOffsetY = 6 * u;
+  const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, c1 + (c1.length === 7 ? 'e6' : '')); g.addColorStop(1, c2 + (c2.length === 7 ? 'e6' : ''));
+  rect(x, y, w, h, r, g); ctx.restore();
+  const hl = ctx.createLinearGradient(0, y, 0, y + h * 0.55); hl.addColorStop(0, 'rgba(255,255,255,.45)'); hl.addColorStop(1, 'rgba(255,255,255,0)');
+  rect(x + 1, y + 1, w - 2, h * 0.55, r, hl);
+  rect(x + 0.5, y + 0.5, w - 1, h - 1, r, null, 'rgba(255,255,255,.55)', 1.2);
   if (action) zones.push({ x, y, w, h, action });
 }
 function pastille(x, y, w, icone, txt, action) {
   const u = U(), h = 34 * u;
-  rect(x, y, w, h, h / 2, 'rgba(0,0,0,.45)', 'rgba(255,255,255,.15)', 2);
-  emoji(icone, x + h / 2 + 2, y + h / 2, 18 * u); texte(txt, x + h + 4 * u, y + h / 2, 15 * u, '#fff', 'left');
+  verre(x, y, w, h, h / 2);
+  emoji(icone, x + h / 2 + 2, y + h / 2, 17 * u); texte(txt, x + h + 4 * u, y + h / 2, 14 * u, '#fff', 'left');
   if (action) zones.push({ x, y, w, h, action });
 }
 function lignes(txt, maxW, taille) { // coupe un texte en lignes
@@ -1115,18 +1223,10 @@ function dessinerMiniMap(def, x, y, w, h) {
   rect(x - 3, y - 3, w + 6, h + 6, 8, 'rgba(0,0,0,.4)');
   ctx.imageSmoothingEnabled = false; ctx.drawImage(m, x + (w - mw) / 2, y + (h - mh) / 2, mw, mh); ctx.imageSmoothingEnabled = true;
 }
-function fondMenu() {
-  fond('#2a7de1', '#0b2a6b');
-  const u = U(), s = 46 * u, d = (temps * 0.4) % (s * 2);
-  ctx.fillStyle = 'rgba(255,255,255,.05)';
-  for (let y = -s * 2; y < H + s * 2; y += s) for (let x = -s * 4; x < W + s * 2; x += s * 2) {
-    const px = x + d + ((y / s) % 2 ? s : 0), py = y + d / 2;
-    ctx.beginPath(); ctx.moveTo(px, py - s * 0.35); ctx.lineTo(px + s * 0.35, py); ctx.lineTo(px, py + s * 0.35); ctx.lineTo(px - s * 0.35, py); ctx.fill();
-  }
-}
+function fondMenu() { fond(); }
 function barreHaut(titre, retour) {
   const u = U(), h = 54 * u;
-  rect(-100, -100, W + 200, h + 100, 0, 'rgba(8,10,40,.6)');
+  verre(-100, -100, W + 200, h + 100, 0);
   if (retour) { bouton3D(10 * u, 8 * u, 104 * u, 38 * u, '#ffd23f', '#e09a00', () => allerA('accueil')); texte('◀ Retour', 62 * u, 27 * u, 14 * u, '#fff'); }
   else { // puce profil
     const p = selPerso(), im = carteDe(p);
@@ -1189,9 +1289,9 @@ function menuAccueil() {
   const mx = W - colD - 14 * u, my = top + 14 * u, jh = 78 * u, mh = Math.max(110 * u, Math.min(170 * u, H - my - jh - 30 * u));
   bouton3D(mx, my, colD, mh, c1, c2, () => allerA('modes'));
   emoji(ic, mx + 32 * u, my + 30 * u, 30 * u);
-  texte(m.nom, mx + 58 * u, my + 22 * u, 18 * u, '#fff', 'left');
+  texte(m.nom, mx + 58 * u, my + 22 * u, Math.min(18 * u, (colD - 90 * u) / Math.max(8, m.nom.length) * 1.9), '#fff', 'left');
   texte(lab + (m.type === 'multi' ? ' • en ligne' : ''), mx + 58 * u, my + 42 * u, 11 * u, '#fff8d0', 'left');
-  texte('CHANGER ▶', mx + colD - 12 * u, my + 22 * u, 11 * u, '#fff', 'right');
+  texte('›', mx + colD - 16 * u, my + 30 * u, 28 * u, '#fff');
   const infos = [m.type === 'multi' ? '👥 ' + (m.joueursMin === m.joueursMax ? m.joueursMax : m.joueursMin + '-' + m.joueursMax) : '', m.boss && m.nbBoss > 0 ? '👹 ' + m.nbBoss : '', '🏆 +' + m.pointsVictoire, m.bots !== false && m.type === 'multi' ? '🤖' : ''].filter(Boolean).join('   ');
   texte(infos, mx + 14 * u, my + 64 * u, 13 * u, '#fff', 'left');
   if (mh > 120 * u) { // aperçu de la map
@@ -1221,7 +1321,7 @@ function menuPersos() {
     if (pret(im)) ctx.drawImage(im, x + cw * 0.12, y + 6 * u, cw * 0.76, cw * 0.76);
     rect(x + 4 * u, y + chh - 28 * u, cw - 8 * u, 24 * u, 8 * u, 'rgba(0,0,0,.5)');
     texte(p.nom, x + cw / 2, y + chh - 16 * u, 13 * u, '#fff');
-    if (i === persoVue) rect(x - 3 * u, y - 3 * u, cw + 6 * u, chh + 6 * u, 16 * u, null, '#ffd23f', 4 * u);
+    if (i === persoVue) rect(x - 3 * u, y - 3 * u, cw + 6 * u, chh + 6 * u, 16 * u, null, '#ffffff', 3 * u);
     if (i === persoIndex) emoji('✅', x + cw - 14 * u, y + 14 * u, 16 * u);
   });
   if (pages > 1) {
@@ -1231,7 +1331,7 @@ function menuPersos() {
   }
   // fiche du perso
   const p = CONFIG.persos[persoVue] || selPerso(), a = CONFIG.armes[p.arme] || {}, px = W - panW - 14 * u, py = y0, ph = H - py - 14 * u;
-  rect(px, py, panW, ph, 18 * u, 'rgba(8,10,40,.7)', p.couleur, 3 * u);
+  rect(px, py, panW, ph, 18 * u, 'rgba(255,255,255,.1)', p.couleur, 3 * u);
   const is = Math.min(panW * 0.42, ph * 0.3), im = carteDe(p);
   if (pret(im)) ctx.drawImage(im, px + 12 * u, py + 10 * u + Math.sin(temps * 0.05) * 3 * u, is, is);
   texte(p.nom, px + 24 * u + is, py + 24 * u, 22 * u, '#fff', 'left');
@@ -1274,7 +1374,7 @@ function menuModes() {
   // maps
   const my = H - mapH - 12 * u;
   if (m.map >= 0 && CONFIG.maps[m.map]) { texte('🗺️ Map imposée par ce mode : ' + CONFIG.maps[m.map].nom, W / 2, my + mapH / 2, 14 * u, '#fff'); return; }
-  rect(x0, my, zoneW, mapH, 14 * u, 'rgba(8,10,40,.55)');
+  rect(x0, my, zoneW, mapH, 14 * u, 'rgba(255,255,255,.1)');
   texte('🗺️ MAP', x0 + 14 * u, my + 16 * u, 12 * u, '#ffd23f', 'left');
   const tw = (mapH - 34 * u) * 1.5;
   CONFIG.maps.forEach((def, i) => {
@@ -1294,7 +1394,7 @@ function menuClassement() {
     db.collection('joueurs').orderBy('points', 'desc').limit(30).get().then(s => classement = s.docs.map(d => ({ uid: d.id, ...d.data() }))).catch(() => classement = classement || []);
   }
   const cw = Math.min(260 * u, W * 0.3), x0 = 14 * u, y0 = top + 14 * u, h = H - y0 - 14 * u;
-  rect(x0, y0, cw, h, 18 * u, 'rgba(8,10,40,.7)', '#ffd23f', 3 * u);
+  rect(x0, y0, cw, h, 18 * u, 'rgba(255,255,255,.1)', '#ffd23f', 3 * u);
   const im = carteDe(selPerso()), is = Math.min(cw * 0.45, h * 0.3);
   if (pret(im)) ctx.drawImage(im, x0 + cw / 2 - is / 2, y0 + 10 * u, is, is);
   texte(nomJoueur(), x0 + cw / 2, y0 + is + 24 * u, 18 * u, '#fff');
@@ -1308,7 +1408,7 @@ function menuClassement() {
   const rh = 32 * u, parCol = Math.max(1, Math.floor(h / (rh + 6 * u))), cols = classement.length > parCol && lw > 500 * u ? 2 : 1, colW = (lw - (cols - 1) * 12 * u) / cols;
   classement.slice(0, parCol * cols).forEach((j, k) => {
     const x = lx + Math.floor(k / parCol) * (colW + 12 * u), y = y0 + (k % parCol) * (rh + 6 * u), moiL = user && j.uid === user.uid;
-    rect(x, y, colW, rh, 10 * u, moiL ? 'rgba(255,210,63,.35)' : 'rgba(8,10,40,.55)', moiL ? '#ffd23f' : null, 2);
+    rect(x, y, colW, rh, 10 * u, moiL ? 'rgba(255,210,63,.35)' : 'rgba(255,255,255,.1)', moiL ? '#ffd23f' : null, 2);
     const med = ['🥇', '🥈', '🥉'][k];
     if (med) emoji(med, x + 18 * u, y + rh / 2, 18 * u); else texte('#' + (k + 1), x + 18 * u, y + rh / 2, 12 * u, '#cfd8ff');
     texte(j.pseudo || 'Joueur', x + 38 * u, y + rh / 2, 13 * u, '#fff', 'left');
@@ -1325,21 +1425,21 @@ function menuPouvoirs() {
     munitions: 'Munitions illimitées', invisible: 'Invisible pour les ennemis' })[p.effet] + (p.effet !== 'soin' ? ` • ${p.duree} s` : '');
   l.forEach((p, k) => {
     const x = x0 + (k % cols) * (cw + 12 * u), y = y0 + Math.floor(k / cols) * (chh + 10 * u); if (y + chh > H - aideH - 20 * u) return;
-    rect(x, y, cw, chh, 14 * u, 'rgba(8,10,40,.6)', p.couleur, 3 * u);
+    rect(x, y, cw, chh, 14 * u, 'rgba(255,255,255,.1)', p.couleur, 3 * u);
     ctx.beginPath(); ctx.arc(x + 34 * u, y + chh / 2, 24 * u, 0, 7); ctx.fillStyle = p.couleur; ctx.fill();
     emoji(p.icone || '✨', x + 34 * u, y + chh / 2, 24 * u);
     texte(p.nom, x + 66 * u, y + chh / 2 - 10 * u, 15 * u, '#fff', 'left');
     texte(desc(p), x + 66 * u, y + chh / 2 + 12 * u, 11 * u, '#cfd8ff', 'left');
   });
   const ay = H - aideH - 12 * u;
-  rect(x0, ay, zoneW, aideH, 14 * u, 'rgba(8,10,40,.6)');
+  rect(x0, ay, zoneW, aideH, 14 * u, 'rgba(255,255,255,.1)');
   texte('🎁 Casse les murs, buissons et coffres pour trouver des pouvoirs — marche dessus pour les ramasser.', x0 + 14 * u, ay + 20 * u, 12 * u, '#fff', 'left');
   texte('🕹️ Joystick gauche : bouger • Joystick droit : viser et relâcher pour tirer (petit tap = tir auto) • 🌳 Buisson = caché', x0 + 14 * u, ay + 44 * u, 11 * u, '#cfd8ff', 'left');
 }
 
 function dessinerAttente() {
   ecran(); zones = [];
-  fond('#3b0d1f', '#2b1d6b');
+  fond();
   texte('⚔️ ' + (mode ? mode.nom : ''), W / 2, H * 0.25, 30, '#ffd23f');
   texte('Recherche de joueurs' + '.'.repeat(1 + Math.floor(temps / 30) % 3), W / 2, H * 0.42, 20, '#fff');
   texte(`👥 ${attente.n} / ${attente.max} joueurs` + (attente.min < attente.max ? `  (départ possible à ${attente.min})` : ''), W / 2, H * 0.5, 16, '#e8e0ff');
@@ -1425,7 +1525,18 @@ function planifier(e, p, deg, ang) { // dégâts à retardement et/ou poison ét
   for (let k = 0; k < n; k++) dots.push({ e, de: p.de, deg: Math.round(deg / n), t: temps + retard + k * 30, a, ang });
   e.empoisonne = temps + retard + n * 30; e.couleurPoison = a.couleur || '#7dff4a';
 }
+let zoneProg = {};
+function majZone() { // 🎯 une équipe seule dans la zone la fait progresser
+  if (mode.objectif !== 'zone' || !map.z) return;
+  const dedans = new Set();
+  for (const j of joueurs()) if (j.pv > 0 && tuileA(j.x, j.y) === 'Z') dedans.add(j.eq);
+  for (const b of bosses) if (b.pv > 0 && !b.def.cristal && tuileA(b.x, b.y) === 'Z') dedans.add(-1);
+  zoneControle = dedans.size === 1 ? [...dedans][0] : dedans.size ? 'conteste' : null;
+  if (typeof zoneControle === 'number' && zoneControle >= 0) zoneProg[zoneControle] = (zoneProg[zoneControle] || 0) + 1;
+}
+let zoneControle = null;
 function majEvenements() {
+  majZone();
   if (moi.revivre && temps >= moi.revivre && !resultat) revivre(moi);
   for (const d of dots) if (temps >= d.t && !d.fait) { d.fait = true; if (d.e.pv > 0) degats(d.e, d.de, d.deg, d.e.x, d.e.y + 1, d.ang, d.a); }
   dots = dots.filter(d => !d.fait);
@@ -1474,6 +1585,13 @@ function hudExtra() { // chrono, score et mode spectateur
   if (mode.reapparition && en.length) {
     const sc = eq => tous.filter(j => j.eq === eq).reduce((s, j) => s + (kills[j.uid] || 0), 0);
     texte(`🔵 ${sc(moi.eq)}  —  ${Math.max(...[...new Set(en.map(j => j.eq))].map(sc))} 🔴`, W - 58 * u, 58 * u, 14 * u, '#fff');
+  }
+  if (mode.objectif === 'zone') { // progression de la zone
+    const tz = (+mode.tempsZone || 30) * 60, eqs = [...new Set([moi, ...Object.values(autres)].map(j => j.eq))];
+    eqs.forEach((eq, i) => { const y = 84 * u + i * 22 * u, p = Math.min(1, (zoneProg[eq] || 0) / tz);
+      verre(W - 190 * u, y, 178 * u, 18 * u, 9 * u); rect(W - 188 * u, y + 2 * u, 174 * u * p, 14 * u, 7 * u, eq === moi.eq ? '#5ac8fa' : '#ff5a6e');
+      texte((eq === moi.eq ? '🎯 Nous ' : '🎯 Eux ') + Math.round(p * 100) + '%', W - 101 * u, y + 9 * u, 11 * u, '#fff'); });
+    if (zoneControle === 'conteste') texte('⚔️ Zone contestée', W / 2, H - 100 * u, 16 * u, '#ffd23f');
   }
   if (moi.pv > 0 || resultat) return;
   const v = cibleCamera(), l = joueurs().filter(j => j !== moi && j.pv > 0 && (j.eq === moi.eq || !joueurs().some(a => a !== moi && a.eq === moi.eq && a.pv > 0)));

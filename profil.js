@@ -5,12 +5,12 @@ function ouvrirProfil(auth, apres) {
   if (!f) {
     f = document.createElement('div'); f.id = 'profil';
     f.innerHTML = `<style>
-      #profil{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(10,6,30,.85);font-family:Arial,sans-serif;touch-action:auto}
-      #profil form{background:#2a2250;color:#fff;padding:22px;border-radius:16px;width:min(360px,92vw);display:flex;flex-direction:column;gap:8px}
-      #profil h2{margin:0 0 6px;color:#ffd23f;text-align:center} #profil label{font-size:13px;display:flex;flex-direction:column;gap:4px}
-      #profil input{padding:10px;border-radius:8px;border:0;font-size:15px;user-select:text;-webkit-user-select:text}
-      #profil button{padding:10px;border-radius:8px;border:0;font-weight:900;cursor:pointer;background:#ffd23f}
-      #profil button.sec{background:#443a7a;color:#fff} #pfMsg{font-size:13px;min-height:16px;text-align:center}</style>
+      #profil{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(5,8,25,.5);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;touch-action:auto}
+      #profil form{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);color:#fff;padding:24px;border-radius:26px;width:min(370px,92vw);display:flex;flex-direction:column;gap:9px;box-shadow:0 30px 80px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.3)}
+      #profil h2{margin:0 0 6px;text-align:center;font-weight:700} #profil label{font-size:13px;display:flex;flex-direction:column;gap:5px;color:rgba(255,255,255,.7)}
+      #profil input{padding:11px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.25);color:#fff;font-size:15px;outline:none;user-select:text;-webkit-user-select:text}
+      #profil button{padding:12px;border-radius:999px;border:1px solid rgba(255,255,255,.3);font-weight:700;cursor:pointer;color:#fff;background:linear-gradient(180deg,#3a9bff,#0a6cff)}
+      #profil button.sec{background:rgba(255,255,255,.16)} #pfMsg{font-size:13px;min-height:16px;text-align:center}</style>
       <form id="pfForm"><h2>👤 Mon profil</h2>
       <label>Pseudo (visible par tous)<input id="pfPseudo" maxlength="16" required></label>
       <div id="pfMail"><label>Email<input id="pfEmail" type="email"></label>

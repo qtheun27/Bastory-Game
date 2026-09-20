@@ -1,30 +1,25 @@
-body, html {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;           /* Empêche de faire défiler la page */
-    background-color: #16351f;
-    touch-action: none;         /* Laisse le contrôle tactile au jeu */
-    user-select: none;
-    -webkit-user-select: none;
-}
+body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0a0f24;
+  touch-action: none; user-select: none; -webkit-user-select: none; font-family: -apple-system, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif; }
 canvas { display: block; }
 
-/* Écran de connexion */
-#auth { position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center;
-        background: linear-gradient(#2b1d6b, #0f5fa8); font-family: Arial, sans-serif; touch-action: auto; }
-#auth form { background: rgba(0,0,0,.35); padding: 24px; border-radius: 18px; width: min(340px, 90vw); display: flex; flex-direction: column; gap: 10px; }
-#auth h1 { margin: 0 0 6px; text-align: center; color: #ffd23f; font: 900 40px "Arial Black", Arial; -webkit-text-stroke: 2px #1a1030; }
-#auth input { padding: 12px; border-radius: 10px; border: 0; font-size: 16px; user-select: text; -webkit-user-select: text; }
-#auth button { padding: 12px; border-radius: 10px; border: 3px solid #1a1030; font: 900 16px Arial; background: #ffd23f; color: #1a1030; cursor: pointer; }
-#auth button.sec { background: #2ecc71; }
-#auth button.google { background: #fff; }
-#authErr { color: #ffb3b3; font-size: 14px; min-height: 18px; text-align: center; }
+/* 🔐 Connexion — style "liquid glass" */
+#auth { position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center; touch-action: auto;
+  background: radial-gradient(700px 500px at 15% 20%, #2f5bff66, transparent 60%), radial-gradient(700px 500px at 85% 25%, #b44cff66, transparent 60%),
+              radial-gradient(800px 600px at 50% 100%, #ff4f9a55, transparent 60%), linear-gradient(135deg, #0a0f24, #141c3d); }
+#auth form { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
+  padding: 28px; border-radius: 28px; width: min(360px, 90vw); display: flex; flex-direction: column; gap: 11px; box-shadow: 0 30px 80px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.3); }
+#auth h1 { margin: 0 0 8px; text-align: center; color: #fff; font-weight: 800; font-size: 38px; letter-spacing: -1px; }
+#auth input { padding: 13px 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.25); color: #fff; font-size: 16px; outline: none; user-select: text; -webkit-user-select: text; }
+#auth input::placeholder { color: rgba(255,255,255,.5); }
+#auth button { padding: 13px; border-radius: 999px; border: 1px solid rgba(255,255,255,.3); font-weight: 700; font-size: 16px; color: #fff; cursor: pointer;
+  background: linear-gradient(180deg, #3a9bff, #0a6cff); box-shadow: 0 8px 22px rgba(10,132,255,.4), inset 0 1px 0 rgba(255,255,255,.45); }
+#auth button.sec { background: rgba(255,255,255,.16); box-shadow: inset 0 1px 0 rgba(255,255,255,.25); }
+#auth button.google { background: rgba(255,255,255,.92); color: #111; }
+#authErr { color: #ff9f95; font-size: 14px; min-height: 18px; text-align: center; }
 
-/* Mobile : jeu en paysage uniquement */
-#tourne { display: none; position: fixed; inset: 0; z-index: 100; background: linear-gradient(#2b1d6b, #0f5fa8); color: #ffd23f;
-          font: 900 22px "Arial Black", Arial; text-align: center; align-items: center; justify-content: center; flex-direction: column; gap: 16px; padding: 30px; }
+/* 📱 Mobile : jeu en paysage uniquement */
+#tourne { display: none; position: fixed; inset: 0; z-index: 100; color: #fff; font-weight: 700; font-size: 22px; text-align: center;
+  align-items: center; justify-content: center; flex-direction: column; gap: 18px; padding: 30px; background: linear-gradient(135deg, #0a0f24, #2a1b5a); }
 #tourne span { font-size: 64px; animation: tourne 1.6s ease-in-out infinite; }
 @keyframes tourne { 50% { transform: rotate(90deg); } }
 @media (orientation: portrait) and (pointer: coarse) { #tourne { display: flex; } }
