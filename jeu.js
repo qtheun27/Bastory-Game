@@ -1637,40 +1637,53 @@ function menuPersos() {
 }
 
 // --- Modes de jeu + choix de la map
-function menuModes() {
-  const u = U(), top = barreHaut('MODES DE JEU', true), liste = modes(), m = modeChoisi();
-  const mapH = m.map >= 0 ? 34 * u : 96 * u, x0 = 14 * u, y0 = top + 14 * u, zoneW = W - 28 * u, zoneH = H - y0 - mapH - 60 * u;
-  const cols = Math.max(2, Math.floor(zoneW / (210 * u))), cw = (zoneW - (cols - 1) * 12 * u) / cols, chh = Math.min(150 * u, zoneH);
-  const rows = Math.max(1, Math.floor((zoneH + 12 * u) / (chh + 12 * u))), parPage = cols * rows, pages = Math.ceil(liste.length / parPage);
+function menuModes() { // cartes de modes façon accueil + choix de la map
+  const u = U(), top = barreHaut('Modes de jeu', true), liste = modes(), m = modeChoisi();
+  const mapH = m.map >= 0 && CONFIG.maps[m.map] ? 40 * u : 124 * u, x0 = 20 * u, y0 = top + 14 * u, zoneW = W - 40 * u, gap = 14 * u, zoneH = H - y0 - mapH - 28 * u;
+  const cols = Math.max(2, Math.min(4, Math.floor(zoneW / (230 * u)))), cw = (zoneW - (cols - 1) * gap) / cols, chh = Math.max(96 * u, Math.min(150 * u, zoneH));
+  const rows = Math.max(1, Math.floor((zoneH + gap) / (chh + gap))), parPage = cols * rows, pages = Math.ceil(liste.length / parPage);
   pageMenu = Math.min(pageMenu, pages - 1);
   liste.slice(pageMenu * parPage, (pageMenu + 1) * parPage).forEach((md, k) => {
-    const i = pageMenu * parPage + k, x = x0 + (k % cols) * (cw + 12 * u), y = y0 + Math.floor(k / cols) * (chh + 12 * u), [ic, c1, c2, lab] = modesStyle(md);
-    bouton3D(x, y, cw, chh, c1, c2, () => modeIndex = i);
-    emoji(ic, x + 28 * u, y + 28 * u, 26 * u);
-    texte(md.nom, x + 52 * u, y + 22 * u, 15 * u, '#fff', 'left', cw - 80 * u);
-    texte(lab, x + 52 * u, y + 40 * u, 10 * u, '#fff8d0', 'left');
-    lignes(md.description, cw - 24 * u, 11 * u).slice(0, 2).forEach((l, j) => texte(l, x + 12 * u, y + 64 * u + j * 15 * u, 11 * u, '#fff', 'left'));
-    const inf = [md.type === 'multi' ? '👥 ' + (md.joueursMin === md.joueursMax ? md.joueursMax : md.joueursMin + '-' + md.joueursMax) : '🧍 1', md.boss && md.nbBoss > 0 ? '👹 ' + md.nbBoss : '', '🏆 +' + md.pointsVictoire, md.type === 'multi' && md.bots !== false ? '🤖 bots' : ''].filter(Boolean).join('  ');
-    if (chh > 100 * u) texte(inf, x + 12 * u, y + chh - 16 * u, 12 * u, '#fff', 'left');
-    if (i === modeIndex % liste.length) { rect(x - 3 * u, y - 3 * u, cw + 6 * u, chh + 6 * u, 16 * u, null, '#fff', 4 * u); emoji('✅', x + cw - 16 * u, y + 16 * u, 16 * u); }
+    const i = pageMenu * parPage + k, x = x0 + (k % cols) * (cw + gap), y = y0 + Math.floor(k / cols) * (chh + gap), [, c1, c2, lab] = modesStyle(md), sel = i === modeIndex % liste.length;
+    ctx.save(); ctx.shadowColor = sel ? c1 : 'rgba(0,0,0,.4)'; ctx.shadowBlur = (sel ? 30 : 16) * u; ctx.shadowOffsetY = 6 * u;
+    const gm = ctx.createLinearGradient(x, y, x + cw, y + chh); gm.addColorStop(0, c1); gm.addColorStop(1, c2); rect(x, y, cw, chh, 22 * u, gm); ctx.restore();
+    ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, cw, chh, 22 * u); ctx.clip();
+    const def = CONFIG.maps[md.map >= 0 && CONFIG.maps[md.map] ? md.map : mapIndex % CONFIG.maps.length], mm = miniMap(def);
+    ctx.globalAlpha = 0.28; ctx.imageSmoothingEnabled = false; ctx.drawImage(mm, x + cw * 0.45, y, cw * 0.6, chh); ctx.imageSmoothingEnabled = true; ctx.globalAlpha = 1;
+    const fg = ctx.createLinearGradient(x, 0, x + cw, 0); fg.addColorStop(0.35, c2); fg.addColorStop(0.8, c2 + '00'); ctx.fillStyle = fg; ctx.fillRect(x, y, cw, chh);
+    const hl = ctx.createLinearGradient(0, y, 0, y + chh * 0.5); hl.addColorStop(0, 'rgba(255,255,255,.3)'); hl.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = hl; ctx.fillRect(x, y, cw, chh * 0.5);
+    ctx.restore();
+    ctx.beginPath(); ctx.roundRect(x, y, cw, chh, 22 * u); ctx.strokeStyle = sel ? '#fff' : 'rgba(255,255,255,.4)'; ctx.lineWidth = sel ? 3 * u : 1; ctx.stroke();
+    texte(lab.toUpperCase() + (md.type === 'multi' ? ' • EN LIGNE' : ''), x + 16 * u, y + 20 * u, 9.5 * u, 'rgba(255,255,255,.8)', 'left', cw - 60 * u);
+    titre(md.nom, x + 16 * u, y + 44 * u, 24 * u, '#fff', 'left', cw - 32 * u);
+    lignes(md.description, cw - 32 * u, 11 * u).slice(0, chh > 120 * u ? 2 : 1).forEach((l, j) => texte(l, x + 16 * u, y + 68 * u + j * 15 * u, 11 * u, 'rgba(255,255,255,.9)', 'left', cw - 32 * u));
+    let ix = x + 16 * u; const iy = y + chh - 18 * u;
+    [['amis', md.type === 'multi' ? (md.joueursMin === md.joueursMax ? md.joueursMax : md.joueursMin + '-' + md.joueursMax) : '1'], ['trophee', '+' + md.pointsVictoire],
+     md.objectif === 'zone' ? ['cible', 'Zone'] : md.objectif === 'bloc' ? ['cible', 'Cristal'] : md.boss && md.nbBoss ? ['eclair', md.nbBoss + ' boss'] : null].filter(Boolean).forEach(([ic, v]) => {
+      icone(ic, ix + 7 * u, iy, 13 * u, ic === 'trophee' ? '#ffe14a' : '#fff'); texte(String(v), ix + 18 * u, iy, 11 * u, '#fff', 'left'); ctx.font = `700 ${11 * u}px Inter, system-ui`; ix += ctx.measureText(String(v)).width + 34 * u; });
+    if (sel) { ctx.beginPath(); ctx.arc(x + cw - 20 * u, y + 20 * u, 12 * u, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); icone('check', x + cw - 20 * u, y + 20 * u, 14 * u, c2); }
+    zones.push({ x, y, w: cw, h: chh, action: () => modeIndex = i });
   });
-  if (pages > 1) { const py = H - mapH - 50 * u; bouton3D(W - 110 * u, py, 96 * u, 30 * u, '#8e7bff', '#5b3fd6', () => pageMenu = (pageMenu + 1) % pages); texte('Suite ▶ ' + (pageMenu + 1) + '/' + pages, W - 62 * u, py + 15 * u, 12 * u, '#fff'); }
-  // maps
-  const my = H - mapH - 12 * u;
-  if (m.map >= 0 && CONFIG.maps[m.map]) { texte('🗺️ Map imposée par ce mode : ' + CONFIG.maps[m.map].nom, W / 2, my + mapH / 2, 14 * u, '#fff'); return; }
-  rect(x0, my, zoneW, mapH, 14 * u, 'rgba(255,255,255,.1)');
-  texte('🗺️ MAP', x0 + 14 * u, my + 16 * u, 12 * u, '#ffd23f', 'left');
-  const tw = (mapH - 34 * u) * 1.5;
+  if (pages > 1) { // pages
+    const py = H - mapH - 22 * u - 36 * u, px = W - 20 * u - 84 * u;
+    [[-1, 'retour'], [1, 'suite']].forEach(([d, ic], k) => { verre(px + k * 46 * u, py, 38 * u, 36 * u, 18 * u); icone(ic, px + k * 46 * u + 19 * u, py + 18 * u, 18 * u);
+      zones.push({ x: px + k * 46 * u, y: py, w: 38 * u, h: 36 * u, action: () => pageMenu = (pageMenu + d + pages) % pages }); });
+    texte((pageMenu + 1) + ' / ' + pages, px - 12 * u, py + 18 * u, 12 * u, 'rgba(255,255,255,.8)', 'right');
+  }
+  const my = H - mapH - 14 * u;
+  if (m.map >= 0 && CONFIG.maps[m.map]) { verre(x0, my, zoneW, mapH, mapH / 2); icone('carte', x0 + 24 * u, my + mapH / 2, 16 * u); texte('Map imposée par ce mode : ' + CONFIG.maps[m.map].nom, x0 + 42 * u, my + mapH / 2, 13 * u, '#fff', 'left', zoneW - 60 * u); return; }
+  verre(x0, my, zoneW, mapH, 24 * u);
+  titre('Map', x0 + 18 * u, my + 20 * u, 18 * u, '#fff', 'left');
+  const th = mapH - 50 * u, tw = th * 1.5;
   CONFIG.maps.forEach((def, i) => {
-    const x = x0 + 14 * u + i * (tw + 16 * u), y = my + 28 * u; if (x + tw > x0 + zoneW) return;
-    dessinerMiniMap(def, x, y, tw, mapH - 44 * u);
-    texte(def.nom, x + tw / 2, y + mapH - 38 * u, 10 * u, '#fff');
-    if (i === mapIndex % CONFIG.maps.length) rect(x - 4, y - 4, tw + 8, mapH - 36 * u, 6, null, '#ffd23f', 3);
-    zones.push({ x, y, w: tw, h: mapH - 34 * u, action: () => mapIndex = i });
+    const x = x0 + 18 * u + i * (tw + 14 * u), y = my + 36 * u; if (x + tw > x0 + zoneW - 10 * u) return;
+    ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, tw, th, 12 * u); ctx.clip(); ctx.imageSmoothingEnabled = false; ctx.drawImage(miniMap(def), x, y, tw, th); ctx.imageSmoothingEnabled = true;
+    const gb = ctx.createLinearGradient(0, y + th * 0.5, 0, y + th); gb.addColorStop(0, 'rgba(0,0,0,0)'); gb.addColorStop(1, 'rgba(0,0,0,.65)'); ctx.fillStyle = gb; ctx.fillRect(x, y, tw, th); ctx.restore();
+    texte(def.nom, x + tw / 2, y + th - 10 * u, 10 * u, '#fff', 'center', tw - 8 * u);
+    const sel = i === mapIndex % CONFIG.maps.length; ctx.beginPath(); ctx.roundRect(x, y, tw, th, 12 * u); ctx.strokeStyle = sel ? '#fff' : 'rgba(255,255,255,.3)'; ctx.lineWidth = sel ? 3 * u : 1; ctx.stroke();
+    zones.push({ x, y, w: tw, h: th, action: () => mapIndex = i });
   });
 }
-
-// --- Classement des joueurs
 function menuClassement() {
   const u = U(), top = barreHaut('CLASSEMENT', true);
   if (db && temps - classementT > 900) { // rafraîchi toutes les ~15 s
