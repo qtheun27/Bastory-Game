@@ -16,7 +16,6 @@
     <link rel="apple-touch-icon" href="images/wixy.png">
 </head>
 <body>
-    <div id="tourne"><span>📱</span>Tourne ton téléphone<br>en mode paysage</div>
     <!-- Écran de connexion / inscription -->
     <div id="auth">
       <form id="authForm">
@@ -38,6 +37,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
     <script src="profil.js"></script>
+    <!-- Moteur 3D (Three.js) pour les persos 3D, avec un 2e serveur en secours -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="document.write('<script src=&quot;https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js&quot;><\/script>')"></script>
+    <script src="perso3d.js"></script>
     <script>
     // Charge la config en direct depuis Firebase, puis lance le jeu
     (async () => {

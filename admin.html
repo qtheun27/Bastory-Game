@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bastory — Console Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@1,700;1,800&family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
 <style>
   /* 🎨 Style "liquid glass" inspiré d'Apple */
   :root { --txt:#f5f7ff; --doux:rgba(255,255,255,.62); --verre:rgba(255,255,255,.1); --verre2:rgba(255,255,255,.16); --bord:rgba(255,255,255,.22);
@@ -48,6 +49,22 @@
   #login form { background:var(--verre2); border:1px solid var(--bord); border-radius:26px; padding:30px; width:min(360px,90vw); display:flex; flex-direction:column; gap:12px; box-shadow:0 30px 80px rgba(0,0,0,.45); }
   #login h2 { margin:0 0 6px; text-align:center; font-weight:700; letter-spacing:-.4px; } #login input, #login button { padding:13px; font-size:16px; }
   #loginErr { color:#ff9f95; font-size:13px; min-height:16px; text-align:center; }
+
+  /* ✨ Harmonisation avec le jeu : titres condensés, pastilles colorées, arrondis généreux, pas de débordement */
+  :root { font-family: Inter, -apple-system, "SF Pro Text", system-ui, sans-serif; --r: 26px; }
+  header h1, .carte h3, nav button, #login h2 { font-family: "Barlow Condensed", Inter, sans-serif; font-style: italic; font-weight: 800; text-transform: uppercase; letter-spacing: .3px; }
+  header h1 { font-size: 26px; background: linear-gradient(90deg, #5ac8fa, #b57bff, #ff7ab6); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  nav button { font-size: 17px; padding: 9px 18px; }
+  nav button.on { background: linear-gradient(135deg, #5ac8fa, #8b5cf6); color: #fff; box-shadow: 0 8px 22px rgba(139,92,246,.45); }
+  button { background: linear-gradient(135deg, #3a9bff, #8b5cf6); box-shadow: 0 8px 22px rgba(99,102,241,.4), inset 0 1px 0 rgba(255,255,255,.45); }
+  button.danger { background: linear-gradient(135deg, #ff7a6b, #ff2d55); }
+  .carte { border-radius: var(--r); background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,.06)); }
+  .carte h3 { font-size: 22px; gap: 10px; } .carte h3 { overflow-wrap: anywhere; }
+  .form label { grid-template-columns: minmax(110px, 42%) minmax(0, 1fr) auto; overflow-wrap: anywhere; }
+  input, select { min-width: 0; border-radius: 14px; text-overflow: ellipsis; }
+  .boite3d { display: flex; flex-direction: column; align-items: center; margin: -4px 0 8px; padding: 10px; border-radius: 22px;
+             background: radial-gradient(circle at 50% 40%, rgba(90,200,250,.35), rgba(139,92,246,.15) 60%, transparent 75%); }
+  .boite3d span { font-size: 12px; color: var(--doux); margin-top: 2px; } .apercu3d { width: 180px; height: 180px; }
 </style>
 </head>
 <body>
@@ -76,6 +93,8 @@
 <script src="config.js"></script>
 <script src="firebase-config.js"></script>
 <script src="profil.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="document.write('<script src=&quot;https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js&quot;><\/script>')"></script>
+<script src="perso3d.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -103,12 +122,19 @@ const CH = {
           ['tempsZone','Zone : temps à tenir (s)','number'],['pvCristal','Cristal : points de vie','number'],['degatsCristal','Cristal : dégâts de ses tirs','number'],
           ['porteeCristal','Cristal : portée de tir','number'],['cadenceCristal','Cristal : délai entre tirs (60 = 1 s)','number'],
           ['botsObjets','Les bots ramassent les objets rares','check'],
+          ['niveauBoss','Niveau des boss (1 = normal, 2 = 2× plus forts)','number'],['niveauBots','Niveau de base des bots (1 = normal)','number'],
+          ['botsAdaptatifs','Bots adaptés aux points des joueurs','check'],
           ['bots','Compléter avec des bots 🤖','check'],['attenteBots','Attente avant les bots (s)','number'],
           ['boss','Boss activés','check'],['nbBoss','Nombre de boss (max 10)','number'],
           ['typesBoss','Types de boss (aucun coché = au hasard)','multi',() => Object.entries(cfg.bosses).map(([k, b]) => [k, b.nom])],['map','Map','select',optMaps]],
   perso: [['nom','Nom','text'],['image','Image jeu (vue du dessus)','image'],['imageCarte','Image carte (menu, fin)','image'],['couleur','Couleur','color'],['pvMax','Points de vie','number'],
           ['vitesse','Vitesse (2-8)','number'],['arme','Arme','select',optArmes],['degats','Dégâts','number'],['portee','Portée (px)','number'],['delaiTir','Cadence : délai entre 2 tirs (60 = 1 s)','number'],
-          ['munitions','Nombre de munitions','number'],['recharge','Recharge d\'1 munition (60 = 1 s)','number']],
+          ['munitions','Nombre de munitions','number'],['recharge','Recharge d\'1 munition (60 = 1 s)','number'],
+          ['mode3D','🧍 Perso en 3D','check'],['t3Skin','3D : image du skin (couleurs)','image'],['t3Taille','3D : taille globale (1 = normal)','number'],
+          ['t3Tete','3D : taille de la tête','number'],['t3CorpsL','3D : largeur du corps','number'],['t3CorpsH','3D : hauteur du corps','number'],
+          ['t3BrasL','3D : longueur des bras','number'],['t3BrasE','3D : épaisseur des bras','number'],['t3JambesL','3D : longueur des jambes','number'],['t3JambesE','3D : épaisseur des jambes','number'],
+          ['t3Oreilles','3D : oreilles','select',[['aucune','Aucune'],['pointues','Pointues'],['rondes','Rondes'],['cornes','Cornes']]],['t3Queue','3D : queue','check'],
+          ['t3Couleur1','3D : couleur principale (#hex, vide = auto)','text'],['t3Couleur2','3D : couleur secondaire (vide = auto)','text'],['t3Couleur3','3D : couleur des mains/pieds (vide = auto)','text']],
   arme:  [['nom','Nom','text'],['image','Image (vide = boule)','image'],
           ['type','Trajectoire','select',[['lob','Lancer en cloche (passe les murs)'],['retour','Aller-retour'],['droit','Tir droit'],['terrain','🌋 Terrain (fait sortir des cases du sol)']]],
           ['effet','Animation d\'impact','select',[['explosion','💥 Explosion'],['entaille','⚔️ Entaille'],['etincelle','✨ Étincelles'],['impact','🔨 Onde de choc'],
@@ -213,6 +239,19 @@ async function reduireImage(file) {
   const gomme = fondUni(c); if (gomme) gommer(c);
   return { data: versDataURL(c), gomme };
 }
+// 🧍 Aperçu 3D tournant (mis à jour quand on change un réglage)
+async function resoudreImg(src) { if (!src || !src.startsWith('fb:')) return src; const im = new Image(); await afficherImage(im, src); return im.src; }
+function apercu3D(p, form) {
+  if (typeof Perso3D === 'undefined' || !Perso3D.dispo()) return form;
+  const c = el('canvas', { width: 180, height: 180, className: 'apercu3d' }), boite = el('div', { className: 'boite3d' }, c, el('span', { textContent: 'Aperçu 3D' }));
+  let minuterie = 0;
+  const maj = async () => { if (!p.mode3D) { boite.style.display = 'none'; return; } boite.style.display = '';
+    Perso3D.apercu(p, (cfg.armes[p.arme] || {}).couleur, c, await resoudreImg(p.t3Skin || p.imageCarte || p.image)); };
+  form.addEventListener('input', () => { clearTimeout(minuterie); minuterie = setTimeout(maj, 450); });
+  form.addEventListener('change', () => { clearTimeout(minuterie); minuterie = setTimeout(maj, 450); });
+  setTimeout(maj, 300);
+  return el('div', {}, boite, form);
+}
 function carte(titre, contenu, onSuppr) {
   const h = el('h3', { textContent: titre });
   if (onSuppr) h.append(el('button', { className: 'danger', textContent: '🗑', onclick: onSuppr }));
@@ -223,11 +262,11 @@ function carte(titre, contenu, onSuppr) {
 const VUES = {
   persos(z) {
     const g = el('div', { className: 'grille-cartes' });
-    cfg.persos.forEach((p, i) => g.append(carte(p.nom, formulaire(p, CH.perso), () => {
+    cfg.persos.forEach((p, i) => g.append(carte(p.nom, apercu3D(p, formulaire(p, CH.perso)), () => {
       if (cfg.persos.length > 1 && confirm('Supprimer ' + p.nom + ' ?')) { cfg.persos.splice(i, 1); modifie(); afficher(); }
     })));
     z.append(el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouveau perso', onclick: () => {
-      cfg.persos.push({ nom: 'NOUVEAU', image: '', imageCarte: '', munitions: 3, recharge: 60, couleur: '#e67e22', pvMax: 5000, vitesse: 5, arme: Object.keys(cfg.armes)[0], degats: 1000, portee: 350, delaiTir: 30 });
+      cfg.persos.push({ nom: 'NOUVEAU', image: '', imageCarte: '', munitions: 3, recharge: 60, mode3D: true, couleur: '#e67e22', pvMax: 5000, vitesse: 5, arme: Object.keys(cfg.armes)[0], degats: 1000, portee: 350, delaiTir: 30 });
       modifie(); afficher();
     } })), g);
   },

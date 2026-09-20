@@ -12,14 +12,10 @@ canvas { display: block; }
 #auth input { padding: 13px 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.25); color: #fff; font-size: 16px; outline: none; user-select: text; -webkit-user-select: text; }
 #auth input::placeholder { color: rgba(255,255,255,.5); }
 #auth button { padding: 13px; border-radius: 999px; border: 1px solid rgba(255,255,255,.3); font-weight: 700; font-size: 16px; color: #fff; cursor: pointer;
-  background: linear-gradient(180deg, #3a9bff, #0a6cff); box-shadow: 0 8px 22px rgba(10,132,255,.4), inset 0 1px 0 rgba(255,255,255,.45); }
+  background: linear-gradient(135deg, #3a9bff, #8b5cf6); box-shadow: 0 8px 22px rgba(99,102,241,.45), inset 0 1px 0 rgba(255,255,255,.45); }
 #auth button.sec { background: rgba(255,255,255,.16); box-shadow: inset 0 1px 0 rgba(255,255,255,.25); }
 #auth button.google { background: rgba(255,255,255,.92); color: #111; }
 #authErr { color: #ff9f95; font-size: 14px; min-height: 18px; text-align: center; }
 
-/* 📱 Mobile : jeu en paysage uniquement */
-#tourne { display: none; position: fixed; inset: 0; z-index: 100; color: #fff; font-weight: 700; font-size: 22px; text-align: center;
-  align-items: center; justify-content: center; flex-direction: column; gap: 18px; padding: 30px; background: linear-gradient(135deg, #0a0f24, #2a1b5a); }
-#tourne span { font-size: 64px; animation: tourne 1.6s ease-in-out infinite; }
-@keyframes tourne { 50% { transform: rotate(90deg); } }
-@media (orientation: portrait) and (pointer: coarse) { #tourne { display: flex; } }
+/* 📱 Mobile : l'appli reste en paysage — si le téléphone est en portrait, tout pivote (sans message) */
+html.tourne body { position: fixed; top: 0; left: 0; transform-origin: top left; transform: rotate(90deg) translateY(-100%); }

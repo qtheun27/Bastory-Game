@@ -28,10 +28,10 @@ function img(src) {
   }
   return cacheImg[src];
 }
-const pret = i => i && i.complete && i.naturalWidth > 0;
+const pret = i => i && ((i.complete && i.naturalWidth > 0) || (i.getContext && i.width > 0)); // image ou canvas prêt
 function blanc(i) { // silhouette blanche pour le flash quand on est touché
   if (!cacheBlanc.has(i)) {
-    const c = document.createElement('canvas'); c.width = i.naturalWidth; c.height = i.naturalHeight;
+    const c = document.createElement('canvas'); c.width = i.naturalWidth || i.width; c.height = i.naturalHeight || i.height;
     const x = c.getContext('2d'); x.drawImage(i, 0, 0);
     x.globalCompositeOperation = 'source-atop'; x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
     cacheBlanc.set(i, c);
@@ -47,9 +47,13 @@ const canvas = document.createElement('canvas');
 document.body.appendChild(canvas);
 const ctx = canvas.getContext('2d');
 let W = 0, H = 0, dpr = 1, zoom = 1;
+let tourne = false; // téléphone tenu en portrait → on fait pivoter l'appli pour rester en paysage
 function redim() {
   dpr = Math.min(2, window.devicePixelRatio || 1);
-  W = innerWidth; H = innerHeight;
+  tourne = matchMedia('(pointer: coarse)').matches && innerHeight > innerWidth;
+  document.documentElement.classList.toggle('tourne', tourne);
+  document.body.style.width = tourne ? innerHeight + 'px' : ''; document.body.style.height = tourne ? innerWidth + 'px' : '';
+  W = tourne ? innerHeight : innerWidth; H = tourne ? innerWidth : innerHeight;
   canvas.width = W * dpr; canvas.height = H * dpr;
   canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
   zoom = Math.max(0.55, Math.min(1.3, Math.min(W, H * 1.7) / (TUILE * 15)));
@@ -57,11 +61,13 @@ function redim() {
 addEventListener('resize', redim); redim();
 let ox = 0, oy = 0; const sa = { l: 0, r: 0, t: 0, b: 0 };     // décalage de l'interface (encoche / zone sûre)
 const ecran = () => ctx.setTransform(dpr, 0, 0, dpr, ox * dpr, oy * dpr);
+const pt = ev => tourne ? { x: ev.clientY, y: innerWidth - ev.clientX } : { x: ev.clientX, y: ev.clientY }; // coordonnées écran → jeu
 function lireZoneSure() {
   const d = document.createElement('div');
   d.style.cssText = 'position:fixed;visibility:hidden;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
   document.body.append(d); const c = getComputedStyle(d);
-  Object.assign(sa, { t: parseFloat(c.paddingTop) || 0, r: parseFloat(c.paddingRight) || 0, b: parseFloat(c.paddingBottom) || 0, l: parseFloat(c.paddingLeft) || 0 });
+  const z = { t: parseFloat(c.paddingTop) || 0, r: parseFloat(c.paddingRight) || 0, b: parseFloat(c.paddingBottom) || 0, l: parseFloat(c.paddingLeft) || 0 };
+  Object.assign(sa, tourne ? { l: z.t, t: z.r, r: z.b, b: z.l } : z);
   d.remove();
 }
 lireZoneSure(); addEventListener('resize', lireZoneSure);
@@ -86,7 +92,16 @@ const modes = () => { const m = CONFIG.modes.filter(m => m.actif !== false); ret
 const modeChoisi = () => modes()[modeIndex % modes().length];
 const mapChoisie = m => (m.map >= 0 && CONFIG.maps[m.map]) ? +m.map : mapIndex % CONFIG.maps.length;
 const joueurs = () => [moi, ...Object.values(autres)].filter(j => j && !j.parti);
-const carteDe = p => img(p.imageCarte || p.image);   // image "carte" (menu, fin) sinon image du jeu
+const sprites3D = new Map(); // perso → planche de sprites 3D
+const carteDe = p => p.imageCarte ? img(p.imageCarte) : (sprites3D.get(p) ? sprites3D.get(p).face : img(p.image)); // image "carte" (menu, fin)
+function attendreImage(i) { return new Promise(ok => { if (!i) return ok(null); if (pret(i)) return ok(i.src); i.addEventListener('load', () => ok(i.src)); i.addEventListener('error', () => ok(null)); setTimeout(() => ok(i.src || null), 6000); }); }
+async function preparer3D() { // génère les persos 3D (une seule fois au chargement)
+  if (typeof Perso3D === 'undefined' || !Perso3D.dispo()) return;
+  for (const p of CONFIG.persos) if (p.mode3D) {
+    try { const src = await attendreImage(img(p.t3Skin || p.imageCarte || p.image)); sprites3D.set(p, await Perso3D.generer(p, (CONFIG.armes[p.arme] || {}).couleur, src)); }
+    catch (e) { console.warn('Perso 3D indisponible', p.nom, e); }
+  }
+}
 CONFIG.persos.forEach(p => img(p.imageCarte));
 Object.values(CONFIG.bosses).forEach(b => img(b.imageCarte));
 
@@ -162,7 +177,7 @@ function creerBoss(id, x, y, i) {
   const ids = Object.keys(CONFIG.bosses);
   if (id !== 'bloc' && !CONFIG.bosses[id]) id = ids[Math.floor(Math.random() * ids.length)]; // 'aleatoire' ou inconnu
   const d = id === 'bloc' ? { nom: 'CRISTAL', cristal: true, image: '', pvMax: +mode.pvCristal || 20000, taille: 40, vitesse: 0, degats: 0, delaiAttaque: 9999, rayonAttaque: 0,
-    arme: CONFIG.armes.eclair ? 'eclair' : Object.keys(CONFIG.armes)[0], porteeTir: +mode.porteeCristal || 350, degatsTir: +mode.degatsCristal || 800, cadenceTir: +mode.cadenceCristal || 60 } : CONFIG.bosses[id];
+    arme: CONFIG.armes.eclair ? 'eclair' : Object.keys(CONFIG.armes)[0], porteeTir: +mode.porteeCristal || 350, degatsTir: +mode.degatsCristal || 800, cadenceTir: +mode.cadenceCristal || 60 } : (b => { const n = +mode.niveauBoss || 1; return { ...b, pvMax: Math.round(b.pvMax * n), degats: Math.round(b.degats * n), degatsTir: Math.round((+b.degatsTir || b.degats / 2) * n), vitesse: b.vitesse * (0.85 + 0.15 * n) }; })(CONFIG.bosses[id]); // niveau du boss
   return { i, id, def: d, x, y, tx: x, ty: y, r: d.taille || 48, pv: d.pvMax, pvMax: d.pvMax, angle: Math.PI, recharge: 60,
            flash: 0, marche: 0, kx: 0, ky: 0, charge: 0, chargeMax: 1, rage: false, cx: x, cy: y, fx: x, fy: y,
            uid: 'boss' + i, eq: -1, tir: 60, arme: CONFIG.armes[d.arme] || null, perso: { portee: +d.porteeTir || 400, degats: +d.degatsTir || Math.round(d.degats / 2) } };
@@ -180,7 +195,7 @@ function demarrer(mapIdx, liste) {
     const eq = d.eq !== undefined && d.eq !== null ? d.eq : mode.equipes === 'deux' ? k % 2 : mode.equipes === 'coop' ? 0 : k;
     const j = creerJoueur(d.p, sp.x, sp.y, d.uid, d.nom, eq);
     places.push(j);
-    if (d.bot) j.bot = true;
+    if (d.bot) { j.bot = true; j.niv = d.niv || 1; j.pvMax = j.pv = Math.round(j.pvMax * (0.8 + 0.2 * j.niv)); }
     if (d.uid === user.uid) moi = j; else autres[d.uid] = j;
   });
   hote = liste[0].uid === user.uid;
@@ -269,7 +284,7 @@ async function chercherPartie(opts = {}) {
   if (s.hote) { rtdb.ref(cle).onDisconnect().remove(); s.ref.onDisconnect().remove(); await s.ref.child('info').set({ map: mapChoisie(mode) }); }
   const moiRef = s.ref.child('joueurs/' + user.uid);
   moiRef.onDisconnect().remove();
-  await moiRef.set({ nom: nomJoueur(), p: persoIndex, g: groupe.chef || null, t: firebase.database.ServerValue.TIMESTAMP });
+  await moiRef.set({ nom: nomJoueur(), p: persoIndex, g: groupe.chef || null, pp: ((mesStats.persos || {})[cleP(CONFIG.persos[persoIndex] || {})] || {}).points || 0, t: firebase.database.ServerValue.TIMESTAMP });
   s.ref.child('joueurs').on('value', snap => {
     if (salle !== s) return;
     s.js = snap.val() || {};
@@ -295,8 +310,10 @@ function lancerSalle(avecBots) {
   const liste = Object.entries(s.js).sort((a, b) => (a[1].t || 0) - (b[1].t || 0)).map(([uid, d]) => ({ uid, nom: d.nom, p: d.p, g: d.g || null }));
   if (avecBots) { // 🤖 complète avec des bots (nombre pair en équipes)
     let k = 1;
+    const humains = Object.values(s.js), moy = humains.reduce((t, d) => t + (+d.pp || 0), 0) / Math.max(1, humains.length);
+    const niv = +((+mode.niveauBots || 1) * (mode.botsAdaptatifs !== false ? Math.max(0.7, Math.min(2.2, 0.7 + moy / 400)) : 1)).toFixed(2); // 🤖 niveau selon les points des joueurs
     while (liste.length < s.min || (mode.equipes === 'deux' && liste.length % 2 && liste.length < s.max))
-      liste.push({ uid: 'bot' + k, nom: '🤖 Bot ' + k++, p: Math.floor(Math.random() * CONFIG.persos.length), bot: true });
+      liste.push({ uid: 'bot' + k, nom: '🤖 Bot ' + k++, p: Math.floor(Math.random() * CONFIG.persos.length), bot: true, niv });
   }
   const grp = {}; liste.forEach(j => (grp[j.g || j.uid] = grp[j.g || j.uid] || []).push(j)); // 👥 amis = même équipe
   if (mode.equipes === 'deux') { const n = [0, 0]; Object.values(grp).sort((a, b) => b.length - a.length).forEach(gr => { const t = n[0] <= n[1] ? 0 : 1; gr.forEach(j => j.eq = t); n[t] += gr.length; }); }
@@ -381,14 +398,14 @@ function vec(j) { const dx = j.x - j.ox, dy = j.y - j.oy, d = Math.hypot(dx, dy)
 canvas.addEventListener('touchstart', e => {
   e.preventDefault(); pleinEcran();
   for (const t of e.changedTouches) {
-    if (etat !== 'JEU' || moi.pv <= 0) { clic(t.clientX, t.clientY); continue; }
-    const j = t.clientX < W / 2 ? joyG : joyD;
-    if (!j.actif) Object.assign(j, { actif: true, id: t.identifier, ox: t.clientX, oy: t.clientY, x: t.clientX, y: t.clientY });
+    if (etat !== 'JEU' || moi.pv <= 0) { clic(pt(t).x, pt(t).y); continue; }
+    const q = pt(t), j = q.x < W / 2 ? joyG : joyD;
+    if (!j.actif) Object.assign(j, { actif: true, id: t.identifier, ox: q.x, oy: q.y, x: q.x, y: q.y });
   }
 }, { passive: false });
 canvas.addEventListener('touchmove', e => {
   e.preventDefault();
-  for (const t of e.changedTouches) for (const j of [joyG, joyD]) if (j.actif && j.id === t.identifier) { j.x = t.clientX; j.y = t.clientY; }
+  for (const t of e.changedTouches) for (const j of [joyG, joyD]) if (j.actif && j.id === t.identifier) { const q = pt(t); j.x = q.x; j.y = q.y; }
 }, { passive: false });
 function finTouche(e) {
   for (const t of e.changedTouches) {
@@ -402,8 +419,8 @@ function finTouche(e) {
 canvas.addEventListener('touchend', finTouche);
 canvas.addEventListener('touchcancel', finTouche);
 canvas.addEventListener('mousedown', e => {
-  if (etat !== 'JEU' || moi.pv <= 0) return clic(e.clientX, e.clientY);
-  const m = versMonde(e.clientX, e.clientY), d = Math.hypot(m.x - moi.x, m.y - moi.y);
+  if (etat !== 'JEU' || moi.pv <= 0) return clic(pt(e).x, pt(e).y);
+  const m = versMonde(pt(e).x, pt(e).y), d = Math.hypot(m.x - moi.x, m.y - moi.y);
   tirer(Math.atan2(m.y - moi.y, m.x - moi.x), Math.min(1, d / moi.perso.portee));
 });
 function clic(x, y) {
@@ -554,17 +571,17 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     const d = Math.hypot(e.x - j.x, e.y - j.y);
     if ((!e.cache || d < 170) && d < dm) { dm = d; c = e; }
   }
-  const v = j.perso.vitesse * 0.85 * bonus(j, 'vitesse');
+  const v = j.perso.vitesse * (0.7 + 0.15 * (j.niv || 1)) * bonus(j, 'vitesse');
   if (j.objet) { const a = Math.atan2(j.objet.y - j.y, j.objet.x - j.x); deplacer(j, Math.cos(a) * v, Math.sin(a) * v); j.marche += v; tourner(j, a, 0.15); if (!c || dm > 250) return; }
   if (c) {
     const a = Math.atan2(c.y - j.y, c.x - j.x), ideal = j.perso.portee * 0.7, cote = Math.sin(temps / 50 + j.x * 0.01) > 0 ? 1 : -1;
     const av = dm > ideal ? 1 : dm < ideal * 0.5 ? -1 : 0;
     deplacer(j, (Math.cos(a) * av - Math.sin(a) * cote * 0.6) * v, (Math.sin(a) * av + Math.cos(a) * cote * 0.6) * v);
     j.marche += v; tourner(j, a, 0.2);
-    if (dm < j.perso.portee && j.recharge <= 0 && j.mun >= 1 && Math.random() < 0.08) {
-      const ang = a + (Math.random() - 0.5) * 0.25, f = Math.min(1, dm / j.perso.portee);
+    if (dm < j.perso.portee && j.recharge <= 0 && j.mun >= 1 && Math.random() < 0.05 * (j.niv || 1)) {
+      const ang = a + (Math.random() - 0.5) * 0.35 / (j.niv || 1), f = Math.min(1, dm / j.perso.portee);
       j.mun -= 1; j.recharge = j.perso.delaiTir;
-      const dg = Math.round(j.perso.degats * bonus(j, 'degats'));
+      const dg = Math.round(j.perso.degats * bonus(j, 'degats') * (0.8 + 0.2 * (j.niv || 1)));
       creerProjectile(j, ang, f, j.x, j.y, dg);
       envoyer({ t: 'tir', de: j.uid, a: +ang.toFixed(3), f: +f.toFixed(2), x: Math.round(j.x), y: Math.round(j.y), d: dg });
     }
@@ -835,8 +852,9 @@ function effet(type, x, y, couleur = '#fff', rayon = 60, angle = 0) {
 }
 
 // ---------- 12b. DESSIN : outils ----------
-function texte(t, x, y, taille, couleur, align = 'center') { // typographie moderne (Inter) avec ombre douce
+function texte(t, x, y, taille, couleur, align = 'center', maxW) { // typographie moderne (Inter) avec ombre douce ; maxW = rétrécit si trop long
   ctx.font = `700 ${taille}px Inter, -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif`;
+  if (maxW && ctx.measureText(t).width > maxW) { taille = Math.max(7, taille * maxW / ctx.measureText(t).width); ctx.font = `700 ${taille}px Inter, -apple-system, system-ui, sans-serif`; }
   ctx.textAlign = align; ctx.textBaseline = 'middle';
   ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = Math.max(2, taille / 4); ctx.shadowOffsetY = 1;
   ctx.fillStyle = couleur; ctx.fillText(t, x, y);
@@ -851,7 +869,21 @@ function ellipse(x, y, rx, ry, fill) { ctx.beginPath(); ctx.ellipse(x, y, Math.m
 
 
 function mur(px, py) { ctx.drawImage(spriteBloc(map.def, false), px - 2, py - HAUT_MUR - 2); }
+function dessiner3D(e, sp, anneau, taille) { // perso 3D : on choisit la vignette selon la direction et la pose de marche
+  ombreDouce(e.x, e.y + e.r * 0.45, e.r * 1.15, e.r * 0.62);
+  ctx.strokeStyle = anneau; ctx.lineWidth = 3; ctx.globalAlpha = 0.8; ctx.beginPath(); ctx.ellipse(e.x, e.y + e.r * 0.45, e.r * 1.05, e.r * 0.6, 0, 0, 7); ctx.stroke();
+  const a = ((e.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2), d = Math.round(a / (Math.PI * 2) * sp.DIRS) % sp.DIRS;
+  if (e.marche !== e.mPrec) { e.mPrec = e.marche; e.mT = temps; }
+  const po = temps - (e.mT || -99) < 10 ? Math.floor((e.marche || 0) * 0.09) % sp.POSES : 0;
+  const k = (taille * 1.45) / (sp.bas - sp.haut), s = sp.S * k, x = e.x - s / 2, y = e.y + e.r * 0.5 - sp.bas * k; // pieds posés sur l'anneau
+  ctx.globalAlpha = e.cache ? 0.5 : 1;
+  ctx.drawImage(sp.planche, d * sp.S, po * sp.S, sp.S, sp.S, x, y, s, s);
+  if (e.flash > 0) { ctx.globalAlpha = (e.flash / 8) * 0.9; ctx.drawImage(blanc(sp.planche), d * sp.S, po * sp.S, sp.S, sp.S, x, y, s, s); }
+  ctx.globalAlpha = 1;
+}
 function dessinerEntite(e, im, anneau, taille) {
+  const sp3 = e.perso && sprites3D.get(e.perso);
+  if (sp3) return dessiner3D(e, sp3, anneau, taille);
   if (e.rage) ellipse(e.x, e.y + e.r * 0.45, e.r * 1.5, e.r * 0.9, `rgba(255,0,0,${0.15 + 0.1 * Math.sin(temps * 0.2)})`);
   ombreDouce(e.x, e.y + e.r * 0.45, e.r * 1.15, e.r * 0.62);
   ctx.strokeStyle = anneau; ctx.lineWidth = 3; ctx.globalAlpha = 0.8; ctx.stroke(); ctx.globalAlpha = 1;
@@ -1137,7 +1169,7 @@ function fond() { // fond sombre premium : dégradé profond, halos de couleur q
   const t = temps * 0.003, R = Math.max(W, H) * 0.6;
   [['#2563eb', 0.15, 0.2, 1], ['#7c3aed', 0.85, 0.15, 1.3], ['#db2777', 0.7, 0.9, 0.8]].forEach(([c, x, y, v], i) => {
     const cx = W * (x + Math.sin(t * v + i) * 0.08), cy = H * (y + Math.cos(t * v + i * 2) * 0.08), r = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
-    r.addColorStop(0, c + '55'); r.addColorStop(1, c + '00'); ctx.fillStyle = r; ctx.fillRect(-100, -100, W + 200, H + 200);
+    r.addColorStop(0, c + '77'); r.addColorStop(1, c + '00'); ctx.fillStyle = r; ctx.fillRect(-100, -100, W + 200, H + 200);
   });
   ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.lineWidth = 1; const hz = H * 0.62; // grille en perspective
   for (let i = -12; i <= 12; i++) { ctx.beginPath(); ctx.moveTo(W / 2 + i * 30, hz); ctx.lineTo(W / 2 + i * W * 0.18, H + 20); ctx.stroke(); }
@@ -1162,7 +1194,7 @@ function dessinerHUD() {
   ctx.beginPath(); ctx.arc(38, 38, 28, 0, 7); ctx.fillStyle = moi.perso.couleur; ctx.fill();
   ctx.lineWidth = 4; ctx.strokeStyle = '#1a1030'; ctx.stroke();
   const im = carteDe(moi.perso); if (pret(im)) ctx.drawImage(im, 14, 14, 48, 48);
-  texte(moi.nom, 74, 26, 16, '#fff', 'left');
+  texte(moi.nom, 74, 26, 16, '#fff', 'left', 150);
   texte(Math.ceil(moi.pv) + ' PV', 74, 48, 13, '#8fd3ff', 'left');
   bonusActifs(moi).forEach((id, i) => { // super pouvoirs actifs + temps restant
     const p = CONFIG.pouvoirs[id], x = 14 + i * 50;
@@ -1189,8 +1221,9 @@ function dessinerJoystick(j, c) {
 }
 // ---------- 14a. INTERFACE MODERNE : typographie, icônes vectorielles, boutons ----------
 if (document.fonts) ['italic 800 40px "Barlow Condensed"', '700 20px Inter', '600 20px Inter'].forEach(f => document.fonts.load(f).catch(() => {}));
-function titre(t, x, y, taille, couleur, align = 'center') { // titres condensés italiques (style jeux récents)
+function titre(t, x, y, taille, couleur, align = 'center', maxW) { // titres condensés italiques (style jeux récents)
   ctx.font = `italic 800 ${taille}px "Barlow Condensed", Inter, -apple-system, system-ui, sans-serif`;
+  if (maxW && ctx.measureText(String(t).toUpperCase()).width > maxW) { taille = Math.max(8, taille * maxW / ctx.measureText(String(t).toUpperCase()).width); ctx.font = `italic 800 ${taille}px "Barlow Condensed", Inter, system-ui, sans-serif`; }
   ctx.textAlign = align; ctx.textBaseline = 'middle';
   ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = taille / 5; ctx.shadowOffsetY = taille / 20;
   ctx.fillStyle = couleur; ctx.fillText(String(t).toUpperCase(), x, y);
@@ -1221,16 +1254,17 @@ function icone(nom, x, y, s, c = '#fff') { // petites icônes vectorielles (plus
   }
   ctx.stroke(); ctx.restore();
 }
-function boutonJeu(x, y, w, h, c1, c2, action, sk) { // bouton biseauté avec reflet qui balaie (style jeux récents)
-  const u = U(), k = (sk === undefined ? 14 : sk) * u, chemin = () => { ctx.beginPath(); ctx.moveTo(x + k, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w - k, y + h); ctx.lineTo(x, y + h); ctx.closePath(); };
-  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 22 * u; ctx.shadowOffsetY = 8 * u;
-  const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, c1); g.addColorStop(1, c2); chemin(); ctx.fillStyle = g; ctx.fill(); ctx.restore();
+function boutonJeu(x, y, w, h, c1, c2, action) { // bouton arrondi coloré "liquid glass" : halo, reflet vitré, liseré, balayage lumineux
+  const u = U(), r = Math.min(h / 2, 26 * u), chemin = () => { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); };
+  ctx.save(); ctx.shadowColor = (c2.startsWith('#') ? c2 + '99' : 'rgba(0,0,0,.35)'); ctx.shadowBlur = 26 * u; ctx.shadowOffsetY = 8 * u;
+  const g = ctx.createLinearGradient(x, y, x + w, y + h); g.addColorStop(0, c1); g.addColorStop(1, c2); chemin(); ctx.fillStyle = g; ctx.fill(); ctx.restore();
   ctx.save(); chemin(); ctx.clip();
-  ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(x, y, w, 2 * u);
-  ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fillRect(x, y + h - 3 * u, w, 3 * u);
+  const v = ctx.createLinearGradient(0, y, 0, y + h * 0.6); v.addColorStop(0, 'rgba(255,255,255,.42)'); v.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = v; ctx.beginPath(); ctx.roundRect(x + 2, y + 2, w - 4, h * 0.55, r); ctx.fill();
   const p = ((temps * 7) % (w * 4)) - w * 0.5, gg = ctx.createLinearGradient(x + p, 0, x + p + w * 0.35, 0);
-  gg.addColorStop(0, 'rgba(255,255,255,0)'); gg.addColorStop(0.5, 'rgba(255,255,255,.28)'); gg.addColorStop(1, 'rgba(255,255,255,0)');
+  gg.addColorStop(0, 'rgba(255,255,255,0)'); gg.addColorStop(0.5, 'rgba(255,255,255,.25)'); gg.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = gg; ctx.fillRect(x, y, w, h); ctx.restore();
+  chemin(); ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1.2; ctx.stroke();
   if (action) zones.push({ x, y, w, h, action });
 }
 function avatarLettre(nom, x, y, r) { // pastille ronde avec l'initiale (couleur selon le pseudo)
@@ -1299,7 +1333,7 @@ function modaleInvitation() {
   verre(x, y, w, h, 26 * u, 'rgba(40,48,90,.9)');
   avatarLettre(inv.nom, x + w / 2, y + 40 * u, 24 * u);
   titre('Invitation', x + w / 2, y + 84 * u, 28 * u, '#fff');
-  texte(inv.nom + " t'invite à jouer dans son équipe", x + w / 2, y + 112 * u, 14 * u, 'rgba(255,255,255,.8)');
+  texte(inv.nom + " t'invite à jouer dans son équipe", x + w / 2, y + 112 * u, 14 * u, 'rgba(255,255,255,.8)', 'center', w - 40 * u);
   const bw = (w - 60 * u) / 2, by = y + h - 62 * u;
   bouton3D(x + 20 * u, by, bw, 44 * u, '#4a5078', '#30355a', () => refuser(inv)); texte('Refuser', x + 20 * u + bw / 2, by + 22 * u, 15 * u, '#fff');
   bouton3D(x + 40 * u + bw, by, bw, 44 * u, '#34d399', '#059669', () => accepter(inv)); texte('Accepter', x + 40 * u + bw * 1.5, by + 22 * u, 15 * u, '#fff');
@@ -1312,7 +1346,7 @@ function menuAmis() {
   const l = [{ nom: chefMoi ? nomJoueur() : groupe.nomChef, tag: 'CHEF' }, ...Object.entries(groupe.membres).map(([uid, m]) => ({ nom: m.nom, tag: uid === user.uid ? 'TOI' : '' }))];
   l.forEach((m, i) => {
     const y = y0 + 56 * u + i * 50 * u; if (y > y0 + h - 110 * u) return;
-    avatarLettre(m.nom, x0 + 38 * u, y + 18 * u, 17 * u); texte(m.nom, x0 + 64 * u, y + 18 * u, 15 * u, '#fff', 'left');
+    avatarLettre(m.nom, x0 + 38 * u, y + 18 * u, 17 * u); texte(m.nom, x0 + 64 * u, y + 18 * u, 15 * u, '#fff', 'left', gw - 140 * u);
     if (m.tag) { rect(x0 + gw - 64 * u, y + 8 * u, 46 * u, 20 * u, 10 * u, m.tag === 'CHEF' ? 'rgba(255,212,0,.25)' : 'rgba(90,200,250,.25)'); texte(m.tag, x0 + gw - 41 * u, y + 18 * u, 10 * u, '#fff'); }
   });
   texte('Le chef lance la partie : tout le groupe', x0 + gw / 2, y0 + h - 92 * u, 11 * u, 'rgba(255,255,255,.6)');
@@ -1325,7 +1359,7 @@ function menuAmis() {
   const rh = 56 * u, nb = Math.max(1, Math.floor((h - 46 * u) / (rh + 8 * u)));
   dispo.slice(0, nb).forEach((j, i) => {
     const y = y0 + 44 * u + i * (rh + 8 * u); verre(lx, y, lw, rh, 16 * u);
-    avatarLettre(j.nom, lx + 32 * u, y + rh / 2, 18 * u); texte(j.nom, lx + 60 * u, y + rh / 2, 15 * u, '#fff', 'left');
+    avatarLettre(j.nom, lx + 32 * u, y + rh / 2, 18 * u); texte(j.nom, lx + 60 * u, y + rh / 2, 15 * u, '#fff', 'left', lw - 230 * u);
     const bw = 130 * u, bx = lx + lw - bw - 12 * u;
     if (groupe.membres[j.uid] || groupe.chef === j.uid) { icone('check', bx + 20 * u, y + rh / 2, 18 * u, '#34d399'); texte('Dans ton groupe', bx + 34 * u, y + rh / 2, 12 * u, '#34d399', 'left'); }
     else if (invitesEnvoyees[j.uid] && temps - invitesEnvoyees[j.uid] < 1800) texte('Invitation envoyée…', bx + bw, y + rh / 2, 12 * u, 'rgba(255,255,255,.6)', 'right');
@@ -1391,7 +1425,7 @@ function barreHaut(titreEcran, retour) {
     verre(12 * u, 9 * u, 230 * u, 42 * u, 21 * u);
     ctx.beginPath(); ctx.arc(33 * u, 30 * u, 17 * u, 0, 7); ctx.fillStyle = p.couleur; ctx.fill();
     if (pret(im)) ctx.drawImage(im, 17 * u, 14 * u, 32 * u, 32 * u);
-    texte(nomJoueur(), 58 * u, 23 * u, 14 * u, '#fff', 'left');
+    texte(nomJoueur(), 58 * u, 23 * u, 14 * u, '#fff', 'left', 175 * u);
     texte(mesStats.victoires + ' victoires • ' + mesStats.parties + ' parties', 58 * u, 39 * u, 10 * u, 'rgba(255,255,255,.65)', 'left');
     zones.push({ x: 12 * u, y: 9 * u, w: 230 * u, h: 42 * u, action: () => ouvrirProfil(auth, p => db && db.collection('joueurs').doc(user.uid).set({ pseudo: p }, { merge: true })) });
   }
@@ -1432,12 +1466,11 @@ function menuAccueil() {
   const u = U(), p = selPerso(), a = CONFIG.armes[p.arme] || {}, m = modeChoisi(), [, c1, c2, lab] = modesStyle(m), multi = m.type === 'multi';
   const top = barreHaut();
   // navigation à gauche
-  const nav = [['perso', 'Persos', 'persos'], ['amis', 'Amis', 'amis'], ['classement', 'Classement', 'classement'], ['eclair', 'Pouvoirs', 'pouvoirs']];
-  nav.forEach(([ic, t, e], k) => {
+  const nav = [['perso', 'Persos', 'persos', '#5ac8fa', '#2f6bff'], ['amis', 'Amis', 'amis', '#4ade80', '#059669'], ['classement', 'Classement', 'classement', '#ffc24b', '#ff7a00'], ['eclair', 'Pouvoirs', 'pouvoirs', '#ff7ac0', '#b43cff']];
+  nav.forEach(([ic, t, e, a1, a2], k) => {
     const y = top + 18 * u + k * 58 * u, w = 158 * u;
-    boutonJeu(14 * u, y, w, 46 * u, 'rgba(255,255,255,.14)', 'rgba(255,255,255,.05)', () => allerA(e), 10);
-    rect(14 * u + 10 * u, y + 10 * u, 3 * u, 26 * u, 2, k === 1 && (invitations.length || Object.keys(groupe.membres).length) ? '#34d399' : '#5ac8fa');
-    icone(ic, 46 * u, y + 23 * u, 20 * u); titre(t, 66 * u, y + 24 * u, 20 * u, '#fff', 'left');
+    boutonJeu(14 * u, y, w, 46 * u, a1, a2, () => allerA(e));
+    icone(ic, 40 * u, y + 23 * u, 20 * u); titre(t, 58 * u, y + 24 * u, 20 * u, '#fff', 'left', w - 80 * u);
     if (k === 1 && Object.keys(groupe.membres).length) { ctx.beginPath(); ctx.arc(14 * u + w - 22 * u, y + 23 * u, 10 * u, 0, 7); ctx.fillStyle = '#34d399'; ctx.fill(); texte(String(Object.keys(groupe.membres).length + 1), 14 * u + w - 22 * u, y + 24 * u, 11 * u, '#fff'); }
   });
   // héros au centre, sous un projecteur
@@ -1454,10 +1487,12 @@ function menuAccueil() {
     ctx.globalAlpha = Math.max(0, 0.6 - t / 300); ellipse(px, py, 2, 2, '#fff'); ctx.globalAlpha = 1;
   }
   const im = carteDe(p), b = Math.sin(temps * 0.045) * 6 * u;
-  if (pret(im)) ctx.drawImage(im, cx - taille / 2, cy - taille / 2 - 14 * u + b, taille, taille);
+  const sp3 = sprites3D.get(p);
+  if (sp3) { const d = Math.floor(temps / 9) % sp3.DIRS, k = taille * 0.95 / (sp3.bas - sp3.haut), t2 = sp3.S * k; ctx.drawImage(sp3.planche, d * sp3.S, 0, sp3.S, sp3.S, cx - t2 / 2, sol - sp3.bas * k + b * 0.5, t2, t2); } // héros 3D qui tourne
+  else if (pret(im)) ctx.drawImage(im, cx - taille / 2, cy - taille / 2 - 14 * u + b, taille, taille);
   zones.push({ x: cx - taille / 2, y: cy - taille / 2, w: taille, h: taille, action: () => { persoVue = persoIndex; allerA('persos'); } });
   const ny = Math.min(H - 64 * u, sol + 34 * u), sp = (mesStats.persos || {})[cleP(p)] || {};
-  titre(p.nom, cx, ny, 46 * u, '#fff');
+  titre(p.nom, cx, ny, 46 * u, '#fff', 'center', Math.max(160 * u, taille * 1.1));
   const lw = Math.min(taille, 220 * u); rect(cx - lw / 2, ny + 22 * u, lw, 3 * u, 2, p.couleur);
   const infos = [['coeur', p.pvMax], ['cible', a.nom || p.arme], ['trophee', (sp.points || 0) + ' pts']];
   let ix = cx - 170 * u;
@@ -1471,7 +1506,7 @@ function menuAccueil() {
   const fg = ctx.createLinearGradient(mx, 0, mx + colD, 0); fg.addColorStop(0.35, c2); fg.addColorStop(0.75, c2 + '00'); ctx.fillStyle = fg; ctx.fillRect(mx, my, colD, mh);
   ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(mx, my, colD, 1.5); ctx.restore();
   texte('MODE DE JEU • ' + lab.toUpperCase(), mx + 20 * u, my + 22 * u, 10 * u, 'rgba(255,255,255,.75)', 'left');
-  titre(m.nom, mx + 20 * u, my + 50 * u, Math.min(32 * u, (colD - 60 * u) / Math.max(6, m.nom.length) * 2.1), '#fff', 'left');
+  titre(m.nom, mx + 20 * u, my + 50 * u, 32 * u, '#fff', 'left', colD - 70 * u);
   icone('carte', mx + 28 * u, my + mh - 24 * u, 15 * u); texte(def.nom, mx + 42 * u, my + mh - 24 * u, 12 * u, '#fff', 'left');
   const obj = { zone: '  •  Zone', bloc: '  •  Cristal' }[m.objectif] || '';
   texte((multi ? m.joueursMin + '-' + m.joueursMax + ' joueurs' : 'Solo') + (m.boss && m.nbBoss ? '  •  ' + m.nbBoss + ' boss' : '') + obj, mx + 20 * u, my + 76 * u, 12 * u, 'rgba(255,255,255,.9)', 'left');
@@ -1490,7 +1525,7 @@ function menuAccueil() {
   if (multi && membres.length < slots) texte('Inviter un ami', mx + 4 * u, ly + 22 * u + r * 2 + 14 * u, 11 * u, 'rgba(255,255,255,.7)', 'left');
   // bouton JOUER
   const jh = 84 * u, jy = H - jh - 20 * u, membre = groupe.chef && groupe.chef !== user.uid;
-  boutonJeu(mx, jy, colD, jh, membre ? '#8a8fa8' : '#ffe14a', membre ? '#5c6078' : '#ff9800', lancerPartie, 18);
+  boutonJeu(mx, jy, colD, jh, membre ? '#8a8fa8' : '#ffe14a', membre ? '#5c6078' : '#ff8a00', lancerPartie);
   titre(membre ? 'En attente' : 'Jouer', mx + colD / 2 - 6 * u, jy + jh / 2 - 6 * u, (membre ? 30 : 46) * u, membre ? '#fff' : '#1f1300');
   texte(membre ? 'du chef du groupe' : multi ? 'EN LIGNE' : 'SOLO', mx + colD / 2 - 6 * u, jy + jh - 16 * u, 11 * u, membre ? '#fff' : 'rgba(40,24,0,.75)');
 }
@@ -1507,7 +1542,7 @@ function menuPersos() {
     bouton3D(x, y, cw, chh, p.couleur, '#1a1030', () => persoVue = i);
     if (pret(im)) ctx.drawImage(im, x + cw * 0.12, y + 6 * u, cw * 0.76, cw * 0.76);
     rect(x + 4 * u, y + chh - 28 * u, cw - 8 * u, 24 * u, 8 * u, 'rgba(0,0,0,.5)');
-    texte(p.nom, x + cw / 2, y + chh - 16 * u, 13 * u, '#fff');
+    texte(p.nom, x + cw / 2, y + chh - 16 * u, 13 * u, '#fff', 'center', cw - 16 * u);
     if (i === persoVue) rect(x - 3 * u, y - 3 * u, cw + 6 * u, chh + 6 * u, 16 * u, null, '#ffffff', 3 * u);
     if (i === persoIndex) emoji('✅', x + cw - 14 * u, y + 14 * u, 16 * u);
   });
@@ -1550,7 +1585,7 @@ function menuModes() {
     const i = pageMenu * parPage + k, x = x0 + (k % cols) * (cw + 12 * u), y = y0 + Math.floor(k / cols) * (chh + 12 * u), [ic, c1, c2, lab] = modesStyle(md);
     bouton3D(x, y, cw, chh, c1, c2, () => modeIndex = i);
     emoji(ic, x + 28 * u, y + 28 * u, 26 * u);
-    texte(md.nom, x + 52 * u, y + 22 * u, 15 * u, '#fff', 'left');
+    texte(md.nom, x + 52 * u, y + 22 * u, 15 * u, '#fff', 'left', cw - 80 * u);
     texte(lab, x + 52 * u, y + 40 * u, 10 * u, '#fff8d0', 'left');
     lignes(md.description, cw - 24 * u, 11 * u).slice(0, 2).forEach((l, j) => texte(l, x + 12 * u, y + 64 * u + j * 15 * u, 11 * u, '#fff', 'left'));
     const inf = [md.type === 'multi' ? '👥 ' + (md.joueursMin === md.joueursMax ? md.joueursMax : md.joueursMin + '-' + md.joueursMax) : '🧍 1', md.boss && md.nbBoss > 0 ? '👹 ' + md.nbBoss : '', '🏆 +' + md.pointsVictoire, md.type === 'multi' && md.bots !== false ? '🤖 bots' : ''].filter(Boolean).join('  ');
@@ -1598,7 +1633,7 @@ function menuClassement() {
     rect(x, y, colW, rh, 10 * u, moiL ? 'rgba(255,210,63,.35)' : 'rgba(255,255,255,.1)', moiL ? '#ffd23f' : null, 2);
     const med = ['🥇', '🥈', '🥉'][k];
     if (med) emoji(med, x + 18 * u, y + rh / 2, 18 * u); else texte('#' + (k + 1), x + 18 * u, y + rh / 2, 12 * u, '#cfd8ff');
-    texte(j.pseudo || 'Joueur', x + 38 * u, y + rh / 2, 13 * u, '#fff', 'left');
+    texte(j.pseudo || 'Joueur', x + 38 * u, y + rh / 2, 13 * u, '#fff', 'left', colW - 170 * u);
     texte('⭐' + (j.victoires || 0) + '   🏆 ' + (j.points || 0), x + colW - 10 * u, y + rh / 2, 12 * u, '#ffe8a3', 'right');
   });
 }
@@ -1825,3 +1860,4 @@ function boucle() {
   requestAnimationFrame(boucle);
 }
 boucle();
+preparer3D(); // génère les persos 3D en arrière-plan

@@ -13,7 +13,22 @@ const CONFIG_PAR_DEFAUT = {
       "delaiTir": 45,
       "imageCarte": "",
       "munitions": 3,
-      "recharge": 60
+      "recharge": 60,
+      "mode3D": true,
+      "t3Skin": "",
+      "t3Taille": 1,
+      "t3Tete": 1.25,
+      "t3CorpsL": 1,
+      "t3CorpsH": 1,
+      "t3BrasL": 1,
+      "t3BrasE": 1,
+      "t3JambesL": 0.8,
+      "t3JambesE": 1,
+      "t3Oreilles": "rondes",
+      "t3Queue": false,
+      "t3Couleur1": "",
+      "t3Couleur2": "",
+      "t3Couleur3": ""
     },
     {
       "nom": "BORA",
@@ -27,7 +42,22 @@ const CONFIG_PAR_DEFAUT = {
       "delaiTir": 22,
       "imageCarte": "",
       "munitions": 3,
-      "recharge": 45
+      "recharge": 45,
+      "mode3D": true,
+      "t3Skin": "",
+      "t3Taille": 1,
+      "t3Tete": 1,
+      "t3CorpsL": 1,
+      "t3CorpsH": 1.15,
+      "t3BrasL": 0.9,
+      "t3BrasE": 1,
+      "t3JambesL": 1,
+      "t3JambesE": 1,
+      "t3Oreilles": "pointues",
+      "t3Queue": true,
+      "t3Couleur1": "",
+      "t3Couleur2": "",
+      "t3Couleur3": ""
     }
   ],
   "armes": {
@@ -244,7 +274,10 @@ const CONFIG_PAR_DEFAUT = {
       "degatsCristal": 800,
       "porteeCristal": 350,
       "cadenceCristal": 60,
-      "botsObjets": true
+      "botsObjets": true,
+      "niveauBoss": 1,
+      "niveauBots": 1,
+      "botsAdaptatifs": true
     },
     {
       "nom": "Horde de trolls",
@@ -271,7 +304,10 @@ const CONFIG_PAR_DEFAUT = {
       "degatsCristal": 800,
       "porteeCristal": 350,
       "cadenceCristal": 60,
-      "botsObjets": true
+      "botsObjets": true,
+      "niveauBoss": 1,
+      "niveauBots": 1,
+      "botsAdaptatifs": true
     },
     {
       "nom": "Duel 1V1",
@@ -298,7 +334,10 @@ const CONFIG_PAR_DEFAUT = {
       "degatsCristal": 800,
       "porteeCristal": 350,
       "cadenceCristal": 60,
-      "botsObjets": true
+      "botsObjets": true,
+      "niveauBoss": 1,
+      "niveauBots": 1,
+      "botsAdaptatifs": true
     },
     {
       "nom": "Équipes 2V2",
@@ -325,7 +364,10 @@ const CONFIG_PAR_DEFAUT = {
       "degatsCristal": 800,
       "porteeCristal": 350,
       "cadenceCristal": 60,
-      "botsObjets": true
+      "botsObjets": true,
+      "niveauBoss": 1,
+      "niveauBots": 1,
+      "botsAdaptatifs": true
     },
     {
       "nom": "Coop contre les boss",
@@ -352,7 +394,10 @@ const CONFIG_PAR_DEFAUT = {
       "degatsCristal": 800,
       "porteeCristal": 350,
       "cadenceCristal": 60,
-      "botsObjets": true
+      "botsObjets": true,
+      "niveauBoss": 1,
+      "niveauBots": 1,
+      "botsAdaptatifs": true
     },
     {
       "nom": "Zone de contrôle",
@@ -379,7 +424,10 @@ const CONFIG_PAR_DEFAUT = {
       "degatsCristal": 800,
       "porteeCristal": 350,
       "cadenceCristal": 60,
-      "botsObjets": true
+      "botsObjets": true,
+      "niveauBoss": 1,
+      "niveauBots": 1,
+      "botsAdaptatifs": true
     },
     {
       "nom": "Guerre des cristaux",
@@ -406,7 +454,10 @@ const CONFIG_PAR_DEFAUT = {
       "degatsCristal": 800,
       "porteeCristal": 350,
       "cadenceCristal": 60,
-      "botsObjets": true
+      "botsObjets": true,
+      "niveauBoss": 1,
+      "niveauBots": 1,
+      "botsAdaptatifs": true
     }
   ],
   "pouvoirs": {
@@ -465,7 +516,7 @@ const CONFIG_PAR_DEFAUT = {
       "rarete": 1
     }
   },
-  "version": 6
+  "version": 7
 };
 
 // Met à niveau une ancienne config (ajoute les nouveaux paramètres avec des valeurs par défaut)
@@ -485,6 +536,9 @@ function migrerConfig(c) {
   if (c.version < 5) { ['fumigene', 'dard'].forEach(k => { if (!c.armes[k]) c.armes[k] = copie(D.armes[k]); }); c.version = 5; }
   c.modes.forEach(m => def(m, { reapparition: false, delaiReapparition: 3, duree: 0 }));
   c.modes.forEach(m => def(m, { objectif: 'standard', tempsZone: 30, pvCristal: 20000, degatsCristal: 800, porteeCristal: 350, cadenceCristal: 60, botsObjets: true }));
+  c.modes.forEach(m => def(m, { niveauBoss: 1, niveauBots: 1, botsAdaptatifs: true }));
+  if (!c.v3d) { c.persos.forEach(p => { if (p.mode3D === undefined) p.mode3D = true; }); c.v3d = true; } // lot 3 : persos 3D activés
+  c.persos.forEach(p => def(p, { mode3D: false, t3Skin: '', t3Taille: 1, t3Tete: 1, t3CorpsL: 1, t3CorpsH: 1, t3BrasL: 1, t3BrasE: 1, t3JambesL: 1, t3JambesE: 1, t3Oreilles: 'aucune', t3Queue: false, t3Couleur1: '', t3Couleur2: '', t3Couleur3: '' }));
   if (c.version < 6) { D.modes.slice(-2).forEach(m => { if (!c.modes.some(x => x.nom === m.nom)) c.modes.push(copie(m)); }); c.version = 6; }
   Object.values(c.armes).forEach(a => def(a, { retard: 0, poisonDuree: 0, nuage: 0, rayonNuage: 90, degatsNuage: 150 }));
   c.modes.forEach(m => def(m, { bots: true, attenteBots: 15 }));
