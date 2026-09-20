@@ -110,6 +110,7 @@ const modifie = () => $('#modif').textContent = '● modifications non enregistr
 // ---------- Champs éditables (ajouter une ligne ici = nouveau champ dans la console) ----------
 const optArmes = () => Object.entries(cfg.armes).map(([k, a]) => [k, a.nom]);
 const optBoss = () => [['aleatoire', '🎲 Aléatoire'], ...Object.entries(cfg.bosses).map(([k, b]) => [k, b.nom])];
+var CH_APP = [['nom','Nom de l\'appli','text'],['nomCourt','Nom court (écran d\'accueil)','text'],['icone','Icône de l\'appli (carrée)','icone'],['couleur','Couleur de fond de l\'icône','color']];
 const optMaps = () => [[-1, 'Au choix du joueur'], ...cfg.maps.map((m, i) => [i, m.nom])];
 const CH = {
   mode:  [['nom','Nom','text'],['description','Description','text'],['actif','Visible dans le jeu','check'],
@@ -130,11 +131,19 @@ const CH = {
   perso: [['nom','Nom','text'],['image','Image jeu (vue du dessus)','image'],['imageCarte','Image carte (menu, fin)','image'],['couleur','Couleur','color'],['pvMax','Points de vie','number'],
           ['vitesse','Vitesse (2-8)','number'],['arme','Arme','select',optArmes],['degats','Dégâts','number'],['portee','Portée (px)','number'],['delaiTir','Cadence : délai entre 2 tirs (60 = 1 s)','number'],
           ['munitions','Nombre de munitions','number'],['recharge','Recharge d\'1 munition (60 = 1 s)','number'],
-          ['mode3D','🧍 Perso en 3D','check'],['t3Skin','3D : image du skin (couleurs)','image'],['t3Taille','3D : taille globale (1 = normal)','number'],
-          ['t3Tete','3D : taille de la tête','number'],['t3CorpsL','3D : largeur du corps','number'],['t3CorpsH','3D : hauteur du corps','number'],
-          ['t3BrasL','3D : longueur des bras','number'],['t3BrasE','3D : épaisseur des bras','number'],['t3JambesL','3D : longueur des jambes','number'],['t3JambesE','3D : épaisseur des jambes','number'],
-          ['t3Oreilles','3D : oreilles','select',[['aucune','Aucune'],['pointues','Pointues'],['rondes','Rondes'],['cornes','Cornes']]],['t3Queue','3D : queue','check'],
-          ['t3Couleur1','3D : couleur principale (#hex, vide = auto)','text'],['t3Couleur2','3D : couleur secondaire (vide = auto)','text'],['t3Couleur3','3D : couleur des mains/pieds (vide = auto)','text']],
+          ['mode3D','🧍 Perso en 3D','check'],
+          ['t3Espece','3D : espèce (morphologie)','select',() => Object.entries(Perso3D.ESPECES).map(([k, e]) => [k, e.nom])],
+          ['t3Tenue1','3D : tenue 1','select',() => Object.entries(Perso3D.TENUES)],['t3Tenue2','3D : tenue 2','select',() => Object.entries(Perso3D.TENUES)],['t3Tenue3','3D : tenue 3','select',() => Object.entries(Perso3D.TENUES)],
+          ['t3CouleurTenue','3D : couleur des tenues (#hex)','text'],
+          ['t3Motif','3D : motif du pelage','select',[['auto','Selon l\'espèce'],['uni','Uni'],['ventre','Ventre clair'],['rayures','Rayures'],['taches','Taches'],['panda','Panda']]],
+          ['t3Oreilles','3D : oreilles','select',[['auto','Selon l\'espèce'],['aucune','Aucune'],['pointues','Pointues'],['rondes','Rondes'],['grandes','Grandes'],['lapin','De lapin'],['tombantes','Tombantes'],['cornes','Cornes'],['plumes','Plumes']]],
+          ['t3Museau','3D : museau','select',[['auto','Selon l\'espèce'],['aucun','Aucun'],['court','Court'],['long','Long'],['bec','Bec'],['groin','Groin']]],
+          ['t3Yeux','3D : yeux','select',[['auto','Selon l\'espèce'],['normal','Normaux'],['grands','Grands'],['globuleux','Globuleux']]],
+          ['t3Queue','3D : queue','select',[['auto','Selon l\'espèce'],['aucune','Aucune'],['longue','Longue'],['fine','Fine'],['touffue','Touffue'],['pompon','Pompon'],['courte','Courte'],['dragon','De dragon']]],
+          ['t3Taille','3D : taille globale (1 = normal)','number'],['t3Tete','3D : tête (×)','number'],['t3CorpsL','3D : largeur du corps (×)','number'],['t3CorpsH','3D : hauteur du corps (×)','number'],
+          ['t3BrasL','3D : longueur des bras (×)','number'],['t3BrasE','3D : épaisseur des bras (×)','number'],['t3JambesL','3D : longueur des jambes (×)','number'],['t3JambesE','3D : épaisseur des jambes (×)','number'],
+          ['t3CouleursImage','3D : prendre les couleurs de l\'image','check'],['t3Skin','3D : image pour les couleurs','image'],
+          ['t3Couleur1','3D : couleur 1 (#hex, vide = auto)','text'],['t3Couleur2','3D : couleur 2 (vide = auto)','text'],['t3Couleur3','3D : couleur 3 (vide = auto)','text']],
   arme:  [['nom','Nom','text'],['image','Image (vide = boule)','image'],
           ['type','Trajectoire','select',[['lob','Lancer en cloche (passe les murs)'],['retour','Aller-retour'],['droit','Tir droit'],['terrain','🌋 Terrain (fait sortir des cases du sol)']]],
           ['effet','Animation d\'impact','select',[['explosion','💥 Explosion'],['entaille','⚔️ Entaille'],['etincelle','✨ Étincelles'],['impact','🔨 Onde de choc'],
@@ -177,19 +186,30 @@ function formulaire(obj, champs) {
     }
     let inp, prev = '';
     if (type === 'select') { inp = el('select'); (typeof opts === 'function' ? opts() : opts).forEach(([v, t]) => inp.add(new Option(t, v))); }
-    else inp = el('input', { type: type === 'image' ? 'text' : type === 'check' ? 'checkbox' : type, step: 'any' });
-    if (type === 'image') { prev = el('img', { className: 'apercu' }); afficherImage(prev, obj[k]); prev.onerror = () => prev.style.opacity = .2; prev.onload = () => prev.style.opacity = 1; }
+    else inp = el('input', { type: type === 'image' || type === 'icone' ? 'text' : type === 'check' ? 'checkbox' : type, step: 'any' });
+    if (type === 'image' || type === 'icone') { prev = el('img', { className: 'apercu' }); afficherImage(prev, obj[k]); prev.onerror = () => prev.style.opacity = .2; prev.onload = () => prev.style.opacity = 1; }
     if (type === 'check') inp.checked = !!obj[k]; else inp.value = obj[k] ?? '';
     inp.oninput = inp.onchange = () => {
       obj[k] = type === 'number' ? (parseFloat(inp.value) || 0) : type === 'check' ? inp.checked : typeof obj[k] === 'number' ? +inp.value : inp.value;
       if (prev) afficherImage(prev, inp.value); modifie();
     };
     f.append(el('label', {}, el('span', { textContent: lab }), inp,
+      type === 'icone' ? el('span', { className: 'img-outils' }, prev, boutonIcone(src => { inp.value = src; inp.oninput(); }, obj)) :
       type === 'image' ? el('span', { className: 'img-outils' }, prev, boutonUpload(src => { inp.value = src; inp.oninput(); }, () => inp.value)) : ''));
   }
   return f;
 }
 // 📷 Upload d'image (256 px) + 🪄 gomme magique qui retire le fond uni
+function boutonIcone(cb, obj) { // icône d'appli : carré 512 px, image centrée sur fond uni (compatible iPhone/Android)
+  const f = el('input', { type: 'file', accept: 'image/*', hidden: true });
+  f.onchange = async () => {
+    const fi = f.files[0]; if (!fi) return; const im = new Image(); im.src = URL.createObjectURL(fi); await im.decode();
+    const c = el('canvas', { width: 512, height: 512 }), x = c.getContext('2d'), k = Math.min(440 / im.width, 440 / im.height);
+    x.fillStyle = obj.couleur || '#2b1d6b'; x.fillRect(0, 0, 512, 512); x.drawImage(im, 256 - im.width * k / 2, 256 - im.height * k / 2, im.width * k, im.height * k);
+    cb(c.toDataURL('image/png')); toast('Icône importée'); f.value = '';
+  };
+  return el('span', {}, f, el('button', { type: 'button', className: 'sec', textContent: '📷', title: 'Choisir l\'icône', onclick: e => { e.preventDefault(); f.click(); } }));
+}
 function boutonUpload(cb, src) {
   const f = el('input', { type: 'file', accept: 'image/*', hidden: true });
   f.onchange = async () => { if (f.files[0]) { const r = await reduireImage(f.files[0]); cb(r.data); toast(r.gomme ? '🪄 Image importée, fond retiré' : 'Image importée'); } f.value = ''; };
@@ -305,6 +325,10 @@ const VUES = {
       modifie(); afficher();
     } })), el('p', { className: 'aide', textContent: 'Les pouvoirs apparaissent quand on casse un élément (réglages dans chaque map) ou un coffre 🎁. On les ramasse en marchant dessus.' }), g);
   },
+  app(z) {
+    z.append(el('div', { className: 'grille-cartes' }, carte('📱 Appli installable', formulaire(cfg.app, CH_APP))),
+      el('p', { className: 'aide', textContent: 'Nom et icône utilisés quand on ajoute le jeu à l\'écran d\'accueil. Après « Publier », supprime puis réinstalle l\'appli sur le téléphone pour voir la nouvelle icône.' }));
+  },
   boss(z) {
     const g = el('div', { className: 'grille-cartes' });
     for (const [k, b] of Object.entries(cfg.bosses)) g.append(carte('👹 ' + b.nom + ' (' + k + ')', formulaire(b, CH.boss), () => {
@@ -370,7 +394,7 @@ function bordure(m) { const l = m.grille[0].length, h = m.grille.length; m.grill
 
 function afficher() {
   $('#onglets').innerHTML = '';
-  for (const [k, t] of [['modes', '🎮 Modes'], ['persos', '🧍 Persos'], ['armes', '🗡 Armes'], ['boss', '👹 Boss'], ['pouvoirs', '✨ Pouvoirs'], ['maps', '🗺 Maps']])
+  for (const [k, t] of [['modes', '🎮 Modes'], ['persos', '🧍 Persos'], ['armes', '🗡 Armes'], ['boss', '👹 Boss'], ['pouvoirs', '✨ Pouvoirs'], ['maps', '🗺 Maps'], ['app', '📱 Appli']])
     $('#onglets').append(el('button', { textContent: t, className: k === onglet ? 'on' : '', onclick: () => { onglet = k; afficher(); } }));
   $('#zone').innerHTML = '';
   VUES[onglet]($('#zone'));
