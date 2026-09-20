@@ -44,7 +44,7 @@ const Modele3D = (() => {
     if (boite.isEmpty()) boite = new THREE.Box3().setFromObject(obj);
     else { const h = boite.max.y - boite.min.y; boite.max.y += h * 0.12; boite.min.y -= h * 0.04; } // sommet de la tête et plante des pieds
     const taille = boite.getSize(new THREE.Vector3()), centre = boite.getCenter(new THREE.Vector3());
-    const k = 2 / Math.max(0.01, taille.y) * (+p.modeleEchelle || 1);
+    const k = 2 / Math.max(0.01, taille.y); // taille normalisée ; la taille voulue (modeleEchelle) est appliquée à l'affichage
     obj.scale.setScalar(k); obj.position.set(-centre.x * k, -boite.min.y * k, -centre.z * k);
     obj.traverse(o => { if (o.isMesh) { o.frustumCulled = false; if (o.material) o.material.envMapIntensity = 1; } });
     const mixer = new THREE.AnimationMixer(obj), clips = gltf.animations || [];

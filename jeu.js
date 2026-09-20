@@ -208,7 +208,7 @@ async function evoluer(p) { // dépense les essences de l'élément pour passer 
 }
 function creerJoueur(pi, x, y, uid, nom, eq, nv) {
   const b = CONFIG.persos[pi] || CONFIG.persos[0], p = statsNiveau(b, nv || 1), el = elemDe(b);
-  return { uid, nom, eq, perso: p, dep: el ? el.capacite : 'sol', arme: CONFIG.armes[p.arme] || Object.values(CONFIG.armes)[0], x, y, tx: x, ty: y, r: 26, arme: CONFIG.armes[p.arme] || Object.values(CONFIG.armes)[0], x, y, tx: x, ty: y, r: 26,
+  return { uid, nom, eq, perso: p, dep: el ? el.capacite : 'sol', arme: CONFIG.armes[p.arme] || Object.values(CONFIG.armes)[0], x, y, tx: x, ty: y, r: Math.round(26 * Math.min(1.8, Math.max(0.6, +b.modeleEchelle || 1))),
            pv: p.pvMax, pvMax: p.pvMax, angle: 0, recharge: 0, mun: +p.munitions || 3, flash: 0, marche: 0, kx: 0, ky: 0, cache: false, bonus: {}, bo: [] };
 }
 function creerBoss(id, x, y, i) {
@@ -939,7 +939,7 @@ function dessiner3D(e, sp, anneau, taille) { // perso 3D : on choisit la vignett
   const a = ((e.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2), d = Math.round(a / (Math.PI * 2) * sp.DIRS) % sp.DIRS;
   if (e.marche !== e.mPrec) { e.mPrec = e.marche; e.mT = temps; }
   const po = temps - (e.mT || -99) < 10 ? 1 + Math.floor((e.marche || 0) * 0.1) % sp.MARCHE : 0; // 0 = repos, 1.. = marche
-  const k = (taille * 1.45) / (sp.bas - sp.haut), s = sp.S * k, x = e.x - s / 2, y = e.y + e.r * 0.5 - sp.bas * k - (e.alt || 0); // pieds posés sur l'anneau (ou en vol)
+  const k = (taille * 1.45) / (sp.bas - sp.haut) * ((e.def ? 1 : 26 / e.r) * (+(baseDe(e.perso) || {}).modeleEchelle || 1)), s = sp.S * k, x = e.x - s / 2, y = e.y + e.r * 0.5 - sp.bas * k - (e.alt || 0); // pieds posés sur l'anneau (ou en vol)
   e.topY = y + sp.haut * k; e.topT = temps; ctx.imageSmoothingQuality = 'high';
   ctx.globalAlpha = e.cache ? 0.5 : 1;
   const an = animSpeciale(e, sp);
@@ -1592,7 +1592,7 @@ function menuAccueil() {
   const im = carteDe(p), b = Math.sin(temps * 0.045) * 6 * u;
   const vh = vitrineHero(p);
   if (vh) { // héros 3D haute définition, immobile ; on le fait tourner en glissant le doigt
-    const T = Math.round(Math.min(900, taille * 1.6 * dpr)), c = vh.rendre(heroAngle, T, temps / 150), D = taille * 0.82 / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
+    const T = Math.round(Math.min(900, taille * 1.6 * dpr)), c = vh.rendre(heroAngle, T, temps / 150), D = taille * 0.82 * Math.min(1.25, +p.modeleEchelle || 1) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
     ctx.imageSmoothingQuality = 'high'; ctx.drawImage(c, cx - D / 2, sol - 4 * u - vh.bas * D, D, D);
   } else if (pret(im)) ctx.drawImage(im, cx - taille / 2, cy - taille / 2 - 14 * u + b, taille, taille);
   heroZone = { x: cx - taille / 2, y: cy - taille / 2, w: taille, h: taille };
@@ -2000,4 +2000,22 @@ function boucle() {
   requestAnimationFrame(boucle);
 }
 boucle();
-preparer3D(); // génère les persos 3D en arrière-plan
+// 📂 Nouveaux persos automatiques : tout fichier .glb déposé dans "modeles/" sur GitHub devient un perso jouable.
+// Nom du fichier = nom du perso ; préfixe facultatif pour l'élément : "feu-dragon.glb", "eau-requin.glb"…
+async function detecterModeles() {
+  try {
+    const hote = location.hostname.match(/^([^.]+)\.github\.io$/), depot = (CONFIG.app && CONFIG.app.depot) || (hote && hote[1] + '/' + location.pathname.split('/')[1]);
+    if (!depot) return;
+    const l = await (await fetch(`https://api.github.com/repos/${depot}/contents/modeles`)).json();
+    if (!Array.isArray(l)) return;
+    const ARME = { terre: 'rocher', air: 'vent', eau: 'trident', feu: 'boulefeu' };
+    for (const f of l.filter(f => /\.glb$/i.test(f.name))) {
+      const chemin = 'modeles/' + f.name; if (CONFIG.persos.some(p => p.modele === chemin)) continue;
+      const m = f.name.replace(/\.glb$/i, '').match(/^(terre|air|eau|feu)[-_ ](.+)$/i), element = m ? m[1].toLowerCase() : '', nom = (m ? m[2] : f.name.replace(/\.glb$/i, '')).replace(/[-_]+/g, ' ').toUpperCase().slice(0, 16);
+      const el = (CONFIG.elements || {})[element] || {}, a = ARME[element] && CONFIG.armes[ARME[element]] ? ARME[element] : Object.keys(CONFIG.armes)[0];
+      CONFIG.persos.push({ nom, element, modele: chemin, modeleEchelle: 1, modeleRotation: 0, couleur: el.couleur || '#8b5cf6', image: '', imageCarte: '', arme: a,
+        pvMax: 5500, vitesse: 5, degats: 1400, portee: 400, delaiTir: 28, munitions: 3, recharge: 55 });
+    }
+  } catch (e) { console.warn('Détection des modèles', e); }
+}
+detecterModeles().then(preparer3D); // détecte les nouveaux modèles, puis génère les persos 3D en arrière-plan

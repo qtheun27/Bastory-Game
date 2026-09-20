@@ -135,7 +135,7 @@ const CH = {
           ['vitesse','Vitesse (2-8)','number'],['arme','Arme','select',optArmes],['degats','Dégâts','number'],['portee','Portée (px)','number'],['delaiTir','Cadence : délai entre 2 tirs (60 = 1 s)','number'],
           ['munitions','Nombre de munitions','number'],['recharge','Recharge d\'1 munition (60 = 1 s)','number'],
           ['element','Élément','select',() => [['', 'Aucun'], ...Object.entries(cfg.elements || {}).map(([k, e]) => [k, e.icone + ' ' + e.nom])]],
-          ['modele','Modèle 3D (.glb, ex : modeles/rokh.glb)','text'],['modeleEchelle','Modèle : taille (1 = normal)','number'],['modeleRotation','Modèle : rotation (degrés)','number'],
+          ['modele','Modèle 3D (.glb, ex : modeles/rokh.glb)','text'],['modeleEchelle','Taille du perso (1 = normal, 1.4 = grand)','number'],['modeleRotation','Modèle : rotation (degrés)','number'],
           ['animRepos','Animation de repos (vide = auto)','text'],['animMarche','Animation de marche (vide = auto)','text'],['animAttaque','Animation d\'attaque (vide = auto)','text'],['animTouche','Animation coup reçu (vide = auto)','text'],['animMort','Animation de mort (vide = auto)','text'],['animReleve','Animation de réapparition (vide = auto)','text']],
   arme:  [['nom','Nom','text'],['image','Image (vide = boule)','image'],
           ['type','Trajectoire','select',[['lob','Lancer en cloche (passe les murs)'],['retour','Aller-retour'],['droit','Tir droit'],['terrain','🌋 Terrain (fait sortir des cases du sol)']]],
@@ -272,6 +272,20 @@ function carte(titre, contenu, onSuppr) {
 // ---------- Vues ----------
 const VUES = {
   persos(z) {
+    (async () => { // 📂 modèles .glb déposés dans modeles/ mais pas encore réglés dans la config
+      try {
+        const hote = location.hostname.match(/^([^.]+)\.github\.io$/), depot = (cfg.app && cfg.app.depot) || (hote && hote[1] + '/' + location.pathname.split('/')[1]); if (!depot) return;
+        const l = await (await fetch(`https://api.github.com/repos/${depot}/contents/modeles`)).json(); if (!Array.isArray(l)) return;
+        const nouveaux = l.filter(f => /\.glb$/i.test(f.name) && !cfg.persos.some(p => p.modele === 'modeles/' + f.name)); if (!nouveaux.length) return;
+        z.prepend(el('div', { className: 'carte' }, el('h3', { textContent: '📂 Nouveaux modèles détectés' }),
+          el('p', { className: 'aide', textContent: 'Déjà jouables avec des stats par défaut. Ajoute-les ici pour régler leurs stats, puis publie.' }),
+          ...nouveaux.map(f => el('div', { className: 'outils' }, el('span', { textContent: f.name }), el('button', { textContent: '➕ Ajouter', onclick: () => {
+            const m = f.name.replace(/\.glb$/i, '').match(/^(terre|air|eau|feu)[-_ ](.+)$/i);
+            cfg.persos.push({ nom: (m ? m[2] : f.name.replace(/\.glb$/i, '')).replace(/[-_]+/g, ' ').toUpperCase().slice(0, 16), element: m ? m[1].toLowerCase() : '', modele: 'modeles/' + f.name, modeleEchelle: 1, modeleRotation: 0,
+              couleur: '#8b5cf6', image: '', imageCarte: '', arme: Object.keys(cfg.armes)[0], pvMax: 5500, vitesse: 5, degats: 1400, portee: 400, delaiTir: 28, munitions: 3, recharge: 55 });
+            modifie(); afficher(); } })))));
+      } catch (e) {}
+    })();
     const g = el('div', { className: 'grille-cartes' });
     cfg.persos.forEach((p, i) => g.append(carte(p.nom, apercu3D(p, formulaire(p, CH.perso)), () => {
       if (cfg.persos.length > 1 && confirm('Supprimer ' + p.nom + ' ?')) { cfg.persos.splice(i, 1); modifie(); afficher(); }

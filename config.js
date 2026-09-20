@@ -27,7 +27,7 @@ const CONFIG_PAR_DEFAUT = {
       "imageCarte": "",
       "munitions": 3,
       "recharge": 55,
-      "modeleEchelle": 1,
+      "modeleEchelle": 1.4,
       "modeleRotation": 0,
       "animRepos": "",
       "animMarche": "",
