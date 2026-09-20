@@ -1,4 +1,0 @@
-Dépose ici les modèles 3D des persos (.glb avec animations) :
-  rokh.glb (Terre), zephyr.glb (Air), naia.glb (Eau), pyro.glb (Feu)
-Tant qu'un fichier manque, le jeu affiche une pastille de l'élément.
-Dans l'admin (Persos) : chemin, taille, rotation et noms des animations.
