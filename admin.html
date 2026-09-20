@@ -66,18 +66,7 @@
              background: radial-gradient(circle at 50% 40%, rgba(90,200,250,.35), rgba(139,92,246,.15) 60%, transparent 75%); }
   .boite3d span { font-size: 12px; color: var(--doux); margin-top: 2px; } .apercu3d { width: 180px; height: 180px; }
 
-  /* 🧬 Éditeur 3D */
-  .ed3d { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; background: rgba(5,8,25,.6); backdrop-filter: var(--flou); -webkit-backdrop-filter: var(--flou); padding: 16px; }
-  .ed3d-boite { display: grid; grid-template-columns: minmax(260px, 460px) minmax(280px, 520px); gap: 18px; max-height: 94vh; width: min(1000px, 100%);
-                background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,.06)); border: 1px solid var(--bord); border-radius: 28px; padding: 18px; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
-  .ed3d-gauche { display: flex; flex-direction: column; align-items: center; gap: 10px; } .ed3d-gauche h3 { margin: 0; font-family: "Barlow Condensed", Inter; font-style: italic; font-size: 26px; text-transform: uppercase; }
-  .ed3d-vue { width: 100%; max-width: 440px; aspect-ratio: 1; border-radius: 24px; background: radial-gradient(circle at 50% 45%, rgba(90,200,250,.4), rgba(139,92,246,.2) 55%, rgba(0,0,0,.15) 80%); }
-  .ed3d-panneau { overflow-y: auto; padding-right: 6px; } .ed3d-panneau h4 { margin: 14px 0 6px; font-size: 14px; color: #fff; }
-  .ed3d-ligne { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: 8px; align-items: center; margin: 6px 0; font-size: 13px; color: var(--doux); }
-  .ed3d-ligne input[type=range] { accent-color: #8b5cf6; } .ed3d-ligne b { min-width: 36px; text-align: right; color: #fff; }
-  .seg { display: flex; gap: 4px; flex-wrap: wrap; } .seg button { padding: 6px 10px; font-size: 12px; } .seg button.on, .ed3d-ligne button.on { background: linear-gradient(135deg, #5ac8fa, #8b5cf6); }
-  .boite3d button { margin-top: 6px; padding: 7px 14px; font-size: 13px; }
-  @media (max-width: 760px) { .ed3d-boite { grid-template-columns: 1fr; overflow-y: auto; } }
+  .apercu3d { width: 200px; height: 200px; }
 </style>
 </head>
 <body>
@@ -106,8 +95,9 @@
 <script src="config.js"></script>
 <script src="firebase-config.js"></script>
 <script src="profil.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="document.write('<script src=&quot;https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js&quot;><\/script>')"></script>
-<script src="perso3d.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" onerror="document.write('<script src=&quot;https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js&quot;><\/script>')"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="modele3d.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -144,7 +134,9 @@ const CH = {
   perso: [['nom','Nom','text'],['image','Image jeu (vue du dessus)','image'],['imageCarte','Image carte (menu, fin)','image'],['couleur','Couleur','color'],['pvMax','Points de vie','number'],
           ['vitesse','Vitesse (2-8)','number'],['arme','Arme','select',optArmes],['degats','Dégâts','number'],['portee','Portée (px)','number'],['delaiTir','Cadence : délai entre 2 tirs (60 = 1 s)','number'],
           ['munitions','Nombre de munitions','number'],['recharge','Recharge d\'1 munition (60 = 1 s)','number'],
-          ['mode3D','🧍 Perso en 3D (réglages dans l\'éditeur 3D)','check'],['t3CouleursImage','3D : prendre les couleurs de l\'image','check'],['t3Skin','3D : image pour les couleurs','image']],
+          ['element','Élément','select',() => [['', 'Aucun'], ...Object.entries(cfg.elements || {}).map(([k, e]) => [k, e.icone + ' ' + e.nom])]],
+          ['modele','Modèle 3D (.glb, ex : modeles/rokh.glb)','text'],['modeleEchelle','Modèle : taille (1 = normal)','number'],['modeleRotation','Modèle : rotation (degrés)','number'],
+          ['animRepos','Animation de repos (vide = auto)','text'],['animMarche','Animation de marche (vide = auto)','text'],['animAttaque','Animation d\'attaque (vide = auto)','text']],
   arme:  [['nom','Nom','text'],['image','Image (vide = boule)','image'],
           ['type','Trajectoire','select',[['lob','Lancer en cloche (passe les murs)'],['retour','Aller-retour'],['droit','Tir droit'],['terrain','🌋 Terrain (fait sortir des cases du sol)']]],
           ['effet','Animation d\'impact','select',[['explosion','💥 Explosion'],['entaille','⚔️ Entaille'],['etincelle','✨ Étincelles'],['impact','🔨 Onde de choc'],
@@ -260,69 +252,16 @@ async function reduireImage(file) {
   const gomme = fondUni(c); if (gomme) gommer(c);
   return { data: versDataURL(c), gomme };
 }
-// 🧍 Aperçu 3D tournant (mis à jour quand on change un réglage)
-async function resoudreImg(src) { if (!src || !src.startsWith('fb:')) return src; const im = new Image(); await afficherImage(im, src); return im.src; }
+// 🧍 Aperçu du modèle 3D (.glb) — glisse pour le faire tourner
 function apercu3D(p, form) {
-  if (typeof Perso3D === 'undefined' || !Perso3D.dispo()) return form;
-  const c = el('canvas', { width: 180, height: 180, className: 'apercu3d' }), boite = el('div', { className: 'boite3d' }, c, el('span', { textContent: 'Aperçu 3D — glisse pour tourner' }),
-    el('button', { type: 'button', textContent: '🧬 Éditeur 3D', onclick: () => editeur3D(p, () => setTimeout(maj, 50)) }));
-  let minuterie = 0;
-  const maj = async () => { if (!p.mode3D) { boite.style.display = 'none'; return; } boite.style.display = '';
-    Perso3D.apercu(p, (cfg.armes[p.arme] || {}).couleur, c, await resoudreImg(p.t3Skin || p.imageCarte || p.image)); };
-  form.addEventListener('input', () => { clearTimeout(minuterie); minuterie = setTimeout(maj, 450); });
-  form.addEventListener('change', () => { clearTimeout(minuterie); minuterie = setTimeout(maj, 450); });
+  if (typeof Modele3D === 'undefined' || !Modele3D.dispo()) return form;
+  const c = el('canvas', { width: 200, height: 200, className: 'apercu3d' }), boite = el('div', { className: 'boite3d' }, c, el('span', { textContent: 'Aperçu 3D — glisse pour tourner' }));
+  let minu = 0, dernier = null;
+  const maj = () => { const cle = [p.modele, p.modeleEchelle, p.modeleRotation, p.animRepos].join('|'); if (cle === dernier) return; dernier = cle; Modele3D.apercu(p, c); };
+  form.addEventListener('input', () => { clearTimeout(minu); minu = setTimeout(maj, 600); });
+  form.addEventListener('change', () => { clearTimeout(minu); minu = setTimeout(maj, 600); });
   setTimeout(maj, 300);
   return el('div', {}, boite, form);
-}
-// 🧬 ÉDITEUR 3D : mélange jusqu'à 3 animaux, partie par partie, avec aperçu en direct
-function editeur3D(p, apres) {
-  const vue = el('canvas', { width: 440, height: 440, className: 'ed3d-vue' }), panneau = el('div', { className: 'ed3d-panneau' });
-  const fond = el('div', { className: 'ed3d' }, el('div', { className: 'ed3d-boite' },
-    el('div', { className: 'ed3d-gauche' }, el('h3', { textContent: '🧬 ' + p.nom }), vue, el('p', { className: 'aide', textContent: 'Glisse sur le perso pour le faire tourner.' }),
-      el('button', { textContent: '✔ Terminer', onclick: () => { fond.remove(); if (vue._vue) vue._vue.liberer(); apres && apres(); } })), panneau));
-  let minu = 0;
-  const maj = () => { modifie(); clearTimeout(minu); minu = setTimeout(async () => Perso3D.apercu(p, (cfg.armes[p.arme] || {}).couleur, vue, await resoudreImg(p.t3Skin || p.imageCarte || p.image)), 220); };
-  const titreS = t => panneau.append(el('h4', { textContent: t }));
-  const ligne = (lab, ...ctrl) => panneau.append(el('label', { className: 'ed3d-ligne' }, el('span', { textContent: lab }), ...ctrl));
-  const choix = (k, liste, auto) => { const sel = el('select'); if (auto) sel.add(new Option('Selon l\'animal', 'auto')); liste.forEach(([v, t]) => sel.add(new Option(t, v))); sel.value = p[k] || (auto ? 'auto' : liste[0][0]); sel.onchange = () => { p[k] = sel.value; maj(); }; return sel; };
-  const especes = (k, vide) => { const sel = el('select'), cats = {}; if (vide) sel.add(new Option('— même que l\'animal 1', ''));
-    for (const [c, e] of Object.entries(Perso3D.ESPECES)) (cats[e.cat] = cats[e.cat] || []).push([c, e.nom]);
-    for (const [cat, l] of Object.entries(cats)) { const og = el('optgroup', { label: cat }); l.forEach(([c, n]) => og.append(new Option(n, c))); sel.append(og); }
-    sel.value = p[k] || ''; if (!vide && !sel.value) sel.value = 'chat'; sel.onchange = () => { p[k] = sel.value; parties(); maj(); }; return sel; };
-  titreS('🐾 Animaux à mélanger');
-  [['t3Espece', 'Animal 1', false], ['t3Espece2', 'Animal 2', true], ['t3Espece3', 'Animal 3', true]].forEach(([k, lab, v]) => ligne(lab, especes(k, v)));
-  titreS('🧩 Chaque partie vient de…');
-  const zoneParties = el('div'); panneau.append(zoneParties);
-  const nomA = n => (Perso3D.ESPECES[[p.t3Espece, p.t3Espece2 || p.t3Espece, p.t3Espece3 || p.t3Espece][n - 1]] || {}).nom || '?';
-  function parties() {
-    zoneParties.innerHTML = '';
-    [['Tete', 'Tête'], ['Corps', 'Corps'], ['Membres', 'Bras & jambes'], ['Queue', 'Queue & dos']].forEach(([k, lab]) => {
-      const seg = el('div', { className: 'seg' });
-      [1, 2, 3].forEach(n => seg.append(el('button', { type: 'button', textContent: nomA(n), className: (+p['t3Part' + k] || 1) === n ? 'on' : 'sec', onclick: () => { p['t3Part' + k] = n; parties(); maj(); } })));
-      zoneParties.append(el('label', { className: 'ed3d-ligne' }, el('span', { textContent: lab }), seg));
-    });
-  }
-  parties();
-  titreS('📏 Proportions');
-  [['t3Taille', 'Taille', 0.6, 1.6], ['t3Tete', 'Tête', 0.6, 1.8], ['t3CorpsL', 'Largeur du corps', 0.5, 2], ['t3CorpsH', 'Hauteur du corps', 0.5, 2],
-   ['t3BrasL', 'Longueur des bras', 0.5, 2], ['t3BrasE', 'Épaisseur des bras', 0.5, 2], ['t3JambesL', 'Longueur des jambes', 0.4, 2], ['t3JambesE', 'Épaisseur des jambes', 0.5, 2]].forEach(([k, lab, mi, ma]) => {
-    const r = el('input', { type: 'range', min: mi, max: ma, step: 0.05, value: +p[k] || 1 }), val = el('b', { textContent: (+p[k] || 1).toFixed(2) });
-    r.oninput = () => { p[k] = +r.value; val.textContent = (+r.value).toFixed(2); maj(); }; ligne(lab, r, val);
-  });
-  titreS('👕 Habillage');
-  const tenues = Object.entries(Perso3D.TENUES); [1, 2, 3].forEach(n => ligne('Tenue ' + n, choix('t3Tenue' + n, tenues)));
-  const cT = el('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(p.t3CouleurTenue) ? p.t3CouleurTenue : '#e63946' }); cT.oninput = () => { p.t3CouleurTenue = cT.value; maj(); }; ligne('Couleur des tenues', cT);
-  titreS('🎭 Détails (facultatif)');
-  ligne('Motif', choix('t3Motif', [['uni', 'Uni'], ['ventre', 'Ventre clair'], ['rayures', 'Rayures'], ['taches', 'Taches'], ['points', 'Gros points'], ['anneaux', 'Anneaux'], ['panda', 'Panda'], ['masque', 'Masque']], true));
-  ligne('Oreilles', choix('t3Oreilles', [['aucune', 'Aucune'], ['pointues', 'Pointues'], ['rondes', 'Rondes'], ['petites', 'Petites'], ['grandes', 'Grandes'], ['touffues', 'Touffues'], ['lapin', 'De lapin'], ['tombantes', 'Tombantes'], ['elephant', 'D\'éléphant'], ['cornes', 'Cornes'], ['bois', 'Bois de cerf'], ['plumes', 'Plumes'], ['antennes', 'Antennes']], true));
-  ligne('Museau', choix('t3Museau', [['aucun', 'Aucun'], ['court', 'Court'], ['long', 'Long'], ['large', 'Large'], ['nez', 'Gros nez'], ['plat_long', 'De crocodile'], ['bec', 'Bec'], ['bec_crochu', 'Bec crochu'], ['bec_plat', 'Bec plat'], ['groin', 'Groin'], ['trompe', 'Trompe'], ['mandibules', 'Mandibules']], true));
-  ligne('Yeux', choix('t3Yeux', [['normal', 'Normaux'], ['grands', 'Grands'], ['globuleux', 'Globuleux'], ['composes', 'D\'insecte']], true));
-  ligne('Queue', choix('t3Queue', [['aucune', 'Aucune'], ['longue', 'Longue'], ['fine', 'Fine'], ['touffue', 'Touffue'], ['geante', 'Géante'], ['annelee', 'Annelée'], ['pompon', 'Pompon'], ['courte', 'Courte'], ['dragon', 'De dragon'], ['plumes', 'Plumes'], ['nageoire', 'Nageoire'], ['dard', 'Dard']], true));
-  titreS('🎨 Couleurs');
-  [1, 2, 3].forEach(n => { const k = 't3Couleur' + n, c = el('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(p[k]) ? p[k] : '#888888' }), auto = el('button', { type: 'button', className: p[k] ? 'sec' : 'on', textContent: 'Auto' });
-    c.oninput = () => { p[k] = c.value; auto.className = 'sec'; maj(); }; auto.onclick = () => { p[k] = ''; auto.className = 'on'; maj(); };
-    ligne(['Couleur 1 (corps)', 'Couleur 2 (clair)', 'Couleur 3 (accents)'][n - 1], c, auto); });
-  document.body.append(fond); maj();
 }
 function carte(titre, contenu, onSuppr) {
   const h = el('h3', { textContent: titre });
@@ -338,7 +277,7 @@ const VUES = {
       if (cfg.persos.length > 1 && confirm('Supprimer ' + p.nom + ' ?')) { cfg.persos.splice(i, 1); modifie(); afficher(); }
     })));
     z.append(el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouveau perso', onclick: () => {
-      cfg.persos.push({ nom: 'NOUVEAU', image: '', imageCarte: '', munitions: 3, recharge: 60, mode3D: true, couleur: '#e67e22', pvMax: 5000, vitesse: 5, arme: Object.keys(cfg.armes)[0], degats: 1000, portee: 350, delaiTir: 30 });
+      cfg.persos.push({ nom: 'NOUVEAU', image: '', imageCarte: '', munitions: 3, recharge: 60, element: 'terre', modele: '', modeleEchelle: 1, modeleRotation: 0, couleur: '#e67e22', pvMax: 5000, vitesse: 5, arme: Object.keys(cfg.armes)[0], degats: 1000, portee: 350, delaiTir: 30 });
       modifie(); afficher();
     } })), g);
   },
@@ -377,24 +316,35 @@ const VUES = {
       modifie(); afficher();
     } })), el('p', { className: 'aide', textContent: 'Les pouvoirs apparaissent quand on casse un élément (réglages dans chaque map) ou un coffre 🎁. On les ramasse en marchant dessus.' }), g);
   },
+  elements(z) { // 🌟 éléments (capacités, gains d'essence) et progression des niveaux
+    const g = el('div', { className: 'grille-cartes' });
+    g.append(carte('📈 Niveaux des persos', formulaire(cfg.progression, [['niveauMax','Niveau maximum','number'],['coutBase','Coût du niveau 2 (essences)','number'],['coutMult','Coût × à chaque niveau','number'],
+      ['bonusPV','Bonus de vie par niveau (%)','number'],['bonusDegats','Bonus de dégâts par niveau (%)','number'],['bonusVitesse','Bonus de vitesse par niveau (%)','number']])));
+    const CAP = [['sol', 'Aucune'], ['brise', '🌍 Brise les blocs en fonçant'], ['vol', '💨 Vole au-dessus des blocs et de l\'eau'], ['nage', '💧 Se déplace sur l\'eau'], ['feu', '🔥 Laisse une traînée de feu']];
+    for (const [k, e] of Object.entries(cfg.elements)) g.append(carte(e.icone + ' ' + e.nom, formulaire(e, [['nom','Nom','text'],['icone','Icône (emoji)','text'],['couleur','Couleur','color'],['capacite','Capacité','select',CAP],
+      ['valeur','Valeur (brise : dégâts/image • nage : vitesse × • feu : dégâts/s)','number'],['altitude','Vol : hauteur','number'],['soin','Nage : soin % PV par seconde dans l\'eau','number'],['duree','Feu : durée des flammes (s)','number'],
+      ['gainVictoire','Essence gagnée par victoire','number'],['gainDefaite','Essence gagnée par défaite','number']])));
+    z.append(el('p', { className: 'aide', textContent: 'En jouant avec un perso, on gagne l\'essence de son élément. Elle sert à faire évoluer les persos de cet élément (écran Persos → Évoluer).' }), g);
+  },
   joueurs(z) { // 👤 compteurs des joueurs : modifier ou remettre à zéro
     const box = el('div', { className: 'grille-cartes' });
     z.append(el('div', { className: 'outils' }, el('button', { className: 'sec', textContent: '🔄 Actualiser', onclick: afficher }),
       el('button', { className: 'danger', textContent: '♻️ Tout remettre à zéro', onclick: async () => {
         if (!confirm('Remettre à zéro les compteurs de TOUS les joueurs ?')) return;
-        try { const snap = await FS.collection('joueurs').get(), b = FS.batch(); snap.docs.forEach(d => b.update(d.ref, { points: 0, victoires: 0, parties: 0, persos: {} })); await b.commit(); toast('Tous les compteurs sont à zéro'); afficher(); }
+        try { const snap = await FS.collection('joueurs').get(), b = FS.batch(); snap.docs.forEach(d => b.update(d.ref, { points: 0, victoires: 0, parties: 0, persos: {}, essences: {} })); await b.commit(); toast('Tous les compteurs sont à zéro'); afficher(); }
         catch (e) { alert('Refusé : ' + e.message + '\nVérifie les règles Firestore (joueurs).'); } } })),
       el('p', { className: 'aide', textContent: 'Modifie les points, victoires et parties (et les points par perso), puis « Enregistrer ». Les changements sont immédiats.' }), box);
     FS.collection('joueurs').orderBy('points', 'desc').get().then(snap => {
       if (!snap.docs.length) box.append(el('p', { className: 'aide', textContent: 'Aucun joueur pour l\'instant.' }));
       snap.docs.forEach(d => {
-        const j = d.data(), o = { points: j.points || 0, victoires: j.victoires || 0, parties: j.parties || 0 }, persos = JSON.parse(JSON.stringify(j.persos || {}));
+        const j = d.data(), o = { points: j.points || 0, victoires: j.victoires || 0, parties: j.parties || 0 }, persos = JSON.parse(JSON.stringify(j.persos || {})), essences = Object.assign({}, j.essences || {});
         const f = formulaire(o, [['points', 'Points', 'number'], ['victoires', 'Victoires', 'number'], ['parties', 'Parties', 'number']]);
-        for (const [nom, st] of Object.entries(persos)) f.append(formulaire(st, [['points', 'Points avec ' + nom, 'number']]));
+        f.append(formulaire(essences, Object.entries(cfg.elements || {}).map(([k, e]) => [k, 'Essence ' + e.icone + ' ' + e.nom, 'number'])));
+        for (const [nom, st] of Object.entries(persos)) { st.niveau = st.niveau || 1; f.append(formulaire(st, [['niveau', 'Niveau de ' + nom, 'number'], ['points', 'Points avec ' + nom, 'number']])); }
         f.append(el('div', { className: 'outils' },
-          el('button', { textContent: '💾 Enregistrer', onclick: async () => { try { await d.ref.update({ ...o, persos }); toast('Compteurs enregistrés'); } catch (e) { alert('Refusé : ' + e.message); } } }),
+          el('button', { textContent: '💾 Enregistrer', onclick: async () => { try { await d.ref.update({ ...o, persos, essences }); toast('Compteurs enregistrés'); } catch (e) { alert('Refusé : ' + e.message); } } }),
           el('button', { className: 'danger', textContent: '♻️ Remettre à zéro', onclick: async () => { if (!confirm('Remettre ' + (j.pseudo || 'ce joueur') + ' à zéro ?')) return;
-            try { await d.ref.update({ points: 0, victoires: 0, parties: 0, persos: {} }); toast('Remis à zéro'); afficher(); } catch (e) { alert('Refusé : ' + e.message); } } })));
+            try { await d.ref.update({ points: 0, victoires: 0, parties: 0, persos: {}, essences: {} }); toast('Remis à zéro'); afficher(); } catch (e) { alert('Refusé : ' + e.message); } } })));
         box.append(carte('👤 ' + (j.pseudo || 'Joueur'), f));
       });
     }).catch(e => box.append(el('p', { className: 'aide', textContent: 'Lecture impossible : ' + e.message })));
@@ -468,7 +418,7 @@ function bordure(m) { const l = m.grille[0].length, h = m.grille.length; m.grill
 
 function afficher() {
   $('#onglets').innerHTML = '';
-  for (const [k, t] of [['modes', '🎮 Modes'], ['persos', '🧍 Persos'], ['armes', '🗡 Armes'], ['boss', '👹 Boss'], ['pouvoirs', '✨ Pouvoirs'], ['maps', '🗺 Maps'], ['joueurs', '👤 Joueurs'], ['app', '📱 Appli']])
+  for (const [k, t] of [['modes', '🎮 Modes'], ['persos', '🧍 Persos'], ['armes', '🗡 Armes'], ['boss', '👹 Boss'], ['pouvoirs', '✨ Pouvoirs'], ['maps', '🗺 Maps'], ['elements', '🌟 Éléments'], ['joueurs', '👤 Joueurs'], ['app', '📱 Appli']])
     $('#onglets').append(el('button', { textContent: t, className: k === onglet ? 'on' : '', onclick: () => { onglet = k; afficher(); } }));
   $('#zone').innerHTML = '';
   VUES[onglet]($('#zone'));

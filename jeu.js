@@ -92,27 +92,35 @@ const modes = () => { const m = CONFIG.modes.filter(m => m.actif !== false); ret
 const modeChoisi = () => modes()[modeIndex % modes().length];
 const mapChoisie = m => (m.map >= 0 && CONFIG.maps[m.map]) ? +m.map : mapIndex % CONFIG.maps.length;
 const joueurs = () => [moi, ...Object.values(autres)].filter(j => j && !j.parti);
+// 🧍 Persos 3D : vrais modèles .glb (voir modele3d.js) — sinon image 2D, sinon pastille de l'élément
 const sprites3D = new Map(), visages3D = new Map(), en3D = new Set(); let file3D = Promise.resolve();
-const ok3D = () => typeof Perso3D !== 'undefined' && Perso3D.dispo();
+const ok3D = () => typeof Modele3D !== 'undefined' && Modele3D.dispo();
+const baseDe = p => (p && p.base) || p;
 function attendreImage(i) { return new Promise(ok => { if (!i) return ok(null); if (pret(i)) return ok(i.src); i.addEventListener('load', () => ok(i.src)); i.addEventListener('error', () => ok(null)); setTimeout(() => ok(i.src || null), 6000); }); }
-const skin3D = async p => p.t3CouleursImage ? attendreImage(img(p.t3Skin || p.imageCarte || p.image)) : null;
-function obtenir3D(p) { // planche 3D du perso, générée à la demande (une à la fois, sans bloquer le jeu)
-  if (!p || !p.mode3D || !ok3D()) return null;
+function obtenir3D(p) { // planche de sprites du modèle, générée à la demande (une à la fois)
+  p = baseDe(p); if (!p || !p.modele || !ok3D()) return null;
   if (sprites3D.has(p)) return sprites3D.get(p);
-  if (!en3D.has(p)) { en3D.add(p); file3D = file3D.then(async () => { try { sprites3D.set(p, await Perso3D.generer(p, (CONFIG.armes[p.arme] || {}).couleur, await skin3D(p))); } catch (e) { console.warn('3D', p.nom, e); } }); }
+  if (!en3D.has(p)) { en3D.add(p); file3D = file3D.then(async () => { try { sprites3D.set(p, await Modele3D.generer(p)); } catch (e) { console.warn('Modèle 3D', p.nom, e); sprites3D.set(p, null); } }); }
   return null;
 }
-const carteDe = p => p.imageCarte ? img(p.imageCarte) : (visages3D.get(p) || img(p.image)); // image "carte" (menu, fin)
-async function preparer3D() { // portraits 3D de tous les persos (rapide), puis la planche du perso choisi
+function faceParDefaut(p) { // portrait de secours : pastille aux couleurs de l'élément
+  const cle = 'face' + p.nom; if (cacheGfx[cle]) return cacheGfx[cle];
+  const el = (CONFIG.elements || {})[p.element] || {}, c = document.createElement('canvas'); c.width = c.height = 200; const x = c.getContext('2d');
+  const g = x.createRadialGradient(100, 90, 10, 100, 100, 95); g.addColorStop(0, '#ffffff55'); g.addColorStop(1, (el.couleur || p.couleur || '#5ac8fa') + 'aa');
+  x.fillStyle = g; x.beginPath(); x.arc(100, 100, 90, 0, 7); x.fill(); x.font = '100px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(el.icone || '❔', 100, 108);
+  return cacheGfx[cle] = c;
+}
+const carteDe = p => { p = baseDe(p); return p.imageCarte ? img(p.imageCarte) : visages3D.get(p) || (p.image ? img(p.image) : faceParDefaut(p)); }; // image "carte" (menu, fin)
+async function preparer3D() { // portraits 3D de tous les persos, puis la planche du perso choisi
   if (!ok3D()) return;
-  for (const p of CONFIG.persos) if (p.mode3D) { try { visages3D.set(p, await Perso3D.visage(p, (CONFIG.armes[p.arme] || {}).couleur, await skin3D(p))); } catch (e) {} }
+  for (const p of CONFIG.persos) if (p.modele) { try { const v = await Modele3D.visage(p); if (v) visages3D.set(p, v); } catch (e) { console.warn('Modèle 3D', p.nom, e.message); } }
   obtenir3D(CONFIG.persos[persoIndex]);
 }
 let heroVue = null, heroP = null, heroAngle = Math.PI / 2, heroZone = null, heroDrag = null;
-function vitrineHero(p) { // modèle 3D du héros de l'accueil, qu'on fait tourner au doigt
+function vitrineHero(p) { // modèle du héros de l'accueil : animation de repos, rotation au doigt
   if (heroP === p) return heroVue;
   if (heroVue) heroVue.liberer(); heroP = p; heroVue = null; heroAngle = Math.PI / 2;
-  if (p.mode3D && ok3D()) (async () => { const v = await Perso3D.vitrine(p, (CONFIG.armes[p.arme] || {}).couleur, await skin3D(p)); if (heroP === p) heroVue = v; else if (v) v.liberer(); })();
+  if (p.modele && ok3D()) Modele3D.vitrine(p).then(v => { if (heroP === p) heroVue = v; else if (v) v.liberer(); }).catch(() => {});
   return null;
 }
 CONFIG.persos.forEach(p => img(p.imageCarte));
@@ -165,11 +173,12 @@ function chargerMap(def) {
 const tuile = (tx, ty) => (!map || tx < 0 || ty < 0 || tx >= map.l || ty >= map.h) ? '#' : map.g[ty][tx];
 const tuileA = (x, y) => tuile(Math.floor(x / TUILE), Math.floor(y / TUILE));
 const bloque = c => c === '#' || c === 'W' || c === 'C';
-function libre(x, y, r) {
-  const k = r * 0.75;
-  return ![[-k, -k], [k, -k], [-k, k], [k, k], [0, -k], [0, k], [-k, 0], [k, 0]].some(([a, b]) => bloque(tuileA(x + a, y + b)));
+function libre(x, y, r, dep) {
+  if (dep === 'vol') return x > TUILE && y > TUILE && x < (map.l - 1) * TUILE && y < (map.h - 1) * TUILE; // 💨 vole au-dessus des blocs et de l'eau
+  const k = r * 0.75, bl = dep === 'nage' ? c => c === '#' || c === 'C' : bloque;                          // 💧 se déplace sur l'eau
+  return ![[-k, -k], [k, -k], [-k, k], [k, k], [0, -k], [0, k], [-k, 0], [k, 0]].some(([a, b]) => bl(tuileA(x + a, y + b)));
 }
-function deplacer(e, dx, dy) { if (libre(e.x + dx, e.y, e.r)) e.x += dx; if (libre(e.x, e.y + dy, e.r)) e.y += dy; }
+function deplacer(e, dx, dy) { if (libre(e.x + dx, e.y, e.r, e.dep)) e.x += dx; if (libre(e.x, e.y + dy, e.r, e.dep)) e.y += dy; }
 function tourner(e, a, k) { let d = a - e.angle; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; e.angle += d * k; }
 function caseLibre(loin) {
   for (let k = 0; k < 200; k++) {
@@ -181,9 +190,25 @@ function caseLibre(loin) {
 }
 
 // ---------- 7. CRÉATION DE PARTIE ----------
-function creerJoueur(pi, x, y, uid, nom, eq) {
-  const p = CONFIG.persos[pi] || CONFIG.persos[0];
-  return { uid, nom, eq, perso: p, arme: CONFIG.armes[p.arme] || Object.values(CONFIG.armes)[0], x, y, tx: x, ty: y, r: 26,
+const elemDe = p => (CONFIG.elements || {})[baseDe(p || {}).element] || null;
+const niveauDe = p => Math.max(1, (((mesStats.persos || {})[cleP(baseDe(p) || {})] || {}).niveau) || 1);
+const coutNiveau = nv => { const g = CONFIG.progression || {}; return Math.round((+g.coutBase || 50) * Math.pow(+g.coutMult || 1.5, nv - 1)); };
+function statsNiveau(p, nv) { // chaque niveau augmente les stats (réglable dans l'admin)
+  const g = CONFIG.progression || {}, k = Math.max(0, nv - 1);
+  return { ...p, base: p, niveau: nv, pvMax: Math.round(p.pvMax * (1 + k * (+g.bonusPV || 0) / 100)), degats: Math.round(p.degats * (1 + k * (+g.bonusDegats || 0) / 100)), vitesse: p.vitesse * (1 + k * (+g.bonusVitesse || 0) / 100) };
+}
+async function evoluer(p) { // dépense les essences de l'élément pour passer au niveau suivant
+  const el = p.element, nv = niveauDe(p), cout = coutNiveau(nv), max = +(CONFIG.progression || {}).niveauMax || 10, e = (CONFIG.elements || {})[el];
+  if (!e) return notif('Ce perso n\'a pas d\'élément');
+  if (nv >= max) return notif('Niveau maximum atteint !');
+  if (((mesStats.essences || {})[el] || 0) < cout) return notif(`Il te faut ${cout} ${e.icone} (joue avec des persos ${e.nom})`);
+  const inc = firebase.firestore.FieldValue.increment;
+  try { await db.collection('joueurs').doc(user.uid).set({ essences: { [el]: inc(-cout) }, persos: { [cleP(p)]: { niveau: nv + 1 } } }, { merge: true }); notif(`✨ ${p.nom} passe au niveau ${nv + 1} !`); }
+  catch (err) { notif('Évolution impossible : ' + err.message); }
+}
+function creerJoueur(pi, x, y, uid, nom, eq, nv) {
+  const b = CONFIG.persos[pi] || CONFIG.persos[0], p = statsNiveau(b, nv || 1), el = elemDe(b);
+  return { uid, nom, eq, perso: p, dep: el ? el.capacite : 'sol', arme: CONFIG.armes[p.arme] || Object.values(CONFIG.armes)[0], x, y, tx: x, ty: y, r: 26, arme: CONFIG.armes[p.arme] || Object.values(CONFIG.armes)[0], x, y, tx: x, ty: y, r: 26,
            pv: p.pvMax, pvMax: p.pvMax, angle: 0, recharge: 0, mun: +p.munitions || 3, flash: 0, marche: 0, kx: 0, ky: 0, cache: false, bonus: {}, bo: [] };
 }
 function creerBoss(id, x, y, i) {
@@ -206,7 +231,7 @@ function demarrer(mapIdx, liste) {
     const sp = map.j[k] ? { x: c(map.j[k].x), y: c(map.j[k].y) }
       : (k === 1 && map.j[0]) ? { x: c(map.l - 1 - map.j[0].x), y: c(map.h - 1 - map.j[0].y) } : caseLibre(places);
     const eq = d.eq !== undefined && d.eq !== null ? d.eq : mode.equipes === 'deux' ? k % 2 : mode.equipes === 'coop' ? 0 : k;
-    const j = creerJoueur(d.p, sp.x, sp.y, d.uid, d.nom, eq);
+    const j = creerJoueur(d.p, sp.x, sp.y, d.uid, d.nom, eq, d.nv || (d.uid === user.uid ? niveauDe(CONFIG.persos[d.p]) : 1));
     places.push(j);
     if (d.bot) { j.bot = true; j.niv = d.niv || 1; j.pvMax = j.pv = Math.round(j.pvMax * (0.8 + 0.2 * j.niv)); }
     if (d.uid === user.uid) moi = j; else autres[d.uid] = j;
@@ -267,11 +292,12 @@ function finir(r, msg) {
   finInfo = { gagnants: uniques(g), perdants: uniques(p), points: +(r === 'VICTOIRE' ? mode.pointsVictoire : mode.pointsDefaite) || 0, t0: temps + 70 };
   if (db && user) {
     const inc = firebase.firestore.FieldValue.increment;
-    db.collection('joueurs').doc(user.uid).set({ pseudo: nomJoueur(), points: inc(finInfo.points), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0),
-      persos: { [cleP(moi.perso)]: { points: inc(finInfo.points), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0) } } }, { merge: true }).catch(e => console.warn(e));
+    const elJ = elemDe(moi.perso), gainE = elJ ? +(r === 'VICTOIRE' ? elJ.gainVictoire : elJ.gainDefaite) || 0 : 0; finInfo.essence = elJ && gainE ? gainE + ' ' + elJ.icone : '';
+    db.collection('joueurs').doc(user.uid).set({ pseudo: nomJoueur(), points: inc(finInfo.points), ...(elJ ? { essences: { [baseDe(moi.perso).element]: inc(gainE) } } : {}), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0),
+      persos: { [cleP(baseDe(moi.perso))]: { points: inc(finInfo.points), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0) } } }, { merge: true }).catch(e => console.warn(e));
   }
 }
-function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; mesPoints = v.points || 0; mesStats = { points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {} }; }, () => {}); }
+function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; mesPoints = v.points || 0; mesStats = { points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {}, essences: v.essences || {} }; }, () => {}); }
 
 // ---------- 8. MULTIJOUEUR (Realtime Database) ----------
 // Salle d'attente → départ quand le max est atteint (ou 10 s après avoir atteint le minimum).
@@ -298,7 +324,7 @@ async function chercherPartie(opts = {}) {
   if (s.hote) { rtdb.ref(cle).onDisconnect().remove(); s.ref.onDisconnect().remove(); await s.ref.child('info').set({ map: mapChoisie(mode) }); }
   const moiRef = s.ref.child('joueurs/' + user.uid);
   moiRef.onDisconnect().remove();
-  await moiRef.set({ nom: nomJoueur(), p: persoIndex, g: groupe.chef || null, pp: ((mesStats.persos || {})[cleP(CONFIG.persos[persoIndex] || {})] || {}).points || 0, t: firebase.database.ServerValue.TIMESTAMP });
+  await moiRef.set({ nom: nomJoueur(), p: persoIndex, nv: niveauDe(CONFIG.persos[persoIndex]), g: groupe.chef || null, pp: ((mesStats.persos || {})[cleP(CONFIG.persos[persoIndex] || {})] || {}).points || 0, t: firebase.database.ServerValue.TIMESTAMP });
   s.ref.child('joueurs').on('value', snap => {
     if (salle !== s) return;
     s.js = snap.val() || {};
@@ -321,7 +347,7 @@ async function chercherPartie(opts = {}) {
 function lancerSalle(avecBots) {
   const s = salle; if (!s || s.debut) return; s.debut = true;
   rtdb.ref(s.cle).transaction(v => v && v.salle === s.id ? null : undefined).catch(() => {});
-  const liste = Object.entries(s.js).sort((a, b) => (a[1].t || 0) - (b[1].t || 0)).map(([uid, d]) => ({ uid, nom: d.nom, p: d.p, g: d.g || null }));
+  const liste = Object.entries(s.js).sort((a, b) => (a[1].t || 0) - (b[1].t || 0)).map(([uid, d]) => ({ uid, nom: d.nom, p: d.p, nv: d.nv || 1, g: d.g || null }));
   if (avecBots) { // 🤖 complète avec des bots (nombre pair en équipes)
     let k = 1;
     const humains = Object.values(s.js), moy = humains.reduce((t, d) => t + (+d.pp || 0), 0) / Math.max(1, humains.length);
@@ -734,7 +760,10 @@ function maj() {
   const dk = Math.hypot(mx, my); if (dk) { mx /= dk; my /= dk; }
   if (joyG.actif) { const v = vec(joyG); if (v.d > 5) { mx = Math.cos(v.a) * v.f; my = Math.sin(v.a) * v.f; } }
   if (moi.pv <= 0) mx = my = 0;
-  const vit = moi.perso.vitesse * bonus(moi, 'vitesse');
+  const elm = elemDe(moi.perso) || {}, surEau = tuileA(moi.x, moi.y) === 'W';
+  const vit = moi.perso.vitesse * bonus(moi, 'vitesse') * (moi.dep === 'nage' && surEau ? +elm.valeur || 1.3 : 1);
+  if (moi.dep === 'nage' && surEau && moi.pv > 0) moi.pv = Math.min(moi.pvMax, moi.pv + moi.pvMax * (+elm.soin || 0) / 100 / 60); // 💧 se soigne dans l'eau
+  if (moi.dep === 'brise' && (mx || my)) { const tx = Math.floor((moi.x + mx * moi.r * 1.3) / TUILE), ty = Math.floor((moi.y + my * moi.r * 1.3) / TUILE); if (bloqueTir(tuile(tx, ty))) abimer(tx, ty, +elm.valeur || 60); } // 🌍 brise les blocs en fonçant dedans
   deplacer(moi, mx * vit + moi.kx, my * vit + moi.ky);
   moi.kx *= 0.8; moi.ky *= 0.8;
   if (mx || my) { moi.marche += vit; if (!joyD.actif) tourner(moi, Math.atan2(my, mx), 0.25); }
@@ -742,7 +771,8 @@ function maj() {
   if (moi.recharge > 0) moi.recharge--;
   if (moi.flash > 0) moi.flash--;
   moi.mun = Math.min(+moi.perso.munitions || 3, moi.mun + 1 / (+moi.perso.recharge || 60)); // recharge des munitions
-  moi.cache = tuileA(moi.x, moi.y) === 'B' || !!pouvoirActif(moi, 'invisible') || nuages.some(n => Math.hypot(n.x - moi.x, n.y - moi.y) < n.r);
+  moi.cache = tuileA(moi.x, moi.y) === 'B' || !!pouvoirActif(moi, 'invisible') || nuages.some(n => !n.feu && Math.hypot(n.x - moi.x, n.y - moi.y) < n.r);
+  for (const j of joueurs()) if (j.dep === 'feu' && j.pv > 0 && j.marche !== j.mFeu) { j.mFeu = j.marche; if (temps % 10 === 0) { const e = elemDe(j.perso) || {}; nuages.push({ x: j.x, y: j.y + 10, r: 28, fin: temps + (+e.duree || 2) * 60, debut: temps, c: '#ff6a00', deg: +e.valeur || 120, de: j.uid, arme: { effet: 'etincelle', couleur: '#ff8a00' }, feu: true }); } } // 🔥 traînée de feu
   for (const o of objets) if (moi.pv > 0 && Math.hypot(o.x - moi.x, o.y - moi.y) < 42) {
     objets = objets.filter(x => x !== o); envoyer({ t: 'pr', tx: o.tx, ty: o.ty }); activerPouvoir(o.id); break;
   }
@@ -898,8 +928,8 @@ function dessiner3D(e, sp, anneau, taille) { // perso 3D : on choisit la vignett
   ctx.strokeStyle = anneau; ctx.lineWidth = 3; ctx.globalAlpha = 0.8; ctx.beginPath(); ctx.ellipse(e.x, e.y + e.r * 0.45, e.r * 1.05, e.r * 0.6, 0, 0, 7); ctx.stroke();
   const a = ((e.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2), d = Math.round(a / (Math.PI * 2) * sp.DIRS) % sp.DIRS;
   if (e.marche !== e.mPrec) { e.mPrec = e.marche; e.mT = temps; }
-  const po = temps - (e.mT || -99) < 10 ? Math.floor((e.marche || 0) * 0.09) % sp.POSES : 0;
-  const k = (taille * 1.45) / (sp.bas - sp.haut), s = sp.S * k, x = e.x - s / 2, y = e.y + e.r * 0.5 - sp.bas * k; // pieds posés sur l'anneau
+  const po = temps - (e.mT || -99) < 10 ? 1 + Math.floor((e.marche || 0) * 0.1) % sp.MARCHE : 0; // 0 = repos, 1.. = marche
+  const k = (taille * 1.45) / (sp.bas - sp.haut), s = sp.S * k, x = e.x - s / 2, y = e.y + e.r * 0.5 - sp.bas * k - (e.alt || 0); // pieds posés sur l'anneau (ou en vol)
   e.topY = y + sp.haut * k; e.topT = temps; ctx.imageSmoothingQuality = 'high';
   ctx.globalAlpha = e.cache ? 0.5 : 1;
   ctx.drawImage(sp.planche, d * sp.S, po * sp.S, sp.S, sp.S, x, y, s, s);
@@ -907,6 +937,7 @@ function dessiner3D(e, sp, anneau, taille) { // perso 3D : on choisit la vignett
   ctx.globalAlpha = 1;
 }
 function dessinerEntite(e, im, anneau, taille) {
+  e.alt = e.dep === 'vol' ? ((elemDe(e.perso) || {}).altitude || 22) + Math.sin(temps * 0.08 + e.x * 0.01) * 4 : 0; // 💨 altitude
   const sp3 = e.perso && obtenir3D(e.perso);
   if (sp3) return dessiner3D(e, sp3, anneau, taille);
   if (e.rage) ellipse(e.x, e.y + e.r * 0.45, e.r * 1.5, e.r * 0.9, `rgba(255,0,0,${0.15 + 0.1 * Math.sin(temps * 0.2)})`);
@@ -915,7 +946,7 @@ function dessinerEntite(e, im, anneau, taille) {
   ctx.save();
   ctx.globalAlpha = e.cache ? 0.5 : 1;
   e.topY = e.y - e.r * 0.3 - taille * 0.45; e.topT = temps;
-  ctx.translate(e.x, e.y - e.r * 0.3);
+  ctx.translate(e.x, e.y - e.r * 0.3 - (e.alt || 0));
   ctx.rotate(e.angle + Math.PI / 2); // les images regardent vers le haut → on les tourne dans la direction du mouvement
   const gonfle = e.charge > 0 ? (1 - e.charge / e.chargeMax) * 0.15 : 0;
   const sz = taille * (1 + Math.sin(e.marche * 0.18) * 0.05 + gonfle);
@@ -923,7 +954,7 @@ function dessinerEntite(e, im, anneau, taille) {
     ctx.drawImage(im, -sz / 2, -sz / 2, sz, sz);
     if (e.flash > 0) { ctx.globalAlpha = (e.flash / 8) * 0.9; ctx.drawImage(blanc(im), -sz / 2, -sz / 2, sz, sz); }
   } else {
-    ctx.fillStyle = anneau; ctx.beginPath(); ctx.arc(0, 0, e.r, 0, 7); ctx.fill();
+    ctx.rotate(-(e.angle + Math.PI / 2)); ctx.drawImage(faceParDefaut(baseDe(e.perso) || {}), -e.r * 1.3, -e.r * 1.3, e.r * 2.6, e.r * 2.6);
     ctx.fillStyle = '#fff'; ctx.fillRect(-4, -e.r, 8, 16);
   }
   ctx.restore();
@@ -1546,7 +1577,7 @@ function menuAccueil() {
   const im = carteDe(p), b = Math.sin(temps * 0.045) * 6 * u;
   const vh = vitrineHero(p);
   if (vh) { // héros 3D haute définition, immobile ; on le fait tourner en glissant le doigt
-    const T = Math.round(Math.min(900, taille * 1.6 * dpr)), c = vh.rendre(heroAngle, T), D = taille * 0.82 / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
+    const T = Math.round(Math.min(900, taille * 1.6 * dpr)), c = vh.rendre(heroAngle, T, temps / 150), D = taille * 0.82 / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
     ctx.imageSmoothingQuality = 'high'; ctx.drawImage(c, cx - D / 2, sol - 4 * u - vh.bas * D, D, D);
   } else if (pret(im)) ctx.drawImage(im, cx - taille / 2, cy - taille / 2 - 14 * u + b, taille, taille);
   heroZone = { x: cx - taille / 2, y: cy - taille / 2, w: taille, h: taille };
@@ -1554,7 +1585,7 @@ function menuAccueil() {
   const ny = Math.min(H - 64 * u, sol + 34 * u), sp = (mesStats.persos || {})[cleP(p)] || {};
   titre(p.nom, cx, ny, 46 * u, '#fff', 'center', Math.max(160 * u, taille * 1.1));
   const lw = Math.min(taille, 220 * u); rect(cx - lw / 2, ny + 22 * u, lw, 3 * u, 2, p.couleur);
-  const infos = [['coeur', p.pvMax], ['cible', a.nom || p.arme], ['trophee', (sp.points || 0) + ' pts']];
+  const elA = elemDe(p), infos = [['eclair', (elA ? elA.icone + ' ' : '') + 'Niv. ' + niveauDe(p)], ['coeur', statsNiveau(p, niveauDe(p)).pvMax], ['cible', a.nom || p.arme], ['trophee', (sp.points || 0) + ' pts']];
   ctx.font = `700 ${12 * u}px Inter, system-ui, sans-serif`; // infos centrées, espacées selon leur longueur réelle
   const largeurs = infos.map(([, v]) => Math.min(150 * u, ctx.measureText(String(v)).width) + 30 * u), tot = largeurs.reduce((a, b) => a + b, 0);
   let ix = cx - tot / 2;
@@ -1607,6 +1638,7 @@ function menuPersos() {
     texte(p.nom, x + cw / 2, y + chh - 16 * u, 13 * u, '#fff', 'center', cw - 16 * u);
     if (i === persoVue) rect(x - 3 * u, y - 3 * u, cw + 6 * u, chh + 6 * u, 16 * u, null, '#ffffff', 3 * u);
     if (i === persoIndex) emoji('✅', x + cw - 14 * u, y + 14 * u, 16 * u);
+    const ec = elemDe(p); rect(x + 6 * u, y + 6 * u, 58 * u, 20 * u, 10 * u, 'rgba(8,12,32,.6)'); texte((ec ? ec.icone : '') + ' Niv.' + niveauDe(p), x + 35 * u, y + 16 * u, 10 * u, '#fff', 'center', 54 * u);
   });
   if (pages > 1) {
     bouton3D(x0, H - 40 * u, 60 * u, 30 * u, '#8e7bff', '#5b3fd6', () => pageMenu = (pageMenu + pages - 1) % pages); texte('◀', x0 + 30 * u, H - 25 * u, 14 * u, '#fff');
@@ -1627,13 +1659,19 @@ function menuPersos() {
   const st = [['❤️', 'Vie', p.pvMax / 8000, p.pvMax, '#ff5a6e'], ['💥', 'Dégâts', p.degats / 3000, p.degats, '#ff9f43'], ['🏃', 'Vitesse', p.vitesse / 8, p.vitesse, '#4cd964'],
     ['🎯', 'Portée', p.portee / 600, p.portee, '#5ac8fa'], ['🔋', 'Munitions', (p.munitions || 3) / 6, p.munitions || 3, '#ffd23f'],
     ['⚡', 'Cadence', 1 - (p.delaiTir || 30) / 90, ((p.delaiTir || 30) / 60).toFixed(2) + 's', '#b57bff'], ['♻️', 'Recharge', 1 - (p.recharge || 60) / 150, ((p.recharge || 60) / 60).toFixed(1) + 's', '#ff7ab6']];
-  const sp = (mesStats.persos || {})[cleP(p)] || {};
+  const sp = (mesStats.persos || {})[cleP(p)] || {}, epF = elemDe(p);
+  if (epF) texte(`${epF.icone} ${epF.nom} • Niveau ${niveauDe(p)} • ${({ vol: 'vole au-dessus des blocs', nage: 'se déplace sur l\'eau', feu: 'laisse une traînée de feu', brise: 'brise les blocs', sol: '' })[epF.capacite] || ''}`, px + panW / 2, py + is + 2 * u, 11 * u, epF.couleur, 'center', panW - 20 * u);
   texte(`🏆 ${sp.points || 0} pts  •  ⭐ ${sp.victoires || 0} victoires  •  🎮 ${sp.parties || 0} parties`, px + panW / 2, py + is + 16 * u, 11 * u, '#ffe8a3');
-  const sy = py + is + 34 * u, pas = Math.min(24 * u, (ph - is - 110 * u) / st.length);
+  const sy = py + is + 34 * u, pas = Math.min(24 * u, (ph - is - 150 * u) / st.length);
   st.forEach((s, k) => statBarre(px + 12 * u, sy + k * pas, panW - 24 * u, ...s));
-  const choisi = persoVue === persoIndex, bh = 44 * u;
-  bouton3D(px + 20 * u, py + ph - bh - 12 * u, panW - 40 * u, bh, choisi ? '#9aa5b8' : '#4cd964', choisi ? '#5d6778' : '#1f9d3a', choisi ? null : () => { persoIndex = persoVue; allerA('accueil'); });
-  texte(choisi ? '✔ SÉLECTIONNÉ' : 'CHOISIR', px + panW / 2, py + ph - bh / 2 - 12 * u, 18 * u, '#fff');
+  const choisi = persoVue === persoIndex, bh = 44 * u, bw = (panW - 50 * u) / 2, by = py + ph - bh - 12 * u, ep = elemDe(p), nvP = niveauDe(p), maxN = +(CONFIG.progression || {}).niveauMax || 10;
+  if (ep) { bouton3D(px + 20 * u, by, bw, bh, nvP >= maxN ? '#9aa5b8' : ep.couleur, nvP >= maxN ? '#5d6778' : ombrer(ep.couleur, -0.35), () => evoluer(p));
+    texte(nvP >= maxN ? 'Niveau max' : `Évoluer • ${coutNiveau(nvP)} ${ep.icone}`, px + 20 * u + bw / 2, by + bh / 2, 13 * u, '#fff', 'center', bw - 12 * u); }
+  bouton3D(ep ? px + 30 * u + bw : px + 20 * u, by, ep ? bw : panW - 40 * u, bh, choisi ? '#9aa5b8' : '#4cd964', choisi ? '#5d6778' : '#1f9d3a', choisi ? null : () => { persoIndex = persoVue; allerA('accueil'); });
+  texte(choisi ? '✔ Choisi' : 'Choisir', (ep ? px + 30 * u + bw * 1.5 : px + panW / 2), by + bh / 2, 15 * u, '#fff');
+  // porte-monnaie d'essences
+  const els = Object.entries(CONFIG.elements || {}), pw = (panW - 40 * u - (els.length - 1) * 6 * u) / Math.max(1, els.length);
+  els.forEach(([k, e2], n) => { const ex = px + 20 * u + n * (pw + 6 * u); verre(ex, by - 36 * u, pw, 26 * u, 13 * u); texte(e2.icone + ' ' + ((mesStats.essences || {})[k] || 0), ex + pw / 2, by - 23 * u, 12 * u, '#fff', 'center', pw - 8 * u); }); // essences
 }
 
 // --- Modes de jeu + choix de la map
@@ -1783,7 +1821,7 @@ function dessinerFin() { // animation de victoire / défaite avec les gagnants e
     texte(c.nom, x, py + tp * 0.64, 12, 'rgba(255,255,255,.55)', 'center', tp * 1.2);
   });
   if (messageFin) texte(messageFin, W / 2, H * 0.19, 16, '#fff');
-  if (finInfo && t > 20) texte('+' + finInfo.points + ' 🏆', W / 2, H * 0.62 - Math.min(20, (t - 20)), 22, '#9cff57');
+  if (finInfo && t > 20) texte('+' + finInfo.points + ' 🏆' + (finInfo.essence ? '   +' + finInfo.essence : ''), W / 2, H * 0.62 - Math.min(20, (t - 20)), 22, '#9cff57');
   if (t > 40) { // boutons de fin
     const u = U(), bw = 170 * u, bh = 50 * u, y = H - bh - 14 * u;
     bouton3D(W / 2 - bw - 10 * u, y, bw, bh, '#ffe14a', '#f0a000', () => { quitterSalle(); etat = 'MENU'; lancerPartie(); }); texte('🔁 REJOUER', W / 2 - bw / 2 - 10 * u, y + bh / 2, 17 * u, '#fff');
@@ -1842,7 +1880,7 @@ function majEvenements() {
   dots = dots.filter(d => !d.fait);
   for (const n of nuages) if ((temps - n.debut) % 30 === 29 && n.deg > 0) { // le nuage blesse toutes les ½ s
     const pr = entite(n.de), eq = pr ? pr.eq : -1;
-    for (const e of [...bosses.filter(b => b.pv > 0 && !(pr && pr.def)), ...joueurs().filter(j => j.pv > 0 && j.eq !== eq)])
+    for (const e of [...bosses.filter(b => b.pv > 0 && !(pr && pr.def)), ...joueurs().filter(j => j.pv > 0 && j.eq !== eq && !(n.feu && j.dep === 'feu'))])
       if (Math.hypot(e.x - n.x, e.y - n.y) < n.r) degats(e, n.de, Math.round(n.deg / 2), n.x, n.y, 0, n.arme);
   }
   nuages = nuages.filter(n => temps < n.fin);
@@ -1856,6 +1894,7 @@ function cibleCamera() { // mort : on suit un allié en vie (ou n'importe qui)
 }
 function dessinerNuages() {
   for (const n of nuages) {
+    if (n.feu) { const k = Math.min(1, (n.fin - temps) / 40), f = 1 + Math.sin(temps * 0.4 + n.x) * 0.15; ctx.save(); ctx.globalCompositeOperation = 'lighter'; const g = ctx.createRadialGradient(n.x, n.y - 6, 2, n.x, n.y, n.r * f); g.addColorStop(0, `rgba(255,220,120,${0.7 * k})`); g.addColorStop(0.5, `rgba(255,110,20,${0.45 * k})`); g.addColorStop(1, 'rgba(255,60,0,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(n.x, n.y, n.r * f, n.r * 0.6 * f, 0, 0, 7); ctx.fill(); ctx.restore(); continue; } // 🔥
     const k = Math.min(1, (n.fin - temps) / 60, (temps - n.debut) / 15);
     for (let i = 0; i < 9; i++) {
       const a = i / 9 * Math.PI * 2 + temps * 0.01, d = n.r * 0.55;
