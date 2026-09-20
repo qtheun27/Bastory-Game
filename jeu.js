@@ -249,7 +249,8 @@ function demarrer(mapIdx, liste) {
     b.eq = pvp ? places.reduce((a, j) => Math.hypot(j.x - t.x, j.y - t.y) < Math.hypot(a.x - t.x, a.y - t.y) ? j : a).eq : -1;
     bosses.push(b);
   });
-  zoneProg = {};
+  zoneProg = {}; decor3D = null;
+  if (typeof Modele3D !== 'undefined' && Modele3D.dispo()) Modele3D.decor(map.def).then(d => decor3D = d).catch(e => console.warn('Décor 3D', e)); // murs, coffres, buissons en 3D
   projectiles = []; particules = []; textes = []; ondes = []; objets = []; degatsTuiles = {}; retours = []; levees = {};
   cam.x = moi.x; cam.y = moi.y; finDans = 0; resultat = ''; messageFin = ''; finInfo = null;
   joyG.actif = joyD.actif = false;
@@ -608,7 +609,7 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
   if (j.flash > 0) j.flash--;
   deplacer(j, j.kx, j.ky); j.kx *= 0.8; j.ky *= 0.8;
   if (j.pv <= 0) return;
-  j.mun = Math.min(+j.perso.munitions || 3, j.mun + 1 / (+j.perso.recharge || 60));
+  if (j.recharge <= 0) j.mun = Math.min(+j.perso.munitions || 3, j.mun + 1 / (+j.perso.recharge || 60));
   if (j.recharge > 0) j.recharge--;
   j.cache = tuileA(j.x, j.y) === 'B' || !!pouvoirActif(j, 'invisible');
   if (mode.botsObjets !== false) for (const o of objets) { // 🤖 ramasse les objets rares
@@ -771,7 +772,7 @@ function maj() {
   if (joyD.actif) { const v = vec(joyD); if (v.d > 15) tourner(moi, v.a, 0.4); }
   if (moi.recharge > 0) moi.recharge--;
   if (moi.flash > 0) moi.flash--;
-  moi.mun = Math.min(+moi.perso.munitions || 3, moi.mun + 1 / (+moi.perso.recharge || 60)); // recharge des munitions
+  if (moi.recharge <= 0) moi.mun = Math.min(+moi.perso.munitions || 3, moi.mun + 1 / (+moi.perso.recharge || 60)); // recharge des munitions
   moi.cache = tuileA(moi.x, moi.y) === 'B' || !!pouvoirActif(moi, 'invisible') || nuages.some(n => !n.feu && Math.hypot(n.x - moi.x, n.y - moi.y) < n.r);
   for (const j of joueurs()) if (j.dep === 'feu' && j.pv > 0 && j.marche !== j.mFeu) { j.mFeu = j.marche; if (temps % 10 === 0) { const e = elemDe(j.perso) || {}; nuages.push({ x: j.x, y: j.y + 10, r: 28, fin: temps + (+e.duree || 2) * 60, debut: temps, c: '#ff6a00', deg: +e.valeur || 120, de: j.uid, arme: { effet: 'etincelle', couleur: '#ff8a00' }, feu: true }); } } // 🔥 traînée de feu
   for (const o of objets) if (moi.pv > 0 && Math.hypot(o.x - moi.x, o.y - moi.y) < 42) {
@@ -923,7 +924,9 @@ function rect(x, y, w, h, r, fill, stroke, ep = 3) {
 function ellipse(x, y, rx, ry, fill) { ctx.beginPath(); ctx.ellipse(x, y, Math.max(0, rx), Math.max(0, ry), 0, 0, 7); ctx.fillStyle = fill; ctx.fill(); }
 
 
-function mur(px, py) { ctx.drawImage(spriteBloc(map.def, false), px - 2, py - HAUT_MUR - 2); }
+let decor3D = null;
+const varDecor = (px, py) => Math.floor(alea(px * 0.37 + py * 0.11) * 3);
+function mur(px, py) { if (decor3D) ctx.drawImage(decor3D.murs[varDecor(px, py)], px - 2.94, py - HAUT_MUR - 5, 69.9, 101.9); else ctx.drawImage(spriteBloc(map.def, false), px - 2, py - HAUT_MUR - 2); }
 const DUREE_ANIM = { attaque: 24, touche: 18, mort: 45, releve: 40 }; // durée des animations spéciales (images à 60/s)
 function animSpeciale(e, sp) { // quelle animation spéciale jouer maintenant ?
   if (!sp.spec) return null;
@@ -1047,18 +1050,22 @@ function ombrer(hex, k) { // éclaircit (k>0) ou assombrit (k<0) une couleur #rr
   return '#' + [f(n >> 16), f((n >> 8) & 255), f(n & 255)].map(v => v.toString(16).padStart(2, '0')).join('');
 }
 function alea(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); } // hasard reproductible
-function motifHerbe(d) {
-  const k = 'h' + d.herbe1 + d.herbe2; if (cacheGfx[k]) return cacheGfx[k];
-  const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d');
-  x.fillStyle = d.herbe1; x.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 18; i++) for (const [ox, oy] of [[0, 0], [256, 0], [-256, 0], [0, 256], [0, -256]]) { // taches douces (raccord sans couture)
-    const cx = alea(i) * 256 + ox, cy = alea(i + 50) * 256 + oy, r = 30 + alea(i + 99) * 60, g = x.createRadialGradient(cx, cy, 0, cx, cy, r);
-    g.addColorStop(0, (i % 2 ? d.herbe2 : ombrer(d.herbe1, 0.12)) + '99'); g.addColorStop(1, d.herbe1 + '00'); x.fillStyle = g; x.fillRect(cx - r, cy - r, r * 2, r * 2);
+function motifHerbe(d) { // herbe réaliste : bruit à plusieurs échelles + brins + petites zones de terre, raccord sans couture
+  const k = 'h2' + d.herbe1 + d.herbe2; if (cacheGfx[k]) return cacheGfx[k];
+  const N = 256, c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d'), im = x.createImageData(N, N);
+  const c1 = parseInt(d.herbe1.slice(1), 16), c2 = parseInt(d.herbe2.slice(1), 16), rgb = n => [n >> 16, (n >> 8) & 255, n & 255], A = rgb(c1), B = rgb(c2);
+  const bruit = (px, py, f) => { const X = px * f / N, Y = py * f / N, x0 = Math.floor(X), y0 = Math.floor(Y), fx = X - x0, fy = Y - y0, s = t => t * t * (3 - 2 * t);
+    const g = (i, j) => alea(((i % f) + f) % f * 131 + (((j % f) + f) % f) * 17 + f * 7); const a = g(x0, y0), b = g(x0 + 1, y0), cc = g(x0, y0 + 1), dd = g(x0 + 1, y0 + 1);
+    return a + (b - a) * s(fx) + (cc - a) * s(fy) + (a - b - cc + dd) * s(fx) * s(fy); };
+  for (let py = 0; py < N; py++) for (let px = 0; px < N; px++) {
+    const n = bruit(px, py, 4) * 0.5 + bruit(px, py, 8) * 0.3 + bruit(px, py, 32) * 0.2, t = Math.min(1, Math.max(0, (n - 0.3) * 1.6)), l = 0.9 + bruit(px, py, 64) * 0.2, o = (py * N + px) * 4;
+    for (let k2 = 0; k2 < 3; k2++) im.data[o + k2] = (A[k2] * (1 - t) + B[k2] * t) * l; im.data[o + 3] = 255;
   }
-  for (let i = 0; i < 1400; i++) { // brins d'herbe
-    const px = alea(i + 7) * 256, py = alea(i + 3000) * 256, l = 3 + alea(i + 9000) * 6, a = -Math.PI / 2 + (alea(i + 5) - 0.5) * 0.8;
-    x.strokeStyle = alea(i + 77) > 0.5 ? 'rgba(255,255,255,.07)' : 'rgba(0,30,0,.12)'; x.lineWidth = 1.2;
-    x.beginPath(); x.moveTo(px, py); x.lineTo(px + Math.cos(a) * l, py + Math.sin(a) * l); x.stroke();
+  x.putImageData(im, 0, 0);
+  for (let i = 0; i < 2200; i++) { // brins d'herbe
+    const px = alea(i + 7) * N, py = alea(i + 3000) * N, len = 3 + alea(i + 9000) * 7, a = -Math.PI / 2 + (alea(i + 5) - 0.5) * 0.9;
+    x.strokeStyle = alea(i + 77) > 0.55 ? 'rgba(255,255,220,.10)' : 'rgba(0,35,0,.16)'; x.lineWidth = 1.1;
+    x.beginPath(); x.moveTo(px, py); x.quadraticCurveTo(px + Math.cos(a) * len * 0.5 + 1, py + Math.sin(a) * len * 0.5, px + Math.cos(a) * len, py + Math.sin(a) * len); x.stroke();
   }
   return cacheGfx[k] = ctx.createPattern(c, 'repeat');
 }
@@ -1203,7 +1210,7 @@ function dessinerJeu() {
   const lum = ctx.createLinearGradient(0, 0, W, H); lum.addColorStop(0, 'rgba(255,225,160,.08)'); lum.addColorStop(1, 'rgba(60,90,200,.08)'); ctx.fillStyle = lum; ctx.fillRect(0, 0, W, H); // lumière chaude / ombre froide
   zoneSure(dessinerHUD);
 }
-function coffre(px, py) { ctx.drawImage(spriteBloc(map.def, true), px - 2, py - HAUT_MUR - 2); emoji('✨', px + 32, py - HAUT_MUR + 30 + Math.sin(temps * 0.1) * 2, 14); }
+function coffre(px, py) { if (decor3D) ctx.drawImage(decor3D.coffre, px - 2.94, py - HAUT_MUR - 5, 69.9, 101.9); else ctx.drawImage(spriteBloc(map.def, true), px - 2, py - HAUT_MUR - 2); emoji('✨', px + 32, py - HAUT_MUR + 30 + Math.sin(temps * 0.1) * 2, 14); }
 function fissures(tx, ty, px, py) {
   const dg = degatsTuiles[tx + ',' + ty]; if (!dg) return;
   const k = Math.min(1, dg / (+map.def.pvBloc || 3000)), T = TUILE, y = py - HAUT_MUR;
@@ -1224,7 +1231,7 @@ function aura(j) { // anneau coloré pour chaque super pouvoir actif
 function buisson(px, py) {
   const cx = px + 32, cy = py + 24, sw = Math.sin(temps * 0.04 + px * 0.1) * 1.5;
   ctx.globalAlpha = Math.hypot(moi.x - cx, moi.y - cy - 8) < 70 ? 0.45 : 1;
-  ctx.drawImage(spriteBuisson(map.def), px - 14 + sw, py - 22);
+  if (decor3D) ctx.drawImage(decor3D.buissons[varDecor(px, py)], px + 32 - 41.6 + sw, py + 32 - 83.55, 83.3, 133.7); else ctx.drawImage(spriteBuisson(map.def), px - 14 + sw, py - 22);
   ctx.globalAlpha = 1;
 }
 function dessinerVisee() {

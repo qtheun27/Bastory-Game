@@ -133,5 +133,47 @@ const Modele3D = (() => {
     const boucle = () => { t += 1 / 120; x.clearRect(0, 0, canvas.width, canvas.height); x.drawImage(vue.rendre(angle, canvas.width, t), 0, 0); canvas._boucle = requestAnimationFrame(boucle); };
     boucle();
   }
-  return { dispo, generer, visage, vitrine, apercu };
+  // 🗺️ DÉCOR 3D : murs en pierre, coffres et buissons rendus en 3D (même lumière que les persos), en 3 variantes
+  async function decor(d) {
+    if (!initialiser()) return null;
+    const A = 40 * Math.PI / 180, cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 50);
+    cam.position.set(0, 10 * Math.cos(A), 10 * Math.sin(A)); cam.up.set(0, 1, 0); cam.lookAt(0, 0, 0);
+    const h = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+    const tex = (base, taches, n) => { const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d'); x.fillStyle = base; x.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 900; i++) { x.fillStyle = `rgba(${h(i + n) > 0.5 ? '255,255,255' : '0,0,0'},${0.05 + h(i + 7 + n) * 0.1})`; x.fillRect(h(i * 3 + n) * 256, h(i * 7 + n) * 256, 2 + h(i + 1) * 5, 2 + h(i + 2) * 5); }
+      for (let i = 0; i < taches; i++) { x.strokeStyle = 'rgba(0,0,0,.25)'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(h(i + n) * 256, h(i + 50 + n) * 256); x.lineTo(h(i + 9 + n) * 256, h(i + 60 + n) * 256); x.stroke(); }
+      const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t; };
+    const couleur = c => new THREE.Color(c).convertSRGBToLinear();
+    // cadrage : 1 case = 1,306 × 1 unités ; le dessus mesure 64 px, la face avant 28 px (comme le reste de la map)
+    const photo = (obj, l, r, b, t, px) => {
+      cam.left = l; cam.right = r; cam.bottom = b; cam.top = t; cam.updateProjectionMatrix();
+      const W2 = Math.round((r - l) * 49 * px), H2 = Math.round((t - b) * 83.55 * px); rendu.setSize(W2, H2, false);
+      scene.add(obj); rendu.render(scene, cam); scene.remove(obj);
+      const c = document.createElement('canvas'); c.width = W2; c.height = H2; c.getContext('2d').drawImage(rendu.domElement, 0, 0); return c;
+    };
+    const bloc = (seed, coffre) => {
+      const g = new THREE.BoxGeometry(1.306, 0.52, 1, 10, 4, 8), p = g.attributes.position, v = new THREE.Vector3();
+      if (!coffre) for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); const k = Math.round(v.x * 97 + v.y * 53 + v.z * 71 + seed * 13);
+        const f = 0.025 + h(k) * 0.05; v.x *= 1 + (Math.abs(v.x) > 0.6 ? f * 0.3 : 0); v.y += v.y > 0.2 ? h(k + 3) * 0.05 - 0.02 : 0; v.z *= 1 + (Math.abs(v.z) > 0.45 ? f * 0.4 : 0); p.setXYZ(i, v.x, v.y, v.z); }
+      g.computeVertexNormals(); g.translate(0, 0.26, 0);
+      const o = new THREE.Group();
+      o.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex(coffre ? '#a8743f' : d.mur || '#9a8a78', coffre ? 0 : 14, seed * 100), color: 0xffffff, roughness: coffre ? 0.7 : 0.92, flatShading: !coffre })));
+      if (coffre) { const or = new THREE.MeshStandardMaterial({ color: couleur('#f5c542'), metalness: 0.8, roughness: 0.3 });
+        [[0, 0.26, 0, 1.33, 0.1, 1.02], [0, 0.26, 0, 0.18, 0.54, 1.02]].forEach(([x, y, z, a, b2, c2]) => { const m = new THREE.Mesh(new THREE.BoxGeometry(a, b2, c2), or); m.position.set(x, y, z); o.add(m); }); }
+      return photo(o, -0.713, 0.713, -0.443, 0.777, 2);
+    };
+    const buisson = seed => {
+      const o = new THREE.Group(), mats = [d.buissonFonce || '#1f7a35', d.buisson || '#2fae4a'].map(c => new THREE.MeshStandardMaterial({ color: couleur(c), roughness: 0.85 }));
+      for (let i = 0; i < 14; i++) { const r = 0.2 + h(i + seed * 20) * 0.16, geo = new THREE.IcosahedronGeometry(r, 2), p = geo.attributes.position, v = new THREE.Vector3();
+        for (let k = 0; k < p.count; k++) { v.fromBufferAttribute(p, k); v.multiplyScalar(1 + (h(Math.round(v.x * 60 + v.y * 70 + v.z * 80) + i) - 0.5) * 0.25); p.setXYZ(k, v.x, v.y, v.z); } geo.computeVertexNormals();
+        const m = new THREE.Mesh(geo, mats[i < 6 ? 0 : 1]), a = h(i + seed) * Math.PI * 2, dist = i < 6 ? 0.35 : 0.18 * h(i + 3);
+        m.position.set(Math.cos(a) * dist * 1.3, (i < 6 ? 0.2 : 0.42) + h(i + 5) * 0.12, Math.sin(a) * dist); o.add(m); }
+      return photo(o, -0.85, 0.85, -0.6, 1.0, 2);
+    };
+    const tm = rendu.toneMapping, ex = rendu.toneMappingExposure; rendu.toneMapping = THREE.NoToneMapping; // couleurs fidèles à la map
+    const env = scene.environment; scene.environment = null;
+    const res = { murs: [1, 2, 3].map(n => bloc(n, false)), coffre: bloc(9, true), buissons: [1, 2, 3].map(buisson) };
+    rendu.toneMapping = tm; rendu.toneMappingExposure = ex; scene.environment = env; return res;
+  }
+  return { dispo, generer, visage, vitrine, apercu, decor };
 })();
