@@ -68,6 +68,32 @@
 
   .apercu3d { width: 200px; height: 200px; }
 </style>
+<style>
+  /* 💥 THÈME MANGA COMIQUE (surcharge du style "liquid glass") */
+  @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka:wght@500;600;700&display=swap');
+  :root { --acc:#ff8a1f; --ok:#1fc46b; --danger:#ff2d55; --verre:#2a2080; --verre2:#3a2d9c; --bord:#0b0620; --r:18px; --flou:none; font-family:Fredoka,"Baloo 2",system-ui,sans-serif; }
+  body { background: radial-gradient(circle at 50% 0%, rgba(255,245,180,.35), transparent 40%),
+         repeating-conic-gradient(from 0deg at 50% 0%, rgba(255,255,255,.06) 0 8deg, transparent 8deg 16deg),
+         radial-gradient(rgba(255,255,255,.07) 1.5px, transparent 2px) 0 0/14px 14px,
+         linear-gradient(180deg,#18b8ff 0,#5a4dff 45%,#2a1760 100%); background-attachment:fixed; }
+  header { background:#1d1558; border-bottom:4px solid #0b0620; box-shadow:0 5px 0 rgba(11,6,32,.5); }
+  header h1, .carte h3, h2 { font-family:Bangers,Impact,sans-serif; font-weight:400; letter-spacing:1.2px; color:#ffe14a; -webkit-text-stroke:1.5px #0b0620; paint-order:stroke fill; text-shadow:2px 3px 0 #0b0620; }
+  header h1 { font-size:30px; transform:rotate(-2deg); }
+  .carte h3 { font-size:24px; }
+  button { font-family:Bangers,Impact,sans-serif; font-weight:400; font-size:17px; letter-spacing:1px; border:3px solid #0b0620; border-radius:14px;
+           background:linear-gradient(180deg,#ffd23f,#ff8a1f); box-shadow:0 4px 0 #0b0620; -webkit-text-stroke:1px #0b0620; paint-order:stroke fill; text-shadow:0 1px 0 #0b0620; transition:transform .08s, box-shadow .08s; }
+  button:active { transform:translateY(4px); box-shadow:0 0 0 #0b0620; }
+  button.sec { background:linear-gradient(180deg,#5ff0ff,#1e7bff); box-shadow:0 4px 0 #0b0620; backdrop-filter:none; -webkit-backdrop-filter:none; }
+  button.danger { background:linear-gradient(180deg,#ff6b9a,#ff2d55); box-shadow:0 4px 0 #0b0620; }
+  nav button { background:#2a2080; } nav button.on { background:linear-gradient(180deg,#ffe14a,#ffb300); color:#fff; transform:rotate(-2deg) scale(1.05); }
+  .carte { background:linear-gradient(180deg,#3a2d9c,#1d1558); border:4px solid #0b0620; border-radius:20px; box-shadow:7px 8px 0 rgba(11,6,32,.85), inset 0 0 0 2px rgba(255,255,255,.14);
+           backdrop-filter:none; -webkit-backdrop-filter:none; transition:transform .15s; }
+  .carte:hover { transform:translateY(-3px) rotate(-.3deg); }
+  .form label { color:#fff; font-weight:600; }
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]), select, textarea {
+           background:#fff !important; color:#1a1030 !important; border:3px solid #0b0620 !important; border-radius:12px !important; font-family:Fredoka,system-ui,sans-serif; font-weight:600; }
+  input[type=range] { accent-color:#ff8a1f; } input[type=checkbox] { accent-color:#ff2d55; transform:scale(1.2); }
+</style>
 </head>
 <body>
 <header>

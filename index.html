@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Bastory Game</title>
     <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@1,700;1,800&family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka:wght@500;600;700&family=Barlow+Condensed:ital,wght@1,700;1,800&family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <!-- Application installable (écran d'accueil) : plein écran + paysage -->
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#2b1d6b">
+    <meta name="theme-color" content="#ff3d7f">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -62,7 +62,7 @@
                       background_color: '#0b1230', theme_color: app.couleur || '#2b1d6b', icons: [{ src: abs, sizes: '512x512', type: 'image/png', purpose: 'any' }] };
         document.querySelector('link[rel=manifest]').href = URL.createObjectURL(new Blob([JSON.stringify(man)], { type: 'application/manifest+json' }));
       } catch (e) { console.warn('Icône / nom de l\'appli', e); }
-      const s = document.createElement('script'); s.src = 'jeu.js'; document.body.appendChild(s);
+      const s = document.createElement('script'); s.src = 'jeu.js'; s.onload = () => { const m = document.createElement('script'); m.src = 'manga.js'; document.body.appendChild(m); }; document.body.appendChild(s); // 🎨 thème manga chargé par-dessus le moteur
     })();
     </script>
 </body>

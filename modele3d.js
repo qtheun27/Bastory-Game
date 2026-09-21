@@ -114,11 +114,11 @@ const Modele3D = (() => {
     const m = await charger(p); if (!m) return null;
     const c = document.createElement('canvas');
     return {
-      rendre(angle, taille, t = 0) {
-        c.width = c.height = taille; const x = c.getContext('2d'); x.clearRect(0, 0, taille, taille); x.drawImage(photo(m, angle, 'repos', t % 1, taille), 0, 0);
+      rendre(angle, taille, t = 0, anim = 'repos') {
+        c.width = c.height = taille; const x = c.getContext('2d'); x.clearRect(0, 0, taille, taille); x.drawImage(photo(m, angle, anim, t % 1, taille), 0, 0);
         if (!this.haut) { const cad = cadrage(c); this.haut = cad.haut / taille; this.bas = cad.bas / taille; } return c;
       },
-      liberer: () => m.liberer()
+      a: k => !!m.anims[k], liberer: () => m.liberer()
     };
   }
   async function apercu(p, canvas) { // aperçu admin qu'on fait tourner à la souris / au doigt
