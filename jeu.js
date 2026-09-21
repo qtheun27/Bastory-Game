@@ -2494,7 +2494,13 @@ async function detecterModeles() {
     const l = await (await fetch(`https://api.github.com/repos/${depot}/contents/modeles`)).json();
     if (!Array.isArray(l)) return;
     const ARME = { terre: 'rocher', air: 'vent', eau: 'trident', feu: 'boulefeu' };
-    for (const f of l.filter(f => /\.glb$/i.test(f.name))) {
+    for (const f of l.filter(f => /^boss[-_ ].+\.glb$/i.test(f.name))) { // 👹 "boss-troll.glb" = modèle 3D d'un boss (jamais un perso)
+      const chemin = 'modeles/' + f.name, id = f.name.replace(/^boss[-_ ]|\.glb$/gi, '').toLowerCase().replace(/\W/g, '');
+      if (Object.values(CONFIG.bosses).some(b => b.modele === chemin)) continue;
+      if (CONFIG.bosses[id]) CONFIG.bosses[id].modele = CONFIG.bosses[id].modele || chemin;
+      else CONFIG.bosses[id] = { ...JSON.parse(JSON.stringify(Object.values(CONFIG.bosses)[0])), nom: id.toUpperCase(), modele: chemin, image: '', imageCarte: '' };
+    }
+    for (const f of l.filter(f => /\.glb$/i.test(f.name) && !/^boss[-_ ]/i.test(f.name))) {
       const chemin = 'modeles/' + f.name; if (CONFIG.persos.some(p => p.modele === chemin)) continue;
       const m = f.name.replace(/\.glb$/i, '').match(/^(terre|air|eau|feu)[-_ ](.+)$/i), element = m ? m[1].toLowerCase() : '', nom = (m ? m[2] : f.name.replace(/\.glb$/i, '')).replace(/[-_]+/g, ' ').toUpperCase().slice(0, 16);
       const el = (CONFIG.elements || {})[element] || {}, a = ARME[element] && CONFIG.armes[ARME[element]] ? ARME[element] : Object.keys(CONFIG.armes)[0];

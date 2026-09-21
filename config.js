@@ -760,7 +760,7 @@ const CONFIG_PAR_DEFAUT = {
   "app": {
     "nom": "Bastory",
     "nomCourt": "Bastory",
-    "icone": "images/wixy.png",
+    "icone": "images/icone-maskable-512.png",
     "couleur": "#2b1d6b"
   },
   "elements": {
@@ -903,6 +903,7 @@ function migrerConfig(c) {
     D.maps.filter(m => m.sable).forEach(m => { if (!c.maps.some(x => x.nom === m.nom)) c.maps.push(copie(m)); });
     c.version = 9;
   }
+  if (/wixy\.png$/i.test((c.app || {}).icone || '')) c.app.icone = 'images/icone-maskable-512.png'; // nouvelle icône PWA
   c.modes.forEach(m => {
     if (m.type === '1v1') { m.type = 'multi'; m.joueursMin = m.joueursMin || 2; m.joueursMax = m.joueursMax || 2; }
     def(m, { joueursMin: 1, joueursMax: 1, equipes: 'chacun', pointsVictoire: 30, pointsDefaite: 5, bots: true, attenteBots: 15, reapparition: false, delaiReapparition: 3, duree: 0,
