@@ -26,12 +26,12 @@ const Modele3D = (() => {
     const c = document.createElement('canvas'); c.width = c.height = S;
     rendu = new THREE.WebGLRenderer({ canvas: c, alpha: true, antialias: true, preserveDrawingBuffer: true });
     rendu.setPixelRatio(1); rendu.setClearColor(0x000000, 0); rendu.outputEncoding = THREE.sRGBEncoding;
-    GRAD = new THREE.DataTexture(new Uint8Array([110, 110, 110, 255, 190, 190, 190, 255, 255, 255, 255, 255]), 3, 1, THREE.RGBAFormat);
+    GRAD = new THREE.DataTexture(new Uint8Array([70, 70, 70, 255, 150, 150, 150, 255, 225, 225, 225, 255]), 3, 1, THREE.RGBAFormat);
     GRAD.minFilter = GRAD.magFilter = THREE.NearestFilter; GRAD.generateMipmaps = false; GRAD.needsUpdate = true;
     scene = new THREE.Scene();
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x8a7fd0, 0.85));
-    const soleil = new THREE.DirectionalLight(0xfff4e0, 1.25); soleil.position.set(-2, 5, 3); scene.add(soleil);
-    const contre = new THREE.DirectionalLight(0x9fe3ff, 0.55); contre.position.set(3, 2, -3); scene.add(contre);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x4b4070, 0.5));
+    const soleil = new THREE.DirectionalLight(0xfff4e0, 1.0); soleil.position.set(-2, 5, 3); scene.add(soleil);
+    const contre = new THREE.DirectionalLight(0x9fe3ff, 0.3); contre.position.set(3, 2, -3); scene.add(contre);
     camera = new THREE.PerspectiveCamera(30, 1, 0.1, 60); camera.position.set(0, 5.3, 4.9); camera.lookAt(0, 0.9, 0); // vue 3/4 du dessus (avec de la marge pour les grands gestes)
     loader = new THREE.GLTFLoader();
     if (THREE.DRACOLoader) { const dr = new THREE.DRACOLoader(); dr.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.4.1/'); loader.setDRACOLoader(dr); } // modèles compressés (Meshy)
