@@ -983,8 +983,9 @@ function texte(t, x, y, taille, couleur, align = 'center', maxW) {
   ctx.lineWidth = Math.max(2, taille * 0.26); ctx.strokeStyle = NOIR; ctx.strokeText(t, x, y + taille * 0.09); ctx.strokeText(t, x, y);
   ctx.fillStyle = couleur; ctx.fillText(t, x, y);
 }
-const fonce = c => { const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c || ''); if (!m) return false; let h = m[1]; if (h.length === 3) h = [...h].map(x => x + x).join('');
-  const n = parseInt(h, 16); return ((n >> 16) * 0.299 + (n >> 8 & 255) * 0.587 + (n & 255) * 0.114) < 90; }; // couleur de texte sombre → on force un texte clair
+const fonce = c => { let r, g, b; const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c || ''), q = /^rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/i.exec(c || '');
+  if (m) { let h = m[1]; if (h.length === 3) h = [...h].map(x => x + x).join(''); const n = parseInt(h, 16); r = n >> 16; g = n >> 8 & 255; b = n & 255; } else if (q) [r, g, b] = [+q[1], +q[2], +q[3]]; else return false;
+  return r * 0.299 + g * 0.587 + b * 0.114 < 90; }; // couleur de texte sombre → on force un texte clair
 function titre(t, x, y, taille, couleur, align = 'center', maxW) {
   if (fonce(couleur)) couleur = '#fff';
   t = String(t).toUpperCase(); taille *= 1.1; const f = s => `${s}px ${POLICE_BD}`; ctx.font = f(taille);
@@ -1109,7 +1110,7 @@ function chocManga() { // image "choc" : flash + lignes de concentration
 
 // ---------- 🎬 INTRO DE MATCH : chaque combattant en grand, puis VS, puis 3-2-1 ----------
 let intro = null;
-const SHOW = 74, VS = 95, CD = 100;
+const SHOW = 110, VS = 130, CD = 170, TIC = 40; // durées (images à 60/s)
 function bossPourIntro() {
   const b = bosses.find(b => b.def && !b.def.cristal); if (b) return b.def;
   const id = (mode.typesBoss || []).find(id => CONFIG.bosses[id]); return CONFIG.bosses[id] || Object.values(CONFIG.bosses).find(b => !b.cristal) || { nom: 'BOSS' };
@@ -1139,7 +1140,7 @@ function introVedette(v, l, i) {
   ctx.save(); ctx.translate(cx, H); ctx.scale(sc, sc);
   if (v.vue) {
     const D = H * 1.02, T = Math.round(Math.min(760, D * Math.min(2, window.devicePixelRatio || 1))), anim = v.vue.a && v.vue.a('attaque') ? 'attaque' : 'repos';
-    const c = v.vue.rendre(Math.PI / 2 + (gauche ? -0.45 : 0.45), T, (l / 42) % 1, anim), taille = D * 0.9 / Math.max(0.3, (v.vue.bas - v.vue.haut) || 0.7);
+    const c = v.vue.rendre(Math.PI / 2 + (gauche ? -0.45 : 0.45), T, (l / 90) % 1, anim), taille = D * 0.9 / Math.max(0.3, (v.vue.bas - v.vue.haut) || 0.7);
     ctx.drawImage(c, -taille / 2, -H * 0.02 - (v.vue.bas || 0.95) * taille, taille, taille);
   } else if (pret(v.im)) { const s = H * 0.82; ctx.drawImage(v.im, -s / 2, -s - H * 0.06, s, s); }
   ctx.restore();
@@ -1177,7 +1178,7 @@ function introVS(l) {
   if (l > 30) bd('BAKOOOM!!', W / 2, H - 34 * u, 34 * u * elastique(Math.min(1, (l - 30) / 14)), '#fff', -0.05);
 }
 function introDecompte(l) {
-  const u = U(), n = Math.floor(l / 25), f = (l % 25) / 25, go = n >= 3, cx = W / 2, cy = H / 2;
+  const u = U(), n = Math.floor(l / TIC), f = (l % TIC) / TIC, go = n >= 3, cx = W / 2, cy = H / 2;
   ctx.fillStyle = 'rgba(20,0,40,.28)'; ctx.fillRect(-50, -50, W + 100, H + 100);
   const k = elastique(Math.min(1, f * 2.2));
   if (!go) {
@@ -1231,7 +1232,7 @@ function ellipse(x, y, rx, ry, fill) { ctx.beginPath(); ctx.ellipse(x, y, Math.m
 let decor3D = null;
 const varDecor = (px, py) => Math.floor(alea(px * 0.37 + py * 0.11) * 3);
 function mur(px, py) { if (decor3D) ctx.drawImage(decor3D.murs[varDecor(px, py)], px - 2.94, py - HAUT_MUR - 5, 69.9, 101.9); else ctx.drawImage(spriteBloc(map.def, false), px - 2, py - HAUT_MUR - 2); }
-const DUREE_ANIM = { attaque: 24, touche: 18, mort: 45, releve: 40 }; // durée des animations spéciales (images à 60/s)
+const DUREE_ANIM = { attaque: 34, touche: 22, mort: 60, releve: 50 }; // durée des animations spéciales (images à 60/s)
 function animSpeciale(e, sp) { // quelle animation spéciale jouer maintenant ?
   if (!sp.spec) return null;
   if (e.pv <= 0) { if (!e.mortT) e.mortT = temps; return sp.spec.lignes.mort ? { n: 'mort', t: e.mortT } : null; }
@@ -1260,9 +1261,10 @@ function dessiner3D(e, sp, anneau, taille) { // perso 3D : on choisit la vignett
 }
 function dessinerEntite(e, im, anneau, taille) {
   e.alt = e.dep === 'vol' ? ((elemDe(e.perso) || {}).altitude || 22) + Math.sin(temps * 0.08 + e.x * 0.01) * 4 : 0; // 💨 altitude
+  if (e.dash && e.dash.saut && temps < e.dash.fin) e.alt = Math.sin((1 - (e.dash.fin - temps) / e.dash.duree) * Math.PI) * 70; // hauteur du saut
   auraElem(e);
   if (e.def && !hote) { const d = Math.hypot(e.x - (e.px ?? e.x), e.y - (e.py ?? e.y)); if (d > 0.4) e.marche = (e.marche || 0) + d; e.px = e.x; e.py = e.y; } // boss distants : animation de marche
-  const sp3 = e.perso ? obtenir3D(e.perso) : e.def && bossBase(e.def).modele ? obtenir3D(bossBase(e.def)) : null; // persos ET boss en 3D
+  const sp3 = e.def ? (bossBase(e.def).modele ? obtenir3D(bossBase(e.def)) : null) : e.perso && obtenir3D(e.perso); // persos ET boss en 3D
   if (sp3) return dessiner3D(e, sp3, anneau, taille);
   if (e.rage) ellipse(e.x, e.y + e.r * 0.45, e.r * 1.5, e.r * 0.9, `rgba(255,0,0,${0.15 + 0.1 * Math.sin(temps * 0.2)})`);
   ombreDouce(e.x, e.y + e.r * 0.45, e.r * 1.15, e.r * 0.62);
@@ -1377,9 +1379,9 @@ function lancerSuper(j, angle = j.angle, distant) {
 function lancerAction(j, angle = j.angle, distant) {
   const e = infoElem(j); if (!e || j.pv <= 0 || resultat) return;
   if (!distant) { if ((j.actionT || 0) > temps) return; j.actionT = temps + (+e.actionRecharge || 7) * 60; envoyer({ t: 'ac', de: j.uid, a: +angle.toFixed(3) }); }
-  if (e.k === 'terre' || e.k === 'air') { // 🌍 charge qui brise tout • 💨 rafale d'esquive (invulnérable)
-    j.dash = { a: angle, fin: temps + (e.k === 'terre' ? 22 : 12), v: e.k === 'terre' ? 2.8 : 3.4, touches: new Set() };
-    if (e.k === 'air') j.invuln = temps + 16; ono(e.k === 'terre' ? 'DODODO!' : 'SHUUN!', j.x, j.y - 50, 1);
+  if (e.k === 'terre' || e.k === 'air') { // 🌍 charge qui brise tout • 💨 saut d'esquive par-dessus les murs
+    j.dash = { a: angle, fin: temps + (e.k === 'terre' ? 22 : 26), duree: e.k === 'terre' ? 22 : 26, v: e.k === 'terre' ? 2.6 : 2.2, saut: e.k === 'air', touches: new Set() };
+    if (e.k === 'air') j.invuln = temps + 26; ono(e.k === 'terre' ? 'DODODO!' : 'HOP!', j.x, j.y - 50, 1);
   } else if (e.k === 'eau') { j.bulle = temps + 180; if (moiOuBot(j)) j.pv = Math.min(j.pvMax, j.pv + j.pvMax * 0.1); ono('POP!', j.x, j.y - 50, 1, '#5ff0ff'); }
   else if (e.k === 'feu') { // 🔥 cercle de flammes qui brûle aussi les buissons
     for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; nuages.push({ x: j.x + Math.cos(a) * 70, y: j.y + Math.sin(a) * 70, r: 34, fin: temps + 180, debut: temps, c: '#ff6a00', deg: (+e.valeur || 120) * 2, de: j.uid, arme: { effet: 'etincelle', couleur: '#ff8a00' }, feu: true }); }
@@ -1388,7 +1390,8 @@ function lancerAction(j, angle = j.angle, distant) {
   }
 }
 function dash(j) { // avance pendant la charge / la rafale ; la charge de Rokh blesse ce qu'elle percute
-  if (!j.dash || temps >= j.dash.fin) return false;
+  if (!j.dash) return false;
+  if (temps >= j.dash.fin) { const s = j.dash.saut; j.dash = null; if (s) liberer(); return false; } // atterrissage : jamais coincé dans un mur
   const v = j.perso.vitesse * j.dash.v, dx = Math.cos(j.dash.a) * v, dy = Math.sin(j.dash.a) * v;
   if (cleElem(j.perso) === 'terre') {
     const tx = Math.floor((j.x + Math.cos(j.dash.a) * j.r * 1.3) / TUILE), ty = Math.floor((j.y + Math.sin(j.dash.a) * j.r * 1.3) / TUILE);
@@ -1396,7 +1399,8 @@ function dash(j) { // avance pendant la charge / la rafale ; la charge de Rokh b
     for (const e of [...bosses.filter(b => b.pv > 0 && !b.def.cristal), ...joueurs().filter(o => o.eq !== j.eq && o.pv > 0)])
       if (!j.dash.touches.has(e) && Math.hypot(e.x - j.x, e.y - j.y) < j.r + (e.r || 26)) { j.dash.touches.add(e); effet('impact', e.x, e.y, '#c98a4b', 60); if (moiOuBot(j)) degats(e, j.uid, Math.round(j.perso.degats * 0.7), j.x, j.y, j.dash.a, { recul: 22 }); }
   }
-  deplacer(j, dx, dy); j.marche += v; tourner(j, j.dash.a, 0.5);
+  if (j.dash.saut) { const d0 = j.dep; j.dep = 'vol'; deplacer(j, dx, dy); j.dep = d0; } else deplacer(j, dx, dy);
+  j.marche += v; tourner(j, j.dash.a, 0.5);
   return true;
 }
 let hudBoutons = [];
@@ -2198,7 +2202,7 @@ function menuPersos() {
     ['🎯', 'Portée', p.portee / 600, p.portee, '#5ac8fa'], ['🔋', 'Munitions', (p.munitions || 3) / 6, p.munitions || 3, '#ffd23f'],
     ['⚡', 'Cadence', 1 - (p.delaiTir || 30) / 90, ((p.delaiTir || 30) / 60).toFixed(2) + 's', '#b57bff'], ['♻️', 'Recharge', 1 - (p.recharge || 60) / 150, ((p.recharge || 60) / 60).toFixed(1) + 's', '#ff7ab6']];
   const sp = (mesStats.persos || {})[cleP(p)] || {}, epF = elemDe(p);
-  if (epF) texte(`${epF.icone} ${epF.nom} • Niveau ${niveauDe(p)} • ${({ vol: 'vole au-dessus des blocs', nage: 'se déplace sur l\'eau', feu: 'laisse une traînée de feu', brise: 'brise les blocs', sol: '' })[epF.capacite] || ''}`, px + panW / 2, py + is + 2 * u, 11 * u, epF.couleur, 'center', panW - 20 * u);
+  if (epF) texte(`${epF.icone} ${epF.nom} • Niveau ${niveauDe(p)} • ${({ vol: 'vole au-dessus des blocs', saut: 'saute par-dessus les murs', nage: 'se déplace sur l\'eau', feu: 'laisse une traînée de feu', brise: 'brise les blocs', sol: '' })[epF.capacite] || ''}`, px + panW / 2, py + is + 2 * u, 11 * u, epF.couleur, 'center', panW - 20 * u);
   const ie = ELEM_DEF[cleElem(p)] && { ...ELEM_DEF[cleElem(p)], ...epF }; if (ie) texte(`⭐ Super : ${ie.superNom}  •  🎮 Action : ${ie.actionNom}`, px + panW / 2, py + is + 16 * u, 11 * u, '#ffe14a', 'center', panW - 20 * u);
   texte(`🏆 ${sp.points || 0} pts  •  ⭐ ${sp.victoires || 0} victoires  •  🎮 ${sp.parties || 0} parties`, px + panW / 2, py + is + 30 * u, 11 * u, '#ffe8a3');
   const sy = py + is + 46 * u, pas = Math.min(24 * u, (ph - is - 162 * u) / st.length);

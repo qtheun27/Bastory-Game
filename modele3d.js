@@ -58,7 +58,7 @@ const Modele3D = (() => {
     const mixer = new THREE.AnimationMixer(obj), clips = gltf.animations || [];
     // choix des animations : nom donné dans l'admin, sinon détection automatique (par ordre de préférence)
     const trouver = (nom, ...motifs) => clips.find(c => nom && c.name === nom) || motifs.map(m => clips.find(c => m.test(c.name))).find(Boolean);
-    const air = p.element === 'air', VOL = /fly|flap|glide|hover|wing/i; // 💨 perso volant : jamais d'animation de marche dans le vide
+    const VOL = /fly|flap|glide|hover|wing/i, air = p.element === 'air' && clips.some(c => VOL.test(c.name)); // 💨 perso volant : jamais d'animation de marche dans le vide
     const anims = {
       repos: trouver(p.animRepos, ...(air ? [VOL] : []), /idle/i, /breath|repos|look.?around/i, /baselayer|clip0/i),
       marche: air ? trouver(p.animMarche, VOL) : trouver(p.animMarche, /walk(?!.*inplace)/i, /walk/i, /run|marche|move|swim/i),
@@ -151,7 +151,7 @@ const Modele3D = (() => {
     cam.position.set(0, 10 * Math.cos(A), 10 * Math.sin(A)); cam.up.set(0, 1, 0); cam.lookAt(0, 0, 0);
     const h = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
     const tex = (base, taches, n) => { const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d'); x.fillStyle = base; x.fillRect(0, 0, 256, 256);
-      for (let i = 0; i < 260; i++) { x.fillStyle = `rgba(${h(i + n) > 0.5 ? '255,255,255' : '0,0,0'},${0.05 + h(i + 7 + n) * 0.1})`; x.fillRect(h(i * 3 + n) * 256, h(i * 7 + n) * 256, 2 + h(i + 1) * 5, 2 + h(i + 2) * 5); }
+      for (let i = 0; i < 110; i++) { x.fillStyle = `rgba(${h(i + n) > 0.5 ? '255,255,255' : '0,0,0'},${0.05 + h(i + 7 + n) * 0.1})`; x.fillRect(h(i * 3 + n) * 256, h(i * 7 + n) * 256, 2 + h(i + 1) * 5, 2 + h(i + 2) * 5); }
       for (let i = 0; i < taches; i++) { x.strokeStyle = 'rgba(0,0,0,.25)'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(h(i + n) * 256, h(i + 50 + n) * 256); x.lineTo(h(i + 9 + n) * 256, h(i + 60 + n) * 256); x.stroke(); }
       const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t; };
     const couleur = c => new THREE.Color(c).convertSRGBToLinear();
@@ -171,7 +171,9 @@ const Modele3D = (() => {
       o.add(new THREE.Mesh(g, new THREE.MeshToonMaterial({ map: tex(coffre ? '#c98a45' : d.mur || '#b3a390', coffre ? 0 : 6, seed * 100), gradientMap: GRAD })));
       if (coffre) { const or = new THREE.MeshToonMaterial({ color: couleur('#ffd23f'), gradientMap: GRAD });
         [[0, 0.26, 0, 1.33, 0.1, 1.02], [0, 0.26, 0, 0.18, 0.54, 1.02]].forEach(([x, y, z, a, b2, c2]) => { const m = new THREE.Mesh(new THREE.BoxGeometry(a, b2, c2), or); m.position.set(x, y, z); o.add(m); }); }
-      return contour(photo(o, -0.713, 0.713, -0.443, 0.777, 2), 2.5);
+      if (!coffre) { const dessus = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.05, 0.86), new THREE.MeshToonMaterial({ color: couleur(d.mur || '#b3a390').lerp(new THREE.Color(1, 1, 1), 0.4), gradientMap: GRAD }));
+        dessus.position.y = 0.545; o.add(dessus); } // liseré clair sur le dessus du bloc
+      return contour(photo(o, -0.713, 0.713, -0.443, 0.777, 2), 3.5);
     };
     const buisson = seed => {
       const o = new THREE.Group(), mats = [d.buissonFonce || '#1f7a35', d.buisson || '#2fae4a'].map(c => new THREE.MeshToonMaterial({ color: couleur(c), gradientMap: GRAD }));
@@ -179,7 +181,7 @@ const Modele3D = (() => {
         for (let k = 0; k < p.count; k++) { v.fromBufferAttribute(p, k); v.multiplyScalar(1 + (h(Math.round(v.x * 60 + v.y * 70 + v.z * 80) + i) - 0.5) * 0.25); p.setXYZ(k, v.x, v.y, v.z); } geo.computeVertexNormals();
         const m = new THREE.Mesh(geo, mats[i < 6 ? 0 : 1]), a = h(i + seed) * Math.PI * 2, dist = i < 6 ? 0.35 : 0.18 * h(i + 3);
         m.position.set(Math.cos(a) * dist * 1.3, (i < 6 ? 0.2 : 0.42) + h(i + 5) * 0.12, Math.sin(a) * dist); o.add(m); }
-      return contour(photo(o, -0.85, 0.85, -0.6, 1.0, 2), 2.5);
+      return contour(photo(o, -0.85, 0.85, -0.6, 1.0, 2), 3.5);
     };
     const res = { murs: [1, 2, 3].map(n => bloc(n, false)), coffre: bloc(9, true), buissons: [1, 2, 3].map(buisson) };
     return res;

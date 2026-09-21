@@ -756,7 +756,7 @@ const CONFIG_PAR_DEFAUT = {
       "rarete": 1
     }
   },
-  "version": 9,
+  "version": 10,
   "app": {
     "nom": "Bastory",
     "nomCourt": "Bastory",
@@ -781,14 +781,14 @@ const CONFIG_PAR_DEFAUT = {
       "nom": "Air",
       "icone": "💨",
       "couleur": "#38bdf8",
-      "capacite": "vol",
+      "capacite": "saut",
       "altitude": 24,
       "valeur": 0,
       "gainVictoire": 30,
       "gainDefaite": 10,
       "superNom": "Tempête de flèches",
       "superCharge": 5000,
-      "actionNom": "Rafale",
+      "actionNom": "Saut",
       "actionRecharge": 5
     },
     "eau": {
@@ -902,6 +902,11 @@ function migrerConfig(c) {
     D.modes.filter(m => ['marathon', 'tresor'].includes(m.objectif)).forEach(m => { if (!c.modes.some(x => x.nom === m.nom)) c.modes.push(copie(m)); });
     D.maps.filter(m => m.sable).forEach(m => { if (!c.maps.some(x => x.nom === m.nom)) c.maps.push(copie(m)); });
     c.version = 9;
+  }
+  if ((c.version || 0) < 10) { // v10 : persos plus lents, Zéphyr marche et saute au lieu de voler
+    c.persos.forEach(p => p.vitesse = +((+p.vitesse || 4) * 0.85).toFixed(2));
+    if (c.elements.air) { if (c.elements.air.capacite === 'vol') c.elements.air.capacite = 'saut'; if (c.elements.air.actionNom === 'Rafale') c.elements.air.actionNom = 'Saut'; }
+    c.version = 10;
   }
   if (/wixy\.png$/i.test((c.app || {}).icone || '')) c.app.icone = 'images/icone-maskable-512.png'; // nouvelle icône PWA
   c.modes.forEach(m => {

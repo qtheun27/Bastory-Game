@@ -63,6 +63,8 @@
   .boite3d span { font-size: 12px; color: var(--doux); margin-top: 2px; } .apercu3d { width: 180px; height: 180px; }
 
   .apercu3d { width: 200px; height: 200px; }
+  /* textes des boutons toujours lisibles */
+  button, nav button, nav button.on { color:#fff !important; text-shadow:0 2px 0 rgba(11,6,32,.9), 0 0 3px rgba(11,6,32,.8) !important; }
 </style>
 </head>
 <body>
@@ -334,7 +336,7 @@ const VUES = {
     const g = el('div', { className: 'grille-cartes' });
     g.append(carte('📈 Niveaux des persos', formulaire(cfg.progression, [['niveauMax','Niveau maximum','number'],['coutBase','Coût du niveau 2 (essences)','number'],['coutMult','Coût × à chaque niveau','number'],
       ['bonusPV','Bonus de vie par niveau (%)','number'],['bonusDegats','Bonus de dégâts par niveau (%)','number'],['bonusVitesse','Bonus de vitesse par niveau (%)','number']])));
-    const CAP = [['sol', 'Aucune'], ['brise', '🌍 Brise les blocs en fonçant'], ['vol', '💨 Vole au-dessus des blocs et de l\'eau'], ['nage', '💧 Se déplace sur l\'eau'], ['feu', '🔥 Laisse une traînée de feu']];
+    const CAP = [['sol', 'Aucune'], ['brise', '🌍 Brise les blocs en fonçant'], ['vol', '💨 Vole au-dessus des blocs et de l\'eau'], ['saut', '💨 Marche et saute par-dessus les murs (action)'], ['nage', '💧 Se déplace sur l\'eau'], ['feu', '🔥 Laisse une traînée de feu']];
     for (const [k, e] of Object.entries(cfg.elements)) g.append(carte(e.icone + ' ' + e.nom, formulaire(e, [['nom','Nom','text'],['icone','Icône (emoji)','text'],['couleur','Couleur','color'],['capacite','Capacité','select',CAP],
       ['valeur','Valeur (brise : dégâts/image • nage : vitesse × • feu : dégâts/s)','number'],['altitude','Vol : hauteur','number'],['soin','Nage : soin % PV par seconde dans l\'eau','number'],['duree','Feu : durée des flammes (s)','number'],
       ['superNom','⭐ Super : nom','text'],['superCharge','⭐ Super : dégâts à infliger pour le charger','number'],['actionNom','🎮 Action : nom','text'],['actionRecharge','🎮 Action : recharge (s)','number'],
