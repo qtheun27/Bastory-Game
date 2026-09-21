@@ -13,7 +13,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="images/wixy.png">
+    <link rel="apple-touch-icon" href="images/icone-maskable-192.png">
 </head>
 <body>
     <!-- Écran de connexion / inscription -->
@@ -52,14 +52,15 @@
       try { // 📱 nom et icône de l'appli (réglables dans l'admin)
         const app = (window.CONFIG_DISTANTE || CONFIG_PAR_DEFAUT).app || {}, c = FIREBASE_CONFIG, base = location.href.replace(/[^/]*$/, '');
         if (app.nom) { document.title = app.nom; const h = document.querySelector('#auth h1'); if (h) h.textContent = app.nom; }
-        let ic = app.icone || 'images/wixy.png';
+        let ic = app.icone || 'images/icone-maskable-512.png';
         if (ic.startsWith('fb:')) ic = (await (await fetch(`https://firestore.googleapis.com/v1/projects/${c.projectId}/databases/(default)/documents/images/${ic.slice(3)}?key=${c.apiKey}`)).json()).fields.data.stringValue;
         const abs = ic.startsWith('data:') ? ic : base + ic;
         document.querySelector('link[rel=apple-touch-icon]').href = abs;
         document.querySelector('meta[name=theme-color]').content = app.couleur || '#2b1d6b';
         const t = document.createElement('meta'); t.name = 'apple-mobile-web-app-title'; t.content = app.nomCourt || app.nom || 'Bastory'; document.head.appendChild(t);
         const man = { name: app.nom || 'Bastory', short_name: app.nomCourt || app.nom || 'Bastory', start_url: base + 'index.html', scope: base, display: 'fullscreen', orientation: 'landscape',
-                      background_color: '#0b1230', theme_color: app.couleur || '#2b1d6b', icons: [{ src: abs, sizes: '512x512', type: 'image/png', purpose: 'any' }] };
+                      background_color: '#5a4dff', theme_color: app.couleur || '#2b1d6b', icons: app.icone ? [{ src: abs, sizes: '512x512', type: 'image/png', purpose: 'any' }]
+                      : [192, 512].map(n => ({ src: base + `images/icone-maskable-${n}.png`, sizes: n + 'x' + n, type: 'image/png', purpose: 'any maskable' })) };
         document.querySelector('link[rel=manifest]').href = URL.createObjectURL(new Blob([JSON.stringify(man)], { type: 'application/manifest+json' }));
       } catch (e) { console.warn('Icône / nom de l\'appli', e); }
       const s = document.createElement('script'); s.src = 'jeu.js'; document.body.appendChild(s);
