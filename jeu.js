@@ -56,7 +56,7 @@ function redim() {
   W = tourne ? innerHeight : innerWidth; H = tourne ? innerWidth : innerHeight;
   canvas.width = W * dpr; canvas.height = H * dpr;
   canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
-  zoom = Math.max(0.55, Math.min(1.3, Math.min(W, H * 1.7) / (TUILE * 15)));
+  zoom = Math.max(0.55, Math.min(1.3, Math.min(W, H * 1.7) / (TUILE * 18)));
 }
 addEventListener('resize', redim); redim();
 let ox = 0, oy = 0; const sa = { l: 0, r: 0, t: 0, b: 0 };     // décalage de l'interface (encoche / zone sûre)
@@ -71,6 +71,8 @@ function lireZoneSure() {
   d.remove();
 }
 lireZoneSure(); addEventListener('resize', lireZoneSure);
+const redimPlusTard = () => [60, 250, 600, 1200].forEach(t => setTimeout(() => { redim(); lireZoneSure(); }, t)); // iOS/Android donnent la bonne taille avec un temps de retard
+addEventListener('orientationchange', redimPlusTard); addEventListener('pageshow', redimPlusTard); if (window.visualViewport) visualViewport.addEventListener('resize', redimPlusTard); redimPlusTard();
 function zoneSure(f) { // dessine l'interface en évitant l'encoche des téléphones
   const w0 = W, h0 = H; ox = sa.l; oy = sa.t; W = w0 - sa.l - sa.r; H = h0 - sa.t - sa.b;
   ecran(); f(); W = w0; H = h0; ox = oy = 0; ecran();
@@ -298,7 +300,7 @@ function finir(r, msg) {
       persos: { [cleP(baseDe(moi.perso))]: { points: inc(finInfo.points), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0) } } }, { merge: true }).catch(e => console.warn(e));
   }
 }
-function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; mesPoints = v.points || 0; mesStats = { points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {}, essences: v.essences || {}, recompenses: v.recompenses || [] }; }, () => {}); }
+function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; mesPoints = v.points || 0; if (v.touches && !toucheAttendue) mesTouches = { ...TOUCHES_DEF, ...v.touches }; mesStats = { points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {}, essences: v.essences || {}, recompenses: v.recompenses || [] }; }, () => {}); }
 
 // ---------- 8. MULTIJOUEUR (Realtime Database) ----------
 // Salle d'attente → départ quand le max est atteint (ou 10 s après avoir atteint le minimum).
@@ -432,11 +434,18 @@ function recevoir(e) {
 const touches = {};
 addEventListener('keydown', e => {
   if (etat === 'AUTH') return;
-  touches[e.key.toLowerCase()] = true;
-  if (e.key === ' ' && etat === 'JEU') tirerAuto();
-  if (etat === 'JEU' && /^[eE]$/.test(e.key)) lancerAction(moi); // 🎮 action d'élément
-  if (etat === 'JEU' && /^[rR]$/.test(e.key)) lancerSuper(moi);  // ⭐ super
-  if (e.key === 'Escape' && etat !== 'MENU') { quitterSalle(); etat = 'MENU'; }
+  const k = e.key.toLowerCase();
+  if (toucheAttendue && etat === 'MENU') { // ⌨️ nouvelle touche choisie dans l'onglet Commandes (échange si déjà utilisée)
+    if (k !== 'escape') { for (const a in mesTouches) if (mesTouches[a] === k) mesTouches[a] = mesTouches[toucheAttendue]; mesTouches[toucheAttendue] = k; sauverTouches(); }
+    toucheAttendue = null; e.preventDefault(); return;
+  }
+  touches[k] = true;
+  if (etat === 'JEU') {
+    if (k === mesTouches.auto) { e.preventDefault(); tirerAuto(); }
+    if (k === mesTouches.action) lancerAction(moi);            // 🎮 action d'élément
+    if (k === mesTouches.super) lancerSuper(moi, angleSouris()); // ⭐ super, vers la souris
+  }
+  if (k === 'escape' && etat !== 'MENU') { quitterSalle(); etat = 'MENU'; }
 });
 addEventListener('keyup', e => touches[e.key.toLowerCase()] = false);
 addEventListener('contextmenu', e => e.preventDefault());
@@ -447,20 +456,23 @@ canvas.addEventListener('touchstart', e => {
   for (const t of e.changedTouches) {
     if (etat === 'MENU' && surHero(pt(t))) { heroDrag = { x: pt(t).x, id: t.identifier, bouge: 0 }; continue; }
     if (etat !== 'JEU' || moi.pv <= 0) { clic(pt(t).x, pt(t).y); continue; }
-    const hb = boutonHUD(pt(t)); if (hb) { hb.f(); continue; } // boutons SUPER / ACTION
+    const hb = boutonHUD(pt(t)); // boutons SUPER (glisser pour viser) / ACTION
+    if (hb && hb.vise && moi.superPret) { const q = pt(t); Object.assign(joyS, { actif: true, id: t.identifier, ox: q.x, oy: q.y, x: q.x, y: q.y }); continue; }
+    if (hb) { hb.f(); continue; }
     const q = pt(t), j = q.x < W / 2 ? joyG : joyD;
     if (!j.actif) Object.assign(j, { actif: true, id: t.identifier, ox: q.x, oy: q.y, x: q.x, y: q.y });
   }
 }, { passive: false });
 canvas.addEventListener('touchmove', e => {
   e.preventDefault();
-  for (const t of e.changedTouches) for (const j of [joyG, joyD]) if (j.actif && j.id === t.identifier) { const q = pt(t); j.x = q.x; j.y = q.y; }
+  for (const t of e.changedTouches) for (const j of [joyG, joyD, joyS]) if (j.actif && j.id === t.identifier) { const q = pt(t); j.x = q.x; j.y = q.y; }
   if (heroDrag) for (const t of e.changedTouches) if (t.identifier === heroDrag.id) tournerHero(pt(t).x);
 }, { passive: false });
 function finTouche(e) {
   if (heroDrag) for (const t of e.changedTouches) if (t.identifier === heroDrag.id) lacherHero();
   for (const t of e.changedTouches) {
     if (joyG.actif && joyG.id === t.identifier) joyG.actif = false;
+    if (joyS.actif && joyS.id === t.identifier) { joyS.actif = false; const v = vec(joyS); if (etat === 'JEU') lancerSuper(moi, v.d > 15 ? v.a : angleAuto()); }
     if (joyD.actif && joyD.id === t.identifier) {
       joyD.actif = false;
       if (etat === 'JEU') { const v = vec(joyD); v.d > 15 ? tirer(v.a, v.f) : tirerAuto(); }
@@ -472,7 +484,7 @@ canvas.addEventListener('touchcancel', finTouche);
 const surHero = q => ecranMenu === 'accueil' && heroZone && q.x - sa.l > heroZone.x && q.x - sa.l < heroZone.x + heroZone.w && q.y - sa.t > heroZone.y && q.y - sa.t < heroZone.y + heroZone.h;
 function tournerHero(x) { const dx = x - heroDrag.x; heroDrag.x = x; heroDrag.bouge += Math.abs(dx); heroAngle -= dx * 0.013; }
 function lacherHero() { if (heroDrag.bouge < 6) { persoVue = persoIndex; allerA('persos'); } heroDrag = null; }
-addEventListener('mousemove', e => { if (heroDrag) tournerHero(pt(e).x); });
+addEventListener('mousemove', e => { souris = pt(e); if (heroDrag) tournerHero(pt(e).x); });
 addEventListener('mouseup', () => { if (heroDrag) lacherHero(); });
 canvas.addEventListener('mousedown', e => {
   if (etat === 'MENU' && surHero(pt(e))) { heroDrag = { x: pt(e).x, bouge: 0 }; return; }
@@ -774,10 +786,10 @@ function liberer() { // éjecte ceux qui se retrouvent coincés dans un bloc
 function maj() {
   temps++;
   let mx = 0, my = 0;
-  if (touches.q || touches.a || touches.arrowleft) mx--;
-  if (touches.d || touches.arrowright) mx++;
-  if (touches.z || touches.w || touches.arrowup) my--;
-  if (touches.s || touches.arrowdown) my++;
+  if (appuye('gauche')) mx--;
+  if (appuye('droite')) mx++;
+  if (appuye('haut')) my--;
+  if (appuye('bas')) my++;
   const dk = Math.hypot(mx, my); if (dk) { mx /= dk; my /= dk; }
   if (joyG.actif) { const v = vec(joyG); if (v.d > 5) { mx = Math.cos(v.a) * v.f; my = Math.sin(v.a) * v.f; } }
   if (moi.pv <= 0) mx = my = 0;
@@ -1186,11 +1198,12 @@ function introDecompte(l) {
     ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k); ctx.rotate((n - 1) * 0.12);
     eclat(0, 0, 70 * u, 10, ['#ff2d55', '#ff8a1f', '#ffe14a'][n], n + 3, NOIR, 5 * u); bd(String(3 - n), 0, 6 * u, 96 * u, '#fff', 0, NOIR); ctx.restore();
     bd(['TIC!', 'TAC!', 'TOC!'][n], cx + 110 * u, cy - 70 * u, 26 * u * k, '#5ff0ff', 0.3);
-  } else {
-    const kg = elastique(Math.min(1, f * 1.6));
-    rayons(cx, cy, temps * 0.03, '#ffe14a', 0.35 * (1 - f), 22); lignesVitesse(cx, cy, 90 * u, 44, 0.45 * (1 - f));
-    if (f < 0.12) { ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillRect(0, 0, W, H); }
-    ctx.save(); ctx.globalAlpha = Math.min(1, (1 - f) * 3); ctx.translate(cx, cy); ctx.scale(kg * (1 + f * 0.3), kg * (1 + f * 0.3));
+  } else { // GO : une seule apparition jusqu'à la fin du décompte
+    const fg = Math.min(1, (l - 3 * TIC) / (CD - 3 * TIC));
+    const kg = elastique(Math.min(1, fg * 1.6));
+    rayons(cx, cy, temps * 0.03, '#ffe14a', 0.35 * (1 - fg), 22); lignesVitesse(cx, cy, 90 * u, 44, 0.45 * (1 - fg));
+    if (fg < 0.12) { ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillRect(0, 0, W, H); }
+    ctx.save(); ctx.globalAlpha = Math.min(1, (1 - fg) * 3); ctx.translate(cx, cy); ctx.scale(kg * (1 + fg * 0.3), kg * (1 + fg * 0.3));
     bd('GO !!', 0, 0, 120 * u, '#b6ff4a', -0.08); ctx.restore();
   }
 }
@@ -1294,7 +1307,7 @@ function dessinerProjectile(p) {
       ctx.beginPath(); ctx.moveTo(p.tr[i - 1].x, p.tr[i - 1].y - 10); ctx.lineTo(p.tr[i].x, p.tr[i].y - 10); ctx.stroke(); }
     ctx.restore();
   }
-  const a = p.arme, im = img(a.image), s = (a.taille || 16) * 2.4;
+  const a = p.arme, im = img(a.image), s = (a.taille || 16) * 2.8;
   const k = 1 - p.z / 220;
   if (p.sombre) { ctx.save(); ctx.shadowColor = '#000'; ctx.shadowBlur = 25; ellipse(p.x, p.y - p.z - 10, s * 0.6, s * 0.6, 'rgba(30,0,45,.65)'); ctx.restore(); }
   ellipse(p.x, p.y + 6, s * 0.4 * k, s * 0.22 * k, 'rgba(0,0,0,.3)');
@@ -1417,14 +1430,15 @@ function hudElem() { // boutons SUPER et ACTION (sous le pouce droit)
     ctx.beginPath(); ctx.arc(0, 0, S.r - 5 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 6 * u; ctx.lineCap = 'round'; ctx.stroke(); }
   ctx.restore();
   iconeElement(e.k, S.x, S.y - 5 * u, S.r * 0.85); titre(ok ? 'SUPER !' : Math.round(k * 100) + '%', S.x, S.y + S.r * 0.62, 13 * u, ok ? '#ff2d55' : '#fff');
-  hudBoutons.push({ ...S, f: () => lancerSuper(moi) });
+  hudBoutons.push({ ...S, vise: true, f: () => lancerSuper(moi, angleAuto()) });
   const reste = Math.max(0, (moi.actionT || 0) - temps), tot = (+e.actionRecharge || 7) * 60;
   ctx.beginPath(); ctx.arc(A.x, A.y + 4 * u, A.r, 0, 7); ctx.fillStyle = NOIR; ctx.fill();
   ctx.beginPath(); ctx.arc(A.x, A.y, A.r, 0, 7); ctx.fillStyle = e.couleur || '#5ac8fa'; ctx.fill(); ctx.lineWidth = 3 * u; ctx.strokeStyle = NOIR; ctx.stroke();
   if (reste) { ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.arc(A.x, A.y, A.r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * reste / tot); ctx.closePath(); ctx.fillStyle = 'rgba(11,6,32,.65)'; ctx.fill(); titre(Math.ceil(reste / 60), A.x, A.y, 20 * u, '#fff'); }
   else titre(e.actionNom, A.x, A.y, 11 * u, '#fff', 'center', A.r * 1.8);
   hudBoutons.push({ ...A, f: () => lancerAction(moi) });
-  if (!tact) texte('E : ' + e.actionNom + '  •  R : ' + e.superNom, W / 2, H - 36, 12, '#ffe14a');
+  if (!tact) texte(libTouche(mesTouches.action) + ' : ' + e.actionNom + '  •  ' + libTouche(mesTouches.super) + ' : ' + e.superNom, W / 2, H - 36, 12, '#ffe14a');
+  viseeSuper();
 }
 function auraElem(e) { // au sol : super prêt, vol de Zéphyr, traînée de charge
   if (e.superPret) { ctx.save(); ctx.globalAlpha = 0.55 + 0.3 * Math.sin(temps * 0.25); ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(e.x, e.y + e.r * 0.45, e.r * 1.4, e.r * 0.75, 0, 0, 7); ctx.stroke(); ctx.restore(); }
@@ -1652,6 +1666,45 @@ function menuRecompenses() {
 }
 const bossBase = d => (d && Object.values(CONFIG.bosses).find(b => b.nom === d.nom)) || d; // modèle 3D partagé par tous les boss du même type
 
+
+// ---------- ⌨️ COMMANDES CLAVIER (réglables par chaque joueur, onglet Commandes) ----------
+const TOUCHES_DEF = { haut: 'z', bas: 's', gauche: 'q', droite: 'd', auto: ' ', action: 'e', super: 'r' };
+const NOM_TOUCHE = { haut: 'Avancer', bas: 'Reculer', gauche: 'Aller à gauche', droite: 'Aller à droite', auto: 'Tir automatique', action: 'Action d\'élément', super: 'Super (vers la souris)' };
+const FLECHES = { haut: 'arrowup', bas: 'arrowdown', gauche: 'arrowleft', droite: 'arrowright' };
+let mesTouches = { ...TOUCHES_DEF }, toucheAttendue = null, souris = null;
+try { Object.assign(mesTouches, JSON.parse(localStorage.getItem('bastoryTouches') || '{}')); } catch (e) {}
+const appuye = a => !!(touches[mesTouches[a]] || touches[FLECHES[a]]);
+const libTouche = k => ({ ' ': 'ESPACE', arrowup: '↑', arrowdown: '↓', arrowleft: '←', arrowright: '→', shift: 'MAJ', control: 'CTRL', enter: 'ENTRÉE', tab: 'TAB', alt: 'ALT' })[k] || String(k).toUpperCase();
+function sauverTouches() {
+  try { localStorage.setItem('bastoryTouches', JSON.stringify(mesTouches)); } catch (e) {}
+  if (db && user) db.collection('joueurs').doc(user.uid).set({ touches: mesTouches }, { merge: true }).catch(() => {});
+}
+function menuCommandes() {
+  const u = U(), top = barreHaut('COMMANDES', true), l = Object.keys(TOUCHES_DEF), w = Math.min(580 * u, W - 40 * u), x = (W - w) / 2, lh = Math.min(46 * u, (H - top - 90 * u) / l.length);
+  l.forEach((a, i) => {
+    const y = top + 10 * u + i * lh, h = lh - 6 * u, att = toucheAttendue === a, kw = Math.min(170 * u, w * 0.4);
+    verre(x, y, w, h, 12 * u, att ? 'rgba(255,225,74,.35)' : null); texte(NOM_TOUCHE[a], x + 16 * u, y + h / 2, 14 * u, '#fff', 'left', w - kw - 30 * u);
+    bouton3D(x + w - kw - 6 * u, y + 3 * u, kw, h - 8 * u, att ? '#ff5ab4' : '#ffd23f', att ? '#c2185b' : '#ff8a1f', () => toucheAttendue = att ? null : a);
+    titre(att ? 'Appuie sur une touche…' : libTouche(mesTouches[a]) + (FLECHES[a] ? '  ou  ' + libTouche(FLECHES[a]) : ''), x + w - kw / 2 - 6 * u, y + h / 2 - 3 * u, 15 * u, '#fff', 'center', kw - 12 * u);
+  });
+  const by = H - 50 * u;
+  bouton3D(x, by, 150 * u, 38 * u, '#8e7bff', '#5b3fd6', () => { mesTouches = { ...TOUCHES_DEF }; toucheAttendue = null; sauverTouches(); }); titre('Par défaut', x + 75 * u, by + 17 * u, 16 * u, '#fff');
+  texte('🖱️ Clic : tirer vers la souris (plus loin = plus fort) • Échap : quitter • 📱 Mobile : joysticks + boutons (glisse le Super pour viser)', x + 160 * u + (w - 160 * u) / 2, by + 19 * u, 11 * u, '#fff', 'center', w - 170 * u);
+}
+const angleSouris = () => { if (!souris || !moi) return moi ? moi.angle : 0; const m = versMonde(souris.x, souris.y); return Math.atan2(m.y - moi.y, m.x - moi.x); };
+function angleAuto() { // ennemi visible le plus proche (sinon devant soi)
+  let c = null, dm = 1e9;
+  for (const e of [...bosses.filter(b => b.pv > 0 && !(b.def.cristal && b.eq === moi.eq)), ...joueurs().filter(j => j.eq !== moi.eq && j.pv > 0 && visible(j))]) { const d = Math.hypot(e.x - moi.x, e.y - moi.y); if (d < dm) { dm = d; c = e; } }
+  return c ? Math.atan2(c.y - moi.y, c.x - moi.x) : moi.angle;
+}
+const joyS = { actif: false }; // 🎯 viser le super en glissant depuis son bouton
+function viseeSuper() { // trait de visée du super (coordonnées de l'interface)
+  if (!joyS.actif || !moi) return; const v = vec(joyS); if (v.d < 15) return;
+  const px = (moi.x - cam.x) * zoom + W / 2 - ox, py = (moi.y - cam.y) * zoom + H / 2 - oy - 20 * zoom, L = 260 * zoom;
+  ctx.save(); ctx.translate(px, py); ctx.rotate(v.a); ctx.globalAlpha = 0.55; ctx.fillStyle = '#ffe14a'; ctx.strokeStyle = NOIR; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(10, -14); ctx.lineTo(L, -26); ctx.lineTo(L + 30, 0); ctx.lineTo(L, 26); ctx.lineTo(10, 14); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+}
+
 // ---------- 12c. GRAPHISMES : textures & sprites pré-calculés (rapides) ----------
 const cacheGfx = {};
 function ombrer(hex, k) { // éclaircit (k>0) ou assombrit (k<0) une couleur #rrggbb
@@ -1775,8 +1828,8 @@ function dessinerJeu() {
                                  if (c === 'C') objs.push([(y + 1) * T - 1, () => { coffre(px, py); fissures(x, y, px, py); }]); });
   dessinerNuages();
   for (const j of joueurs()) if (visible(j) && (j.pv > 0 || ((obtenir3D(j.perso) || {}).spec || { lignes: {} }).lignes.mort))
-    objs.push([j.y + j.r * 0.5, () => { aura(j); dessinerEntite(j, img(j.perso.image), j === moi ? '#3aa0ff' : j.eq === moi.eq ? '#2ecc71' : '#ff3b3b', j.r * 2.45); }]);
-  for (const b of bosses) if (b.pv > 0) objs.push([b.y + b.r * 0.5, () => b.def.cristal ? dessinerCristal(b) : dessinerEntite(b, img(b.def.image), '#ff7b1a', b.r * 2.9)]);
+    objs.push([j.y + j.r * 0.5, () => { aura(j); dessinerEntite(j, img(j.perso.image), j === moi ? '#3aa0ff' : j.eq === moi.eq ? '#2ecc71' : '#ff3b3b', j.r * 2.95); }]);
+  for (const b of bosses) if (b.pv > 0) objs.push([b.y + b.r * 0.5, () => b.def.cristal ? dessinerCristal(b) : dessinerEntite(b, img(b.def.image), '#ff7b1a', b.r * 3.4)]);
   for (const p of projectiles) if (p.type !== 'lob' && p.type !== 'terrain') objs.push([p.y, () => dessinerProjectile(p)]);
   objs.sort((a, b) => a[0] - b[0]).forEach(o => o[1]());
 
@@ -1879,8 +1932,8 @@ function dessinerHUD() {
     if (!joyD.actif) { ctx.globalAlpha = 0.2; ellipse(W - 95 * u, H - 95 * u, 55 * u, 55 * u, '#ffb000'); ctx.globalAlpha = 0.45; ellipse(W - 95 * u, H - 95 * u, 24 * u, 24 * u, '#ffb000'); ctx.globalAlpha = 1; emoji('🎯', W - 95 * u, H - 95 * u, 20 * u); }
   }
   dessinerJoystick(joyG, '#ffffff');
-  dessinerJoystick(joyD, '#ffb000'); ecran();
-  if (!('ontouchstart' in window)) texte('ZQSD/flèches : bouger • Clic : tirer • Espace : tir auto • E : action • R : super • Échap : quitter', W / 2, H - 16, 12, '#fff');
+  dessinerJoystick(joyD, '#ffb000'); if (joyS.actif) dessinerJoystick(joyS, '#ffe14a'); ecran();
+  if (!('ontouchstart' in window)) texte(`${['haut', 'gauche', 'bas', 'droite'].map(a => libTouche(mesTouches[a])).join('')}/flèches : bouger • Clic : tirer • ${libTouche(mesTouches.auto)} : tir auto • ${libTouche(mesTouches.action)} : action • ${libTouche(mesTouches.super)} : super • Échap : quitter`, W / 2, H - 16, 12, '#fff');
 }
 function dessinerJoystick(j, c) {
   if (!j.actif) return;
@@ -2090,7 +2143,7 @@ function dessinerMenu() {
   ecran(); zones = [];
   fondMenu();
   if (etat === 'AUTH') return;
-  ({ accueil: menuAccueil, persos: menuPersos, modes: menuModes, classement: menuClassement, pouvoirs: menuPouvoirs, amis: menuAmis, recompenses: menuRecompenses })[ecranMenu]();
+  ({ accueil: menuAccueil, persos: menuPersos, modes: menuModes, classement: menuClassement, pouvoirs: menuPouvoirs, amis: menuAmis, recompenses: menuRecompenses, commandes: menuCommandes })[ecranMenu]();
   const kt = Math.min(1, (temps - transT) / 14); if (kt < 1) { ctx.fillStyle = `rgba(5,7,15,${(1 - kt) * 0.9})`; ctx.fillRect(-100, -100, W + 200, H + 200); } // fondu entre écrans
   dessinerVagues(); dessinerNotif();
   if (invitations.length) modaleInvitation();
@@ -2101,11 +2154,11 @@ function menuAccueil() {
   const u = U(), p = selPerso(), a = CONFIG.armes[p.arme] || {}, m = modeChoisi(), [, c1, c2, lab] = modesStyle(m), multi = m.type === 'multi';
   const top = barreHaut();
   // navigation à gauche
-  const nav = [['perso', 'Persos', 'persos', '#5ac8fa', '#2f6bff'], ['amis', 'Amis', 'amis', '#4ade80', '#059669'], ['classement', 'Classement', 'classement', '#ffc24b', '#ff7a00'], ['eclair', 'Pouvoirs', 'pouvoirs', '#ff7ac0', '#b43cff'], ['trophee', 'Récompenses', 'recompenses', '#ffe14a', '#ff8a1f']];
+  const nav = [['perso', 'Persos', 'persos', '#5ac8fa', '#2f6bff'], ['amis', 'Amis', 'amis', '#4ade80', '#059669'], ['classement', 'Classement', 'classement', '#ffc24b', '#ff7a00'], ['eclair', 'Pouvoirs', 'pouvoirs', '#ff7ac0', '#b43cff'], ['trophee', 'Récompenses', 'recompenses', '#ffe14a', '#ff8a1f'], ['reglages', 'Commandes', 'commandes', '#5ff0ff', '#1e7bff']];
   nav.forEach(([ic, t, e, a1, a2], k) => {
-    const y = top + 18 * u + k * 58 * u, w = 158 * u;
-    boutonJeu(14 * u, y, w, 46 * u, a1, a2, () => allerA(e));
-    icone(ic, 40 * u, y + 23 * u, 20 * u); titre(t, 58 * u, y + 24 * u, 20 * u, '#fff', 'left', w - 80 * u);
+    const y = top + 14 * u + k * 52 * u, w = 158 * u;
+    boutonJeu(14 * u, y, w, 42 * u, a1, a2, () => allerA(e));
+    icone(ic, 40 * u, y + 21 * u, 20 * u); titre(t, 58 * u, y + 22 * u, 20 * u, '#fff', 'left', w - 80 * u);
     if (e === 'recompenses' && nbRecompenses()) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(nbRecompenses()), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
     if (k === 1 && Object.keys(groupe.membres).length) { ctx.beginPath(); ctx.arc(14 * u + w - 22 * u, y + 23 * u, 10 * u, 0, 7); ctx.fillStyle = '#34d399'; ctx.fill(); texte(String(Object.keys(groupe.membres).length + 1), 14 * u + w - 22 * u, y + 24 * u, 11 * u, '#fff'); }
   });

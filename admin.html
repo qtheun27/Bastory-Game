@@ -122,7 +122,7 @@ const CH = {
           ['pointsVictoire','Points par victoire','number'],['pointsDefaite','Points par défaite','number'],
           ['reapparition','Réapparition après la mort','check'],['delaiReapparition','Délai de réapparition (s)','number'],['duree','Durée max de la partie (s, 0 = illimité)','number'],
           ['objectif','Objectif de victoire','select',[['standard','⚔️ Éliminer (ou battre les boss)'],['zone','🎯 Tenir la zone (outil Zone sur la map)'],['bloc','💎 Détruire le cristal (outil Cristal sur la map)'],['tresor','💰 Chasse au trésor (trésors cachés)'],['marathon','🏃 Marathon (plusieurs objectifs à la suite)']]],
-          ['etapes','Marathon : étapes dans l\'ordre (bloc, zone, tresor séparés par des virgules)','text'],['nbTresors','Trésor : nombre de trésors cachés','number'],['objectifTresors','Trésor : trésors à trouver pour gagner','number'],
+          ['etapes','🏃 Marathon : épreuves (coche et ordonne)','etapes'],['nbTresors','Trésor : nombre de trésors cachés','number'],['objectifTresors','Trésor : trésors à trouver pour gagner','number'],
           ['tempsZone','Zone : temps à tenir (s)','number'],['pvCristal','Cristal : points de vie','number'],['degatsCristal','Cristal : dégâts de ses tirs','number'],
           ['porteeCristal','Cristal : portée de tir','number'],['cadenceCristal','Cristal : délai entre tirs (60 = 1 s)','number'],
           ['botsObjets','Les bots ramassent les objets rares','check'],
@@ -168,6 +168,21 @@ const CH = {
 function formulaire(obj, champs) {
   const f = el('div', { className: 'form' });
   for (const [k, lab, type, opts] of champs) {
+    if (type === 'etapes') { // 🏃 épreuves du marathon : cochées et remises dans l'ordre avec ▲
+      const TOUS = [['bloc', '💎 Guerre des cristaux'], ['zone', '🎯 Zone de contrôle'], ['tresor', '💰 Chasse au trésor']], box = el('div', { className: 'multi' });
+      const dessiner = () => {
+        box.innerHTML = ''; const actifs = String(obj[k] || '').split(',').filter(v => TOUS.some(t => t[0] === v));
+        const maj = l => { obj[k] = l.join(','); modifie(); dessiner(); };
+        [...actifs, ...TOUS.map(t => t[0]).filter(v => !actifs.includes(v))].forEach(v => {
+          const p = actifs.indexOf(v), cb = el('input', { type: 'checkbox', checked: p >= 0 });
+          cb.onchange = () => maj(cb.checked ? [...actifs, v] : actifs.filter(x => x !== v));
+          const haut = el('button', { className: 'sec', textContent: '▲', disabled: p <= 0, onclick: e => { e.preventDefault(); const l = [...actifs]; [l[p - 1], l[p]] = [l[p], l[p - 1]]; maj(l); } });
+          box.append(el('label', { className: 'mc' }, cb, (p >= 0 ? (p + 1) + '. ' : '') + TOUS.find(t => t[0] === v)[1], haut));
+        });
+      };
+      dessiner(); f.append(el('div', { className: 'ligne' }, el('span', { textContent: lab }), box));
+      continue;
+    }
     if (type === 'multi') { // cases à cocher multiples
       if (!Array.isArray(obj[k])) obj[k] = [];
       const box = el('div', { className: 'multi' });
