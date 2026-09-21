@@ -54,6 +54,7 @@ function redim() {
   document.documentElement.classList.toggle('tourne', tourne);
   document.body.style.width = tourne ? innerHeight + 'px' : ''; document.body.style.height = tourne ? innerWidth + 'px' : '';
   W = tourne ? innerHeight : innerWidth; H = tourne ? innerWidth : innerHeight;
+  dpr = Math.max(1, Math.min(dpr, Math.sqrt(2.6e6 / Math.max(1, W * H)))); // grands écrans : moins de pixels à dessiner = plus fluide
   canvas.width = W * dpr; canvas.height = H * dpr;
   canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
   zoom = Math.max(0.55, Math.min(1.3, Math.min(W, H * 1.7) / (TUILE * 18)));
@@ -99,7 +100,7 @@ const signature = m => { // empreinte unique d'un mode : deux joueurs ne se croi
   for (const c of t) h = (h * 31 + c.charCodeAt(0)) | 0;
   return String(m.nom || 'mode').replace(/[.#$\[\]\/\s]/g, '_').slice(0, 24) + '_' + (h >>> 0).toString(36);
 };
-const mapChoisie = m => (m.map >= 0 && CONFIG.maps[m.map]) ? +m.map : mapIndex % CONFIG.maps.length;
+const mapChoisie = m => (m.map >= 0 && CONFIG.maps[m.map]) ? +m.map : mapsActives()[mapIndex % mapsActives().length];
 const joueurs = () => [moi, ...Object.values(autres)].filter(j => j && !j.parti);
 // 🧍 Persos 3D : vrais modèles .glb (voir modele3d.js) — sinon image 2D, sinon pastille de l'élément
 const sprites3D = new Map(), visages3D = new Map(), en3D = new Set(); let file3D = Promise.resolve();
@@ -467,6 +468,7 @@ function vec(j) { const dx = j.x - j.ox, dy = j.y - j.oy, d = Math.hypot(dx, dy)
 canvas.addEventListener('touchstart', e => {
   e.preventDefault(); pleinEcran();
   for (const t of e.changedTouches) {
+    if (etat === 'MENU') glisse = { x: pt(t).x, id: t.identifier };
     if (etat === 'MENU' && surHero(pt(t))) { heroDrag = { x: pt(t).x, id: t.identifier, bouge: 0 }; continue; }
     if (etat !== 'JEU' || moi.pv <= 0) { clic(pt(t).x, pt(t).y); continue; }
     const hb = boutonHUD(pt(t)); // boutons SUPER (glisser pour viser) / ACTION
@@ -482,6 +484,7 @@ canvas.addEventListener('touchmove', e => {
   if (heroDrag) for (const t of e.changedTouches) if (t.identifier === heroDrag.id) tournerHero(pt(t).x);
 }, { passive: false });
 function finTouche(e) {
+  if (glisse) for (const t of e.changedTouches) if (t.identifier === glisse.id) { const dx = pt(t).x - glisse.x; if (Math.abs(dx) > 60 && ecranMenu === 'modes' && etat === 'MENU') changerMode(dx < 0 ? 1 : -1); glisse = null; }
   if (heroDrag) for (const t of e.changedTouches) if (t.identifier === heroDrag.id) lacherHero();
   for (const t of e.changedTouches) {
     if (joyG.actif && joyG.id === t.identifier) joyG.actif = false;
@@ -2299,52 +2302,75 @@ function menuPersos() {
 }
 
 // --- Modes de jeu + choix de la map
-function menuModes() { // cartes de modes façon accueil + choix de la map
-  const u = U(), top = barreHaut('Modes de jeu', true), liste = modes(), m = modeChoisi();
-  const mapH = m.map >= 0 && CONFIG.maps[m.map] ? 40 * u : 124 * u, x0 = 20 * u, y0 = top + 14 * u, zoneW = W - 40 * u, gap = 14 * u, zoneH = H - y0 - mapH - 28 * u;
-  const cols = Math.max(2, Math.min(4, Math.floor(zoneW / (230 * u)))), cw = (zoneW - (cols - 1) * gap) / cols, chh = Math.max(96 * u, Math.min(150 * u, zoneH));
+const mapsActives = () => { const l = CONFIG.maps.map((m, i) => i).filter(i => CONFIG.maps[i].actif !== false); return l.length ? l : CONFIG.maps.map((m, i) => i); }; // maps cochées dans l'admin
+let modeAnim = { t: -99, d: 0 }, glisse = null;
+const changerMode = d => { const n = modes().length; modeIndex = ((modeIndex % n) + d + n) % n; modeAnim = { t: temps, d }; };
+const changerMap = d => { const n = mapsActives().length; mapIndex = ((mapIndex % n) + d + n) % n; };
+function carteMode(md, x, y, w, h, sel, grand) { // case de BD d'un mode (mini-map du terrain en fond)
+  const u = U(), [, c1, c2, lab] = modesStyle(md), r = 18 * u, s = grand ? 1.25 : 1;
+  rect(x + 5 * u, y + 6 * u, w, h, r, NOIR);
+  const g = ctx.createLinearGradient(x, y, x + w, y + h); g.addColorStop(0, c1); g.addColorStop(1, c2); rect(x, y, w, h, r, g);
+  ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.clip();
+  if (sel) rayons(x + w * 0.75, y + h * 0.5, temps * 0.006, '#fff', 0.16, 14);
+  ctx.globalAlpha = 0.4; ctx.drawImage(miniMap(CONFIG.maps[mapChoisie(md)] || CONFIG.maps[0]), x + w * 0.48, y, w * 0.56, h); ctx.globalAlpha = 1;
+  const fg = ctx.createLinearGradient(x, 0, x + w, 0); fg.addColorStop(0.4, c2); fg.addColorStop(0.85, c2 + '00'); ctx.fillStyle = fg; ctx.fillRect(x, y, w, h);
+  trame(0.07, '#000'); ctx.restore();
+  rect(x, y, w, h, r, null, sel ? '#ffe14a' : NOIR, (sel ? 4.5 : 3) * u);
+  texte(lab.toUpperCase() + (md.type === 'multi' ? ' • EN LIGNE' : ' • SOLO'), x + 16 * u, y + 18 * u * s, 10 * u * s, '#fff', 'left', w - 60 * u);
+  titre(md.nom, x + 16 * u, y + 44 * u * s, 24 * u * s, '#fff', 'left', w - 32 * u);
+  lignes(md.description || '', w * 0.6, 11 * u * s).slice(0, grand ? 3 : h > 120 * u ? 2 : 1).forEach((l, j) => texte(l, x + 16 * u, y + (68 + j * 15) * u * s, 11 * u * s, '#fff', 'left', w * 0.6));
+  const OBJ = { zone: 'Zone', bloc: 'Cristaux', tresor: 'Trésors', marathon: 'Marathon' };
+  let ix = x + 16 * u; const iy = y + h - 18 * u * s;
+  [['amis', md.type === 'multi' ? (md.joueursMin === md.joueursMax ? md.joueursMax : md.joueursMin + '-' + md.joueursMax) : '1'], ['trophee', '+' + md.pointsVictoire],
+   OBJ[md.objectif] ? ['cible', OBJ[md.objectif]] : md.boss && md.nbBoss ? ['eclair', md.nbBoss + ' boss'] : null].filter(Boolean).forEach(([ic, v]) => {
+    icone(ic, ix + 7 * u, iy, 13 * u * s, ic === 'trophee' ? '#ffe14a' : '#fff'); texte(String(v), ix + 18 * u * s, iy, 11 * u * s, '#fff', 'left');
+    ctx.font = `600 ${11 * u * s}px Fredoka, system-ui`; ix += ctx.measureText(String(v)).width + 36 * u * s; });
+  if (sel) { ctx.save(); ctx.translate(x + w - 22 * u, y + 22 * u); eclat(0, 0, 14 * u, 8, '#b6ff4a', 1, NOIR, 2 * u); ctx.restore(); texte('✔', x + w - 22 * u, y + 22 * u, 12 * u, '#fff'); }
+}
+function vignetteMap(i, x, y, w, h, sel) { // aperçu d'une map + son nom
+  const def = CONFIG.maps[i]; dessinerMiniMap(def, x, y, w, h - 16 * U());
+  texte(def.nom, x + w / 2, y + h - 6 * U(), 11 * U(), sel ? '#ffe14a' : '#fff', 'center', w);
+  if (sel) rect(x - 3, y - 3, w + 6, h - 16 * U() + 6, 8, null, '#ffe14a', 3);
+}
+function menuModes() { // 🖥️ ordi : grille de cases • 📱 mobile : une grande case à la fois (flèches ou glisser)
+  const u = U(), top = barreHaut('Modes de jeu', true), liste = modes(), m = modeChoisi(), act = mapsActives(), impose = m.map >= 0 && CONFIG.maps[m.map];
+  if ('ontouchstart' in window || H < 480) {
+    const n = liste.length, i = modeIndex % n, cw = Math.min(W - 160 * u, 560 * u), ch = Math.min(H - top - 150 * u, 210 * u), y = top + 6 * u;
+    const off = (1 - sortir(Math.min(1, (temps - modeAnim.t) / 12))) * modeAnim.d * 90 * u;
+    carteMode(liste[i], W / 2 - cw / 2 + off, y, cw, ch, true, true);
+    zones.push({ x: W / 2 - cw / 2, y, w: cw, h: ch, action: () => {} });
+    [[-1, 'retour', W / 2 - cw / 2 - 40 * u], [1, 'suite', W / 2 + cw / 2 + 40 * u]].forEach(([d, ic, fx]) => {
+      bouton3D(fx - 28 * u, y + ch / 2 - 28 * u, 56 * u, 56 * u, '#ffe14a', '#ff8a1f', () => changerMode(d), 28 * u); icone(ic, fx, y + ch / 2 - 2 * u, 26 * u); });
+    liste.forEach((_, k) => { ctx.beginPath(); ctx.arc(W / 2 + (k - (n - 1) / 2) * 16 * u, y + ch + 16 * u, (k === i ? 5 : 3.5) * u, 0, 7); ctx.fillStyle = k === i ? '#ffe14a' : 'rgba(255,255,255,.55)'; ctx.fill(); });
+    const my = y + ch + 30 * u, mh = H - my - 10 * u, bw = 130 * u;
+    boutonJeu(W - 20 * u - bw, my + mh - 52 * u, bw, 48 * u, '#b6ff4a', '#1fc46b', () => allerA('accueil')); titre('OK !', W - 20 * u - bw / 2, my + mh - 29 * u, 24 * u, '#fff');
+    if (impose) { texte('🗺️ Map : ' + CONFIG.maps[m.map].nom, 20 * u, my + mh / 2, 14 * u, '#fff', 'left', W - bw - 60 * u); return; }
+    const mi = mapIndex % act.length, pw = Math.min((mh - 4 * u) * 1.5, W - bw - 180 * u), px = 20 * u + 56 * u;
+    bouton3D(20 * u, my + mh / 2 - 22 * u, 44 * u, 44 * u, '#8e7bff', '#5b3fd6', () => changerMap(-1), 22 * u); icone('retour', 42 * u, my + mh / 2, 20 * u);
+    vignetteMap(act[mi], px, my, pw, mh, true);
+    bouton3D(px + pw + 12 * u, my + mh / 2 - 22 * u, 44 * u, 44 * u, '#8e7bff', '#5b3fd6', () => changerMap(1), 22 * u); icone('suite', px + pw + 34 * u, my + mh / 2, 20 * u);
+    return;
+  }
+  const mapH = impose ? 40 * u : 130 * u, x0 = 20 * u, y0 = top + 14 * u, zoneW = W - 40 * u, gap = 16 * u, zoneH = H - y0 - mapH - 28 * u;
+  const cols = Math.max(2, Math.min(4, Math.floor(zoneW / (240 * u)))), cw = (zoneW - (cols - 1) * gap) / cols, chh = Math.max(100 * u, Math.min(150 * u, zoneH));
   const rows = Math.max(1, Math.floor((zoneH + gap) / (chh + gap))), parPage = cols * rows, pages = Math.ceil(liste.length / parPage);
   pageMenu = Math.min(pageMenu, pages - 1);
   liste.slice(pageMenu * parPage, (pageMenu + 1) * parPage).forEach((md, k) => {
-    const i = pageMenu * parPage + k, x = x0 + (k % cols) * (cw + gap), y = y0 + Math.floor(k / cols) * (chh + gap), [, c1, c2, lab] = modesStyle(md), sel = i === modeIndex % liste.length;
-    ctx.save(); ctx.shadowColor = sel ? c1 : 'rgba(0,0,0,.4)'; ctx.shadowBlur = (sel ? 30 : 16) * u; ctx.shadowOffsetY = 6 * u;
-    const gm = ctx.createLinearGradient(x, y, x + cw, y + chh); gm.addColorStop(0, c1); gm.addColorStop(1, c2); rect(x, y, cw, chh, 22 * u, gm); ctx.restore();
-    ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, cw, chh, 22 * u); ctx.clip();
-    const def = CONFIG.maps[md.map >= 0 && CONFIG.maps[md.map] ? md.map : mapIndex % CONFIG.maps.length], mm = miniMap(def);
-    ctx.globalAlpha = 0.28; ctx.imageSmoothingEnabled = false; ctx.drawImage(mm, x + cw * 0.45, y, cw * 0.6, chh); ctx.imageSmoothingEnabled = true; ctx.globalAlpha = 1;
-    const fg = ctx.createLinearGradient(x, 0, x + cw, 0); fg.addColorStop(0.35, c2); fg.addColorStop(0.8, c2 + '00'); ctx.fillStyle = fg; ctx.fillRect(x, y, cw, chh);
-    const hl = ctx.createLinearGradient(0, y, 0, y + chh * 0.5); hl.addColorStop(0, 'rgba(255,255,255,.3)'); hl.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = hl; ctx.fillRect(x, y, cw, chh * 0.5);
-    ctx.restore();
-    ctx.beginPath(); ctx.roundRect(x, y, cw, chh, 22 * u); ctx.strokeStyle = sel ? '#fff' : 'rgba(255,255,255,.4)'; ctx.lineWidth = sel ? 3 * u : 1; ctx.stroke();
-    texte(lab.toUpperCase() + (md.type === 'multi' ? ' • EN LIGNE' : ''), x + 16 * u, y + 20 * u, 9.5 * u, 'rgba(255,255,255,.8)', 'left', cw - 60 * u);
-    titre(md.nom, x + 16 * u, y + 44 * u, 24 * u, '#fff', 'left', cw - 32 * u);
-    lignes(md.description, cw - 32 * u, 11 * u).slice(0, chh > 120 * u ? 2 : 1).forEach((l, j) => texte(l, x + 16 * u, y + 68 * u + j * 15 * u, 11 * u, 'rgba(255,255,255,.9)', 'left', cw - 32 * u));
-    let ix = x + 16 * u; const iy = y + chh - 18 * u;
-    [['amis', md.type === 'multi' ? (md.joueursMin === md.joueursMax ? md.joueursMax : md.joueursMin + '-' + md.joueursMax) : '1'], ['trophee', '+' + md.pointsVictoire],
-     md.objectif === 'zone' ? ['cible', 'Zone'] : md.objectif === 'bloc' ? ['cible', 'Cristal'] : md.boss && md.nbBoss ? ['eclair', md.nbBoss + ' boss'] : null].filter(Boolean).forEach(([ic, v]) => {
-      icone(ic, ix + 7 * u, iy, 13 * u, ic === 'trophee' ? '#ffe14a' : '#fff'); texte(String(v), ix + 18 * u, iy, 11 * u, '#fff', 'left'); ctx.font = `700 ${11 * u}px Fredoka, system-ui`; ix += ctx.measureText(String(v)).width + 34 * u; });
-    if (sel) { ctx.beginPath(); ctx.arc(x + cw - 20 * u, y + 20 * u, 12 * u, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); icone('check', x + cw - 20 * u, y + 20 * u, 14 * u, c2); }
-    zones.push({ x, y, w: cw, h: chh, action: () => modeIndex = i });
+    const i = pageMenu * parPage + k, x = x0 + (k % cols) * (cw + gap), y = y0 + Math.floor(k / cols) * (chh + gap);
+    carteMode(md, x, y, cw, chh, i === modeIndex % liste.length, false); zones.push({ x, y, w: cw, h: chh, action: () => modeIndex = i });
   });
-  if (pages > 1) { // pages
-    const py = H - mapH - 22 * u - 36 * u, px = W - 20 * u - 84 * u;
+  if (pages > 1) {
+    const py = H - mapH - 58 * u, px = W - 104 * u;
     [[-1, 'retour'], [1, 'suite']].forEach(([d, ic], k) => { verre(px + k * 46 * u, py, 38 * u, 36 * u, 18 * u); icone(ic, px + k * 46 * u + 19 * u, py + 18 * u, 18 * u);
       zones.push({ x: px + k * 46 * u, y: py, w: 38 * u, h: 36 * u, action: () => pageMenu = (pageMenu + d + pages) % pages }); });
-    texte((pageMenu + 1) + ' / ' + pages, px - 12 * u, py + 18 * u, 12 * u, 'rgba(255,255,255,.8)', 'right');
+    texte((pageMenu + 1) + ' / ' + pages, px - 14 * u, py + 18 * u, 12 * u, '#fff', 'right');
   }
   const my = H - mapH - 14 * u;
-  if (m.map >= 0 && CONFIG.maps[m.map]) { verre(x0, my, zoneW, mapH, mapH / 2); icone('carte', x0 + 24 * u, my + mapH / 2, 16 * u); texte('Map imposée par ce mode : ' + CONFIG.maps[m.map].nom, x0 + 42 * u, my + mapH / 2, 13 * u, '#fff', 'left', zoneW - 60 * u); return; }
-  verre(x0, my, zoneW, mapH, 24 * u);
-  titre('Map', x0 + 18 * u, my + 20 * u, 18 * u, '#fff', 'left');
-  const th = mapH - 50 * u, tw = th * 1.5;
-  CONFIG.maps.forEach((def, i) => {
-    const x = x0 + 18 * u + i * (tw + 14 * u), y = my + 36 * u; if (x + tw > x0 + zoneW - 10 * u) return;
-    ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, tw, th, 12 * u); ctx.clip(); ctx.imageSmoothingEnabled = false; ctx.drawImage(miniMap(def), x, y, tw, th); ctx.imageSmoothingEnabled = true;
-    const gb = ctx.createLinearGradient(0, y + th * 0.5, 0, y + th); gb.addColorStop(0, 'rgba(0,0,0,0)'); gb.addColorStop(1, 'rgba(0,0,0,.65)'); ctx.fillStyle = gb; ctx.fillRect(x, y, tw, th); ctx.restore();
-    texte(def.nom, x + tw / 2, y + th - 10 * u, 10 * u, '#fff', 'center', tw - 8 * u);
-    const sel = i === mapIndex % CONFIG.maps.length; ctx.beginPath(); ctx.roundRect(x, y, tw, th, 12 * u); ctx.strokeStyle = sel ? '#fff' : 'rgba(255,255,255,.3)'; ctx.lineWidth = sel ? 3 * u : 1; ctx.stroke();
-    zones.push({ x, y, w: tw, h: th, action: () => mapIndex = i });
-  });
+  if (impose) { verre(x0, my, zoneW, mapH, mapH / 2); texte('🗺️ Map imposée par ce mode : ' + CONFIG.maps[m.map].nom, x0 + 20 * u, my + mapH / 2, 13 * u, '#fff', 'left', zoneW - 40 * u); return; }
+  verre(x0, my, zoneW, mapH, 20 * u); titre('Map', x0 + 18 * u, my + 20 * u, 18 * u, '#fff', 'left');
+  const th = mapH - 44 * u, tw = th * 1.5;
+  act.forEach((mi, k) => { const x = x0 + 18 * u + k * (tw + 16 * u), y = my + 34 * u; if (x + tw > x0 + zoneW - 10 * u) return;
+    vignetteMap(mi, x, y, tw, th, k === mapIndex % act.length); zones.push({ x, y, w: tw, h: th, action: () => mapIndex = k }); });
 }
 function menuClassement() {
   const u = U(), top = barreHaut('CLASSEMENT', true);
