@@ -5,12 +5,14 @@ function ouvrirProfil(auth, apres) {
   if (!f) {
     f = document.createElement('div'); f.id = 'profil';
     f.innerHTML = `<style>
-      #profil{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(5,8,25,.5);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;touch-action:auto}
-      #profil form{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);color:#fff;padding:24px;border-radius:26px;width:min(370px,92vw);display:flex;flex-direction:column;gap:9px;box-shadow:0 30px 80px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.3)}
-      #profil h2{margin:0 0 6px;text-align:center;font-weight:700} #profil label{font-size:13px;display:flex;flex-direction:column;gap:5px;color:rgba(255,255,255,.7)}
-      #profil input{padding:11px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.25);color:#fff;font-size:15px;outline:none;user-select:text;-webkit-user-select:text}
-      #profil button{padding:12px;border-radius:999px;border:1px solid rgba(255,255,255,.3);font-weight:700;cursor:pointer;color:#fff;background:linear-gradient(180deg,#3a9bff,#0a6cff)}
-      #profil button.sec{background:rgba(255,255,255,.16)} #pfMsg{font-size:13px;min-height:16px;text-align:center}</style>
+      #profil{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(20,0,40,.55);font-family:Fredoka,system-ui,sans-serif;touch-action:auto}
+      #profil form{background:linear-gradient(180deg,#3a2d9c,#1d1558);border:4px solid #0b0620;color:#fff;padding:24px;border-radius:22px;width:min(370px,92vw);display:flex;flex-direction:column;gap:9px;box-shadow:9px 10px 0 #0b0620}
+      #profil h2{margin:0 0 6px;text-align:center;font:400 34px Bangers,Impact,sans-serif;letter-spacing:1px;color:#ffe14a;-webkit-text-stroke:2px #0b0620;paint-order:stroke fill;text-shadow:3px 4px 0 #0b0620}
+      #profil label{font-size:13px;font-weight:600;display:flex;flex-direction:column;gap:5px}
+      #profil input{padding:11px 12px;border-radius:12px;border:3px solid #0b0620;background:#fff;color:#1a1030;font:600 15px Fredoka,system-ui,sans-serif;outline:none;user-select:text;-webkit-user-select:text}
+      #profil button{padding:11px;border-radius:14px;border:3px solid #0b0620;cursor:pointer;color:#fff;font:400 20px Bangers,Impact,sans-serif;letter-spacing:1px;background:linear-gradient(180deg,#ffd23f,#ff8a1f);box-shadow:0 5px 0 #0b0620;-webkit-text-stroke:1px #0b0620;paint-order:stroke fill}
+      #profil button:active{transform:translateY(4px);box-shadow:0 1px 0 #0b0620}
+      #profil button.sec{background:linear-gradient(180deg,#5ff0ff,#1e7bff)} #pfMsg{font-size:13px;min-height:16px;text-align:center}</style>
       <form id="pfForm"><h2>👤 Mon profil</h2>
       <label>Pseudo (visible par tous)<input id="pfPseudo" maxlength="16" required></label>
       <div id="pfMail"><label>Email<input id="pfEmail" type="email"></label>
@@ -20,7 +22,7 @@ function ouvrirProfil(auth, apres) {
     document.body.append(f);
     f.querySelector('#pfFermer').onclick = () => f.style.display = 'none';
   }
-  const $p = id => f.querySelector('#' + id), msg = (t, ok) => { $p('pfMsg').textContent = t; $p('pfMsg').style.color = ok ? '#7dff9c' : '#ffb3b3'; };
+  const $p = id => f.querySelector('#' + id), msg = (t, ok) => { $p('pfMsg').textContent = t; $p('pfMsg').style.color = ok ? '#b6ff4a' : '#ffe14a'; };
   const google = u.providerData.some(p => p.providerId === 'google.com') && !u.providerData.some(p => p.providerId === 'password');
   $p('pfMail').style.display = google ? 'none' : '';
   $p('pfPseudo').value = u.displayName || ''; $p('pfEmail').value = u.email || ''; $p('pfMdp').value = $p('pfActuel').value = ''; msg('');

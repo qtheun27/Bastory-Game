@@ -1,30 +1,10 @@
-body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0a0f24;
-  touch-action: none; user-select: none; -webkit-user-select: none; font-family: -apple-system, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif; }
+/* 💥 BASTORY — thème manga comique */
+body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #5a4dff;
+  touch-action: none; user-select: none; -webkit-user-select: none; font-family: Fredoka, "Baloo 2", system-ui, sans-serif; }
 canvas { display: block; }
 
-/* 🔐 Connexion — style "liquid glass" */
-#auth { position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center; touch-action: auto;
-  background: radial-gradient(700px 500px at 15% 20%, #2f5bff66, transparent 60%), radial-gradient(700px 500px at 85% 25%, #b44cff66, transparent 60%),
-              radial-gradient(800px 600px at 50% 100%, #ff4f9a55, transparent 60%), linear-gradient(135deg, #0a0f24, #141c3d); }
-#auth form { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
-  padding: 28px; border-radius: 28px; width: min(360px, 90vw); display: flex; flex-direction: column; gap: 11px; box-shadow: 0 30px 80px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.3); }
-#auth h1 { margin: 0 0 8px; text-align: center; color: #fff; font-weight: 800; font-size: 38px; letter-spacing: -1px; }
-#auth input { padding: 13px 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.25); color: #fff; font-size: 16px; outline: none; user-select: text; -webkit-user-select: text; }
-#auth input::placeholder { color: rgba(255,255,255,.5); }
-#auth button { padding: 13px; border-radius: 999px; border: 1px solid rgba(255,255,255,.3); font-weight: 700; font-size: 16px; color: #fff; cursor: pointer;
-  background: linear-gradient(135deg, #3a9bff, #8b5cf6); box-shadow: 0 8px 22px rgba(99,102,241,.45), inset 0 1px 0 rgba(255,255,255,.45); }
-#auth button.sec { background: rgba(255,255,255,.16); box-shadow: inset 0 1px 0 rgba(255,255,255,.25); }
-#auth button.google { background: rgba(255,255,255,.92); color: #111; }
-#authErr { color: #ff9f95; font-size: 14px; min-height: 18px; text-align: center; }
-
-/* 📱 Mobile : l'appli reste en paysage — si le téléphone est en portrait, tout pivote (sans message) */
-html.tourne body { position: fixed; top: 0; left: 0; transform-origin: top left; transform: rotate(90deg) translateY(-100%); }
-
-/* =====================================================================
-   💥 THÈME MANGA COMIQUE — écran de connexion + fenêtre profil
-   ===================================================================== */
-body, html { background: #5a4dff; font-family: Fredoka, "Baloo 2", system-ui, sans-serif; }
-#auth { overflow: hidden;
+/* 🔐 Connexion */
+#auth { position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center; touch-action: auto; overflow: hidden;
   background: radial-gradient(circle at 50% 40%, rgba(255,245,180,.7), transparent 45%),
               repeating-conic-gradient(from 0deg at 50% 40%, rgba(255,255,255,.14) 0 9deg, transparent 9deg 18deg),
               linear-gradient(180deg, #18b8ff, #5a4dff 55%, #ff3d9a); }
@@ -33,24 +13,23 @@ body, html { background: #5a4dff; font-family: Fredoka, "Baloo 2", system-ui, sa
 #auth::before { content: "DOKAAN!!"; top: 8%; left: 6%; font-size: clamp(34px, 7vw, 80px); transform: rotate(-14deg); }
 #auth::after { content: "BAM!"; bottom: 9%; right: 7%; font-size: clamp(30px, 6vw, 70px); color: #5ff0ff; transform: rotate(12deg); animation-delay: .8s; }
 @keyframes bdPop { 0%,100% { scale: 1; } 50% { scale: 1.12; } }
-#auth form { position: relative; background: linear-gradient(180deg, #3a2d9c, #1d1558); border: 4px solid #0b0620; border-radius: 22px;
-  backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: 9px 10px 0 #0b0620, inset 0 0 0 2px rgba(255,255,255,.18);
-  animation: bdEntre .6s cubic-bezier(.3,1.6,.5,1) both; }
+#auth form { position: relative; width: min(360px, 90vw); display: flex; flex-direction: column; gap: 11px; padding: 28px;
+  background: linear-gradient(180deg, #3a2d9c, #1d1558); border: 4px solid #0b0620; border-radius: 22px;
+  box-shadow: 9px 10px 0 #0b0620, inset 0 0 0 2px rgba(255,255,255,.18); animation: bdEntre .6s cubic-bezier(.3,1.6,.5,1) both; }
 @keyframes bdEntre { from { transform: scale(.4) rotate(-6deg); opacity: 0; } }
-#auth h1 { font-family: Bangers, Impact, sans-serif; font-weight: 400; font-size: 64px; letter-spacing: 2px; color: #ffe14a; margin: -58px 0 6px;
-  -webkit-text-stroke: 4px #0b0620; paint-order: stroke fill; text-shadow: 5px 7px 0 #0b0620; transform: rotate(-4deg); animation: bdTitre 2.4s ease-in-out infinite; }
+#auth h1 { font-family: Bangers, Impact, sans-serif; font-weight: 400; font-size: 64px; letter-spacing: 2px; color: #ffe14a; text-align: center; margin: -58px 0 6px;
+  -webkit-text-stroke: 4px #0b0620; paint-order: stroke fill; text-shadow: 5px 7px 0 #0b0620; animation: bdTitre 2.4s ease-in-out infinite; }
 @keyframes bdTitre { 0%,100% { transform: rotate(-4deg) scale(1); } 50% { transform: rotate(-2deg) scale(1.06); } }
-#auth input, #profil input { background: #fff !important; color: #1a1030 !important; border: 3px solid #0b0620 !important; border-radius: 14px !important;
-  font-family: Fredoka, system-ui, sans-serif; font-weight: 600; box-shadow: inset 0 3px 0 rgba(0,0,0,.08); }
+#auth input { padding: 13px 14px; font: 600 16px Fredoka, system-ui, sans-serif; background: #fff; color: #1a1030; border: 3px solid #0b0620; border-radius: 14px;
+  outline: none; box-shadow: inset 0 3px 0 rgba(0,0,0,.08); user-select: text; -webkit-user-select: text; }
 #auth input::placeholder { color: #8a84a8; }
-#auth button, body #profil button { font-family: Bangers, Impact, sans-serif; font-weight: 400; font-size: 22px; letter-spacing: 1.5px; color: #fff;
+#auth button { padding: 12px; cursor: pointer; font: 400 22px Bangers, Impact, sans-serif; letter-spacing: 1.5px; color: #fff;
   border: 3px solid #0b0620; border-radius: 16px; background: linear-gradient(180deg, #ffd23f, #ff8a1f); box-shadow: 0 6px 0 #0b0620;
   -webkit-text-stroke: 1.5px #0b0620; paint-order: stroke fill; text-shadow: 0 2px 0 #0b0620; transition: transform .08s, box-shadow .08s; }
-#auth button:active, body #profil button:active { transform: translateY(5px); box-shadow: 0 1px 0 #0b0620; }
-#auth button.sec, body #profil button.sec { background: linear-gradient(180deg, #5ff0ff, #1e7bff); }
+#auth button:active { transform: translateY(5px); box-shadow: 0 1px 0 #0b0620; }
+#auth button.sec { background: linear-gradient(180deg, #5ff0ff, #1e7bff); }
 #auth button.google { background: #fff; color: #1a1030; -webkit-text-stroke: 0; text-shadow: none; }
-#authErr { color: #ffe14a; font-weight: 700; }
-body #profil { background: rgba(20,0,40,.55); backdrop-filter: none; -webkit-backdrop-filter: none; font-family: Fredoka, system-ui, sans-serif; }
-body #profil form { background: linear-gradient(180deg, #3a2d9c, #1d1558); border: 4px solid #0b0620; border-radius: 22px; box-shadow: 9px 10px 0 #0b0620; }
-body #profil h2 { font-family: Bangers, Impact, sans-serif; font-weight: 400; font-size: 34px; letter-spacing: 1px; color: #ffe14a; -webkit-text-stroke: 2px #0b0620; paint-order: stroke fill; text-shadow: 3px 4px 0 #0b0620; }
-body #profil label { color: #fff; font-weight: 600; }
+#authErr { color: #ffe14a; font-weight: 700; font-size: 14px; min-height: 18px; text-align: center; }
+
+/* 📱 Mobile : l'appli reste en paysage — si le téléphone est en portrait, tout pivote (sans message) */
+html.tourne body { position: fixed; top: 0; left: 0; transform-origin: top left; transform: rotate(90deg) translateY(-100%); }
