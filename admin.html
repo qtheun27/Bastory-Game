@@ -466,6 +466,10 @@ async function sortirImages(o) { // remplace chaque image uploadée par un lien 
 }
 let user = null;
 function majAuth() {
+  if (user && !estAdmin(user)) { // 🔐 joueur non admin : accès refusé, retour au jeu
+    auth.signOut(); $('#loginErr').textContent = '⛔ Accès réservé aux administrateurs';
+    setTimeout(() => location.href = 'index.html', 1500); return;
+  }
   $('#login').style.display = user ? 'none' : 'flex'; // écran de connexion obligatoire
   $('#auth').innerHTML = '';
   if (user) $('#auth').append(el('span', { textContent: '👤 ' + (user.displayName || 'Admin') }),

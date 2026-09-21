@@ -7,3 +7,7 @@ const FIREBASE_CONFIG = {
   // ⚠️ Multijoueur : colle ici l'URL de ta Realtime Database (Console → Realtime Database, en haut de l'onglet Données)
   databaseURL: "https://bastory-default-rtdb.europe-west1.firebasedatabase.app"
 };
+
+// 🔐 Comptes autorisés dans l'espace admin (mêmes emails que dans les règles Firestore)
+const ADMINS = ["q.theuninck@gmail.com", "h.theuninck@icloud.com", "isidorevancalemont@icloud.com"];
+const estAdmin = u => !!u && ADMINS.includes((u.email || '').toLowerCase());
