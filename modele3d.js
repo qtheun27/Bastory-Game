@@ -17,7 +17,7 @@ const Modele3D = (() => {
     for (const k of ['sil', 'out']) { if (!cache[k]) cache[k] = document.createElement('canvas'); if (cache[k].width !== w || cache[k].height !== h) { cache[k].width = w; cache[k].height = h; } }
     const s = cache.sil.getContext('2d'), o = cache.out.getContext('2d');
     s.globalCompositeOperation = 'source-over'; s.clearRect(0, 0, w, h); s.drawImage(src, 0, 0); s.globalCompositeOperation = 'source-in'; s.fillStyle = '#0b0620'; s.fillRect(0, 0, w, h);
-    o.clearRect(0, 0, w, h); for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; o.drawImage(cache.sil, Math.cos(a) * ep, Math.sin(a) * ep); }
+    o.clearRect(0, 0, w, h); for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; o.drawImage(cache.sil, Math.cos(a) * ep, Math.sin(a) * ep); }
     o.drawImage(src, 0, 0); return cache.out;
   }
 
@@ -126,6 +126,8 @@ const Modele3D = (() => {
     const c = document.createElement('canvas'), cache = {};
     return {
       rendre(angle, taille, t = 0, anim = 'repos') {
+        const now = performance.now(); if (this.fait && now - this.fait < 33 && taille === this.taille && anim === this.anim && Math.abs(angle - this.angle) < 0.005) return c; // 30 images/s suffisent
+        Object.assign(this, { fait: now, taille, anim, angle });
         c.width = c.height = taille; const x = c.getContext('2d'); x.clearRect(0, 0, taille, taille); x.drawImage(contour(photo(m, angle, anim, t % 1, taille), Math.max(2, taille / 90), cache), 0, 0);
         if (!this.haut) { const cad = cadrage(c); this.haut = cad.haut / taille; this.bas = cad.bas / taille; } return c;
       },
