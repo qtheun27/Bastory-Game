@@ -57,14 +57,16 @@ const Modele3D = (() => {
     const mixer = new THREE.AnimationMixer(obj), clips = gltf.animations || [];
     // choix des animations : nom donné dans l'admin, sinon détection automatique (par ordre de préférence)
     const trouver = (nom, ...motifs) => clips.find(c => nom && c.name === nom) || motifs.map(m => clips.find(c => m.test(c.name))).find(Boolean);
+    const air = p.element === 'air', VOL = /fly|flap|glide|hover|wing/i; // 💨 perso volant : jamais d'animation de marche dans le vide
     const anims = {
-      repos: trouver(p.animRepos, /idle/i, /breath|repos/i),
-      marche: trouver(p.animMarche, /walk(?!.*inplace)/i, /walk/i, /run|marche|move|fly|swim/i),
-      attaque: trouver(p.animAttaque, /attack|swing|smash|punch|slash|shoot|cast|throw/i),
+      repos: trouver(p.animRepos, ...(air ? [VOL] : []), /idle/i, /breath|repos/i),
+      marche: air ? trouver(p.animMarche, VOL) : trouver(p.animMarche, /walk(?!.*inplace)/i, /walk/i, /run|marche|move|swim/i),
+      attaque: trouver(p.animAttaque, /attack|swing|smash|punch|slash|shoot|cast|throw|bow|arch|spell|skill|strike|kick|combat|atk|magic/i),
       touche: trouver(p.animTouche, /hit|hurt|react|damage|impact/i),
       mort: trouver(p.animMort, /dead|death|dying|die/i),
       releve: trouver(p.animReleve, /stand.?up|get.?up|revive|rise|power.?up/i)
     };
+    if (!anims.attaque) anims.attaque = clips.find(c => c !== anims.repos && c !== anims.marche && !/idle|walk|run|dead|death|die|hit|hurt|react|stand|breath|t-?pose|fly|hover/i.test(c.name)); // repli : 1re animation « d'action »
     let hanches = null; obj.traverse(o => { if (!hanches && o.isBone && /hips|pelvis/i.test(o.name)) hanches = o; });
     return { racine, mixer, anims, hanches, repos: hanches && hanches.position.clone(), decalage: (+p.modeleRotation || 0) * Math.PI / 180, liberer: () => obj.traverse(o => { if (o.geometry) o.geometry.dispose(); }) };
   }

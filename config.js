@@ -15,11 +15,11 @@ const CONFIG_PAR_DEFAUT = {
       "element": "terre",
       "couleur": "#b7791f",
       "arme": "rocher",
-      "pvMax": 8000,
-      "vitesse": 3.8,
-      "degats": 2200,
-      "portee": 320,
-      "delaiTir": 50,
+      "pvMax": 8500,
+      "vitesse": 3,
+      "degats": 2000,
+      "portee": 300,
+      "delaiTir": 55,
       "modele": "modeles/rokh.glb"
     },
     {
@@ -27,7 +27,7 @@ const CONFIG_PAR_DEFAUT = {
       "imageCarte": "",
       "munitions": 3,
       "recharge": 55,
-      "modeleEchelle": 1.4,
+      "modeleEchelle": 1.2,
       "modeleRotation": 0,
       "animRepos": "",
       "animMarche": "",
@@ -36,11 +36,11 @@ const CONFIG_PAR_DEFAUT = {
       "element": "air",
       "couleur": "#7dd3fc",
       "arme": "vent",
-      "pvMax": 4200,
-      "vitesse": 6.0,
-      "degats": 1100,
+      "pvMax": 3800,
+      "vitesse": 4.6,
+      "degats": 950,
       "portee": 520,
-      "delaiTir": 18,
+      "delaiTir": 20,
       "modele": "modeles/zephyr.glb"
     },
     {
@@ -58,10 +58,10 @@ const CONFIG_PAR_DEFAUT = {
       "couleur": "#3b82f6",
       "arme": "trident",
       "pvMax": 5400,
-      "vitesse": 5.0,
-      "degats": 1300,
-      "portee": 420,
-      "delaiTir": 26,
+      "vitesse": 4,
+      "degats": 1250,
+      "portee": 400,
+      "delaiTir": 28,
       "modele": "modeles/naia.glb"
     },
     {
@@ -79,10 +79,10 @@ const CONFIG_PAR_DEFAUT = {
       "couleur": "#f97316",
       "arme": "boulefeu",
       "pvMax": 5000,
-      "vitesse": 5.2,
-      "degats": 1700,
-      "portee": 380,
-      "delaiTir": 32,
+      "vitesse": 4.1,
+      "degats": 1600,
+      "portee": 360,
+      "delaiTir": 34,
       "modele": "modeles/pyro.glb"
     },
     {
@@ -90,7 +90,7 @@ const CONFIG_PAR_DEFAUT = {
       "image": "images/wixy.png",
       "couleur": "#3498db",
       "pvMax": 6000,
-      "vitesse": 4,
+      "vitesse": 3.4,
       "arme": "bombe",
       "degats": 2000,
       "portee": 300,
@@ -111,7 +111,7 @@ const CONFIG_PAR_DEFAUT = {
       "image": "images/bora.png",
       "couleur": "#9b59b6",
       "pvMax": 4800,
-      "vitesse": 5.5,
+      "vitesse": 4.3,
       "arme": "boomerang",
       "degats": 1250,
       "portee": 450,
@@ -264,7 +264,7 @@ const CONFIG_PAR_DEFAUT = {
       "image": "",
       "type": "lob",
       "effet": "impact",
-      "vitesse": 8,
+      "vitesse": 7.5,
       "taille": 20,
       "rayon": 90,
       "couleur": "#a07850",
@@ -277,14 +277,17 @@ const CONFIG_PAR_DEFAUT = {
       "poisonDuree": 0,
       "nuage": 0,
       "rayonNuage": 90,
-      "degatsNuage": 0
+      "degatsNuage": 0,
+      "onde": 150,
+      "recul": 10,
+      "forme": "rocher"
     },
     "vent": {
       "nom": "Arc de vent",
       "image": "",
       "type": "droit",
       "effet": "etincelle",
-      "vitesse": 17,
+      "vitesse": 15,
       "taille": 9,
       "rayon": 0,
       "couleur": "#bdf2ff",
@@ -297,13 +300,14 @@ const CONFIG_PAR_DEFAUT = {
       "poisonDuree": 0,
       "nuage": 0,
       "rayonNuage": 90,
-      "degatsNuage": 0
+      "degatsNuage": 0,
+      "forme": "fleche"
     },
     "trident": {
       "nom": "Trident",
       "image": "",
       "type": "retour",
-      "effet": "glace",
+      "effet": "eclaboussure",
       "vitesse": 12,
       "taille": 16,
       "rayon": 0,
@@ -317,7 +321,9 @@ const CONFIG_PAR_DEFAUT = {
       "poisonDuree": 0,
       "nuage": 0,
       "rayonNuage": 90,
-      "degatsNuage": 0
+      "degatsNuage": 0,
+      "recul": 16,
+      "forme": "bulle"
     },
     "boulefeu": {
       "nom": "Boule de feu",
@@ -335,9 +341,10 @@ const CONFIG_PAR_DEFAUT = {
       "porteeChaine": 350,
       "retard": 0,
       "poisonDuree": 0,
-      "nuage": 2.5,
+      "nuage": 3,
       "rayonNuage": 70,
-      "degatsNuage": 300
+      "degatsNuage": 300,
+      "forme": "feu"
     }
   },
   "maps": [
@@ -370,6 +377,44 @@ const CONFIG_PAR_DEFAUT = {
         "#..B.....##........##.C...B..#",
         "#..BBB..................BBB..#",
         "#............BBBB............#",
+        "##############################"
+      ],
+      "casseMurs": true,
+      "casseBuissons": true,
+      "pvBloc": 3000,
+      "chanceObjet": 10,
+      "chanceCoffre": 100
+    },
+    {
+      "nom": "Plage des pirates",
+      "herbe1": "#6fd35a",
+      "herbe2": "#62c24f",
+      "mur": "#c98a4b",
+      "murFace": "#8e5a2b",
+      "buisson": "#2fae4a",
+      "buissonFonce": "#1f7a35",
+      "eau": "#2fb8f0",
+      "sable": "#f4d68e",
+      "grille": [
+        "##############################",
+        "#WWWWS..................SSSSS#",
+        "#WWWWS.BB...............SSSSS#",
+        "#WWWSS.B..WWW.....BB....SSSSS#",
+        "#WWWSS....WWW..E..C.....SSSSS#",
+        "#SSSSS..................SSSSS#",
+        "#SSSSS..##.....##...B...SSSSS#",
+        "#SSPSS..#..........BB...SSSSS#",
+        "#SSSSSB.....#ZZZZ.......SSSSS#",
+        "#SSSSSB.....#ZZZZ.......STSSS#",
+        "#SSSTS.......ZZZZ#.....BSSSSS#",
+        "#SSSSS.......ZZZZ#.....BSSSSS#",
+        "#SSSSS...BB..........#..SSPSS#",
+        "#SSSSS...B...##.....##..SSSSS#",
+        "#SSSSS..................SSSSS#",
+        "#SSSSS.....C.....WWW....SSWWW#",
+        "#SSSSS....BB.....WWW..B.SSWWW#",
+        "#SSSSS...............BB.SWWWW#",
+        "#SSSSS..................SWWWW#",
         "##############################"
       ],
       "casseMurs": true,
@@ -606,6 +651,53 @@ const CONFIG_PAR_DEFAUT = {
       "niveauBoss": 1,
       "niveauBots": 1,
       "botsAdaptatifs": true
+    },
+    {
+      "type": "multi",
+      "actif": true,
+      "joueursMin": 2,
+      "joueursMax": 4,
+      "equipes": "deux",
+      "boss": false,
+      "nbBoss": 0,
+      "map": -1,
+      "typesBoss": [],
+      "bots": true,
+      "attenteBots": 15,
+      "reapparition": true,
+      "delaiReapparition": 3,
+      "nom": "Marathon",
+      "description": "Cristaux puis zone : l'équipe qui gagne le plus d'étapes l'emporte",
+      "pointsVictoire": 50,
+      "pointsDefaite": 8,
+      "duree": 0,
+      "objectif": "marathon",
+      "etapes": "bloc,zone",
+      "tempsZone": 25,
+      "pvCristal": 15000
+    },
+    {
+      "type": "multi",
+      "actif": true,
+      "joueursMin": 2,
+      "joueursMax": 4,
+      "equipes": "deux",
+      "boss": false,
+      "nbBoss": 0,
+      "map": -1,
+      "typesBoss": [],
+      "bots": true,
+      "attenteBots": 15,
+      "reapparition": true,
+      "delaiReapparition": 3,
+      "nom": "Chasse au trésor",
+      "description": "Trouve les trésors cachés avant l'équipe adverse",
+      "pointsVictoire": 35,
+      "pointsDefaite": 6,
+      "duree": 150,
+      "objectif": "tresor",
+      "nbTresors": 14,
+      "objectifTresors": 7
     }
   ],
   "pouvoirs": {
@@ -664,7 +756,7 @@ const CONFIG_PAR_DEFAUT = {
       "rarete": 1
     }
   },
-  "version": 8,
+  "version": 9,
   "app": {
     "nom": "Bastory",
     "nomCourt": "Bastory",
@@ -679,7 +771,11 @@ const CONFIG_PAR_DEFAUT = {
       "capacite": "brise",
       "valeur": 60,
       "gainVictoire": 30,
-      "gainDefaite": 10
+      "gainDefaite": 10,
+      "superNom": "Séisme titan",
+      "superCharge": 7000,
+      "actionNom": "Charge",
+      "actionRecharge": 7
     },
     "air": {
       "nom": "Air",
@@ -689,7 +785,11 @@ const CONFIG_PAR_DEFAUT = {
       "altitude": 24,
       "valeur": 0,
       "gainVictoire": 30,
-      "gainDefaite": 10
+      "gainDefaite": 10,
+      "superNom": "Tempête de flèches",
+      "superCharge": 5000,
+      "actionNom": "Rafale",
+      "actionRecharge": 5
     },
     "eau": {
       "nom": "Eau",
@@ -699,7 +799,11 @@ const CONFIG_PAR_DEFAUT = {
       "valeur": 1.35,
       "soin": 1.5,
       "gainVictoire": 30,
-      "gainDefaite": 10
+      "gainDefaite": 10,
+      "superNom": "Raz-de-marée",
+      "superCharge": 6000,
+      "actionNom": "Bulle",
+      "actionRecharge": 8
     },
     "feu": {
       "nom": "Feu",
@@ -709,7 +813,11 @@ const CONFIG_PAR_DEFAUT = {
       "valeur": 120,
       "duree": 2,
       "gainVictoire": 30,
-      "gainDefaite": 10
+      "gainDefaite": 10,
+      "superNom": "Souffle du dragon",
+      "superCharge": 6500,
+      "actionNom": "Brasier",
+      "actionRecharge": 8
     }
   },
   "progression": {
@@ -719,14 +827,66 @@ const CONFIG_PAR_DEFAUT = {
     "bonusPV": 8,
     "bonusDegats": 6,
     "bonusVitesse": 2
-  }
+  },
+  "recompenses": [
+    {
+      "victoires": 1,
+      "element": "terre",
+      "quantite": 20
+    },
+    {
+      "victoires": 3,
+      "element": "air",
+      "quantite": 30
+    },
+    {
+      "victoires": 5,
+      "element": "eau",
+      "quantite": 40
+    },
+    {
+      "victoires": 8,
+      "element": "feu",
+      "quantite": 50
+    },
+    {
+      "victoires": 12,
+      "element": "tous",
+      "quantite": 30
+    },
+    {
+      "victoires": 20,
+      "element": "terre",
+      "quantite": 100
+    },
+    {
+      "victoires": 30,
+      "element": "air",
+      "quantite": 120
+    },
+    {
+      "victoires": 45,
+      "element": "eau",
+      "quantite": 150
+    },
+    {
+      "victoires": 60,
+      "element": "feu",
+      "quantite": 180
+    },
+    {
+      "victoires": 100,
+      "element": "tous",
+      "quantite": 150
+    }
+  ]
 };
 
 // Met à niveau une config existante (ajoute les nouveaux réglages, retire les anciens)
 function migrerConfig(c) {
   const D = CONFIG_PAR_DEFAUT, copie = o => JSON.parse(JSON.stringify(o)), def = (o, d) => { for (const k in d) if (o[k] === undefined) o[k] = d[k]; return o; };
   if (!c.bosses) c.bosses = { troll: c.boss || copie(D.bosses.troll) }; delete c.boss;
-  ['modes', 'pouvoirs', 'app', 'elements', 'progression'].forEach(k => { if (!c[k] || (Array.isArray(c[k]) && !c[k].length)) c[k] = copie(D[k]); });
+  ['modes', 'pouvoirs', 'app', 'elements', 'progression', 'recompenses'].forEach(k => { if (!c[k] || (Array.isArray(c[k]) && !c[k].length)) c[k] = copie(D[k]); });
   for (const k in D.armes) if (!c.armes[k] && ['seisme', 'ricochet', 'eclair', 'fumigene', 'dard', 'rocher', 'vent', 'trident', 'boulefeu'].includes(k)) c.armes[k] = copie(D.armes[k]);
   if ((c.version || 0) < 8) { // v8 : persos = vrais modèles 3D .glb + éléments ; les anciens persos "assemblés" sont retirés
     c.persos = c.persos.filter(p => p.image || p.modele);
@@ -734,14 +894,23 @@ function migrerConfig(c) {
     D.persos.filter(p => p.modele).forEach(p => { if (!c.persos.some(x => x.nom === p.nom)) c.persos.unshift(copie(p)); });
     ['v3d', 'v3d2', 'v3d3'].forEach(k => delete c[k]); c.version = 8;
   }
+  if ((c.version || 0) < 9) { // v9 : gameplay plus posé, armes typées, super/action, sable, marathon, chasse au trésor, récompenses
+    const P = {"ROKH":{"vitesse":3,"pvMax":8500,"degats":2000,"portee":300,"delaiTir":55},"ZEPHYR":{"vitesse":4.6,"pvMax":3800,"degats":950,"portee":520,"delaiTir":20,"modeleEchelle":1.2},"NAIA":{"vitesse":4,"pvMax":5400,"degats":1250,"portee":400,"delaiTir":28},"PYRO":{"vitesse":4.1,"pvMax":5000,"degats":1600,"portee":360,"delaiTir":34},"WIXY":{"vitesse":3.4},"BORA":{"vitesse":4.3}};
+    c.persos.forEach(p => { if (P[p.nom]) Object.assign(p, P[p.nom]); else p.vitesse = +((+p.vitesse || 4) * 0.82).toFixed(2); });
+    ['rocher', 'vent', 'trident', 'boulefeu'].forEach(k => { if (c.armes[k]) ['vitesse', 'onde', 'recul', 'forme', 'rebonds', 'effet', 'nuage', 'degatsNuage'].forEach(x => { if (D.armes[k][x] !== undefined) c.armes[k][x] = D.armes[k][x]; }); });
+    for (const k in D.elements) if (c.elements[k]) def(c.elements[k], D.elements[k]);
+    D.modes.filter(m => ['marathon', 'tresor'].includes(m.objectif)).forEach(m => { if (!c.modes.some(x => x.nom === m.nom)) c.modes.push(copie(m)); });
+    D.maps.filter(m => m.sable).forEach(m => { if (!c.maps.some(x => x.nom === m.nom)) c.maps.push(copie(m)); });
+    c.version = 9;
+  }
   c.modes.forEach(m => {
     if (m.type === '1v1') { m.type = 'multi'; m.joueursMin = m.joueursMin || 2; m.joueursMax = m.joueursMax || 2; }
     def(m, { joueursMin: 1, joueursMax: 1, equipes: 'chacun', pointsVictoire: 30, pointsDefaite: 5, bots: true, attenteBots: 15, reapparition: false, delaiReapparition: 3, duree: 0,
-             objectif: 'standard', tempsZone: 30, pvCristal: 20000, degatsCristal: 800, porteeCristal: 350, cadenceCristal: 60, botsObjets: true, niveauBoss: 1, niveauBots: 1, botsAdaptatifs: true });
+             objectif: 'standard', etapes: 'bloc,zone', nbTresors: 14, objectifTresors: 7, tempsZone: 30, pvCristal: 20000, degatsCristal: 800, porteeCristal: 350, cadenceCristal: 60, botsObjets: true, niveauBoss: 1, niveauBots: 1, botsAdaptatifs: true });
   });
   c.persos.forEach(p => def(p, { imageCarte: '', munitions: 3, recharge: 60, element: '', modele: '', modeleEchelle: 1, modeleRotation: 0, animRepos: '', animMarche: '', animAttaque: '', animTouche: '', animMort: '', animReleve: '' }));
-  Object.values(c.bosses).forEach(b => def(b, { imageCarte: '', arme: '', porteeTir: 400, degatsTir: 1500, cadenceTir: 90 }));
-  Object.values(c.armes).forEach(a => def(a, { rebonds: 0, bonusRebond: 1.2, chaine: 0, perteChaine: 0.7, porteeChaine: 350, retard: 0, poisonDuree: 0, nuage: 0, rayonNuage: 90, degatsNuage: 150 }));
-  c.maps.forEach(m => def(m, { casseMurs: true, casseBuissons: true, pvBloc: 3000, chanceObjet: 10, chanceCoffre: 100 }));
+  Object.values(c.bosses).forEach(b => def(b, { imageCarte: '', arme: '', porteeTir: 400, degatsTir: 1500, cadenceTir: 90, modele: '', modeleEchelle: 1, modeleRotation: 0, animRepos: '', animMarche: '', animAttaque: '', animTouche: '', animMort: '' }));
+  Object.values(c.armes).forEach(a => def(a, { rebonds: 0, bonusRebond: 1.2, chaine: 0, perteChaine: 0.7, porteeChaine: 350, onde: 0, recul: 0, forme: '', retard: 0, poisonDuree: 0, nuage: 0, rayonNuage: 90, degatsNuage: 150 }));
+  c.maps.forEach(m => def(m, { casseMurs: true, casseBuissons: true, pvBloc: 3000, chanceObjet: 10, chanceCoffre: 100, sable: '#f4d68e' }));
   return c;
 }

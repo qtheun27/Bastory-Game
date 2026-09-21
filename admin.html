@@ -118,7 +118,8 @@ const CH = {
           ['equipes','Équipes (multi)','select',[['chacun','Chacun pour soi'],['deux','2 équipes'],['coop','Tous ensemble (coop)']]],
           ['pointsVictoire','Points par victoire','number'],['pointsDefaite','Points par défaite','number'],
           ['reapparition','Réapparition après la mort','check'],['delaiReapparition','Délai de réapparition (s)','number'],['duree','Durée max de la partie (s, 0 = illimité)','number'],
-          ['objectif','Objectif de victoire','select',[['standard','⚔️ Éliminer (ou battre les boss)'],['zone','🎯 Tenir la zone (outil Zone sur la map)'],['bloc','💎 Détruire le cristal (outil Cristal sur la map)']]],
+          ['objectif','Objectif de victoire','select',[['standard','⚔️ Éliminer (ou battre les boss)'],['zone','🎯 Tenir la zone (outil Zone sur la map)'],['bloc','💎 Détruire le cristal (outil Cristal sur la map)'],['tresor','💰 Chasse au trésor (trésors cachés)'],['marathon','🏃 Marathon (plusieurs objectifs à la suite)']]],
+          ['etapes','Marathon : étapes dans l\'ordre (bloc, zone, tresor séparés par des virgules)','text'],['nbTresors','Trésor : nombre de trésors cachés','number'],['objectifTresors','Trésor : trésors à trouver pour gagner','number'],
           ['tempsZone','Zone : temps à tenir (s)','number'],['pvCristal','Cristal : points de vie','number'],['degatsCristal','Cristal : dégâts de ses tirs','number'],
           ['porteeCristal','Cristal : portée de tir','number'],['cadenceCristal','Cristal : délai entre tirs (60 = 1 s)','number'],
           ['botsObjets','Les bots ramassent les objets rares','check'],
@@ -144,14 +145,16 @@ const CH = {
           ['chaine','Tir droit : rebonds vers ennemis proches','number'],['perteChaine','Puissance × à chaque ennemi suivant','number'],['porteeChaine','Distance max vers l\'ennemi suivant','number'],
           ['forme','🌋 Forme (terrain)','select',[['zone','Zone ronde'],['ligne','Ligne devant soi'],['mur','Mur en travers'],['croix','Croix']]],
           ['nbCases','🌋 Nombre / taille (cases)','number'],
-          ['typeCase','🌋 Case créée','select',[['#','🟫 Mur (bloquant)'],['B','🌳 Buisson (cache)'],['W','🟦 Eau (bloque la marche)'],['.','🟩 Herbe (efface les obstacles)']]],
+          ['typeCase','🌋 Case créée','select',[['#','🟫 Mur (bloquant)'],['B','🌳 Buisson (cache)'],['W','🟦 Eau (bloque la marche)'],['S','🟨 Sable (ralentit)'],['.','🟩 Herbe (efface les obstacles)']]],
           ['dureeCase','🌋 Durée (s, 0 = permanent)','number'],['delaiCase','🌋 Délai entre cases (60 = 1 s)','number']],
   boss:  [['nom','Nom','text'],['image','Image jeu (vue du dessus)','image'],['imageCarte','Image carte (fin de partie)','image'],['pvMax','Points de vie','number'],['vitesse','Vitesse','number'],['degats','Dégâts du coup','number'],
           ['delaiAttaque','Recharge (60 = 1 s)','number'],['rayonAttaque','Rayon du coup','number'],['taille','Taille (rayon)','number'],
           ['arme','Arme à distance (effet sombre)','select',() => [['', 'Aucune (massue seulement)'], ...Object.entries(cfg.armes).map(([k, a]) => [k, a.nom])]],
-          ['porteeTir','Portée de tir','number'],['degatsTir','Dégâts du tir','number'],['cadenceTir','Délai entre 2 tirs (60 = 1 s)','number']],
+          ['porteeTir','Portée de tir','number'],['degatsTir','Dégâts du tir','number'],['cadenceTir','Délai entre 2 tirs (60 = 1 s)','number'],
+          ['modele','Modèle 3D (.glb, ex : modeles/troll.glb)','text'],['modeleEchelle','Taille du modèle (1 = normal)','number'],['modeleRotation','Modèle : rotation (degrés)','number'],
+          ['animRepos','Animation de repos (vide = auto)','text'],['animMarche','Animation de marche (vide = auto)','text'],['animAttaque','Animation d\'attaque (vide = auto)','text'],['animTouche','Animation coup reçu (vide = auto)','text'],['animMort','Animation de mort (vide = auto)','text']],
   map:   [['nom','Nom','text'],['herbe1','Herbe 1','color'],['herbe2','Herbe 2','color'],['mur','Mur (dessus)','color'],['murFace','Mur (face)','color'],
-          ['buisson','Buisson','color'],['buissonFonce','Buisson foncé','color'],['eau','Eau','color'],
+          ['buisson','Buisson','color'],['buissonFonce','Buisson foncé','color'],['eau','Eau','color'],['sable','Sable','color'],
           ['casseMurs','Murs cassables','check'],['casseBuissons','Buissons cassables','check'],['pvBloc','Solidité d\'un mur (dégâts)','number'],
           ['chanceObjet','% objet rare (mur/buisson)','number'],['chanceCoffre','% objet rare (coffre 🎁)','number']],
   pouvoir: [['nom','Nom','text'],['icone','Icône (emoji)','text'],['couleur','Couleur','color'],
@@ -333,7 +336,14 @@ const VUES = {
     const CAP = [['sol', 'Aucune'], ['brise', '🌍 Brise les blocs en fonçant'], ['vol', '💨 Vole au-dessus des blocs et de l\'eau'], ['nage', '💧 Se déplace sur l\'eau'], ['feu', '🔥 Laisse une traînée de feu']];
     for (const [k, e] of Object.entries(cfg.elements)) g.append(carte(e.icone + ' ' + e.nom, formulaire(e, [['nom','Nom','text'],['icone','Icône (emoji)','text'],['couleur','Couleur','color'],['capacite','Capacité','select',CAP],
       ['valeur','Valeur (brise : dégâts/image • nage : vitesse × • feu : dégâts/s)','number'],['altitude','Vol : hauteur','number'],['soin','Nage : soin % PV par seconde dans l\'eau','number'],['duree','Feu : durée des flammes (s)','number'],
+      ['superNom','⭐ Super : nom','text'],['superCharge','⭐ Super : dégâts à infliger pour le charger','number'],['actionNom','🎮 Action : nom','text'],['actionRecharge','🎮 Action : recharge (s)','number'],
       ['gainVictoire','Essence gagnée par victoire','number'],['gainDefaite','Essence gagnée par défaite','number']])));
+    const optEl = [...Object.entries(cfg.elements).map(([k, e]) => [k, e.icone + ' ' + e.nom]), ['tous', '🌈 Tous les éléments']];
+    cfg.recompenses = cfg.recompenses || [];
+    cfg.recompenses.forEach((r, i) => g.append(carte('🎁 Palier ' + (i + 1), formulaire(r, [['victoires','Victoires totales nécessaires','number'],['element','Essence offerte','select',optEl],['quantite','Quantité','number']]),
+      () => { cfg.recompenses.splice(i, 1); modifie(); afficher(); })));
+    z.append(el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouveau palier de récompense', onclick: () => { const d = cfg.recompenses[cfg.recompenses.length - 1];
+      cfg.recompenses.push({ victoires: d ? d.victoires + 10 : 1, element: 'tous', quantite: 50 }); cfg.recompenses.sort((a, b) => a.victoires - b.victoires); modifie(); afficher(); } })));
     z.append(el('p', { className: 'aide', textContent: 'En jouant avec un perso, on gagne l\'essence de son élément. Elle sert à faire évoluer les persos de cet élément (écran Persos → Évoluer).' }), g);
   },
   joueurs(z) { // 👤 compteurs des joueurs : modifier ou remettre à zéro
@@ -365,7 +375,7 @@ const VUES = {
   },
   boss(z) {
     const g = el('div', { className: 'grille-cartes' });
-    for (const [k, b] of Object.entries(cfg.bosses)) g.append(carte('👹 ' + b.nom + ' (' + k + ')', formulaire(b, CH.boss), () => {
+    for (const [k, b] of Object.entries(cfg.bosses)) g.append(carte('👹 ' + b.nom + ' (' + k + ')', apercu3D(b, formulaire(b, CH.boss)), () => {
       if (Object.keys(cfg.bosses).length < 2) return alert('Il faut garder au moins un boss.');
       if (cfg.modes.some(m => (m.typesBoss || []).includes(k))) return alert('Boss utilisé par un mode : change d\'abord le mode.');
       if (confirm('Supprimer ' + b.nom + ' ?')) { delete cfg.bosses[k]; modifie(); afficher(); }
@@ -392,12 +402,12 @@ const VUES = {
       el('button', { className: 'sec', textContent: 'Redimensionner', onclick: () => { redim(m, +larg.value, +haut.value); modifie(); afficher(); } }),
       el('button', { className: 'sec', textContent: '▭ Bordure de murs', onclick: () => { bordure(m); modifie(); afficher(); } })));
 
-    const PAL = [['.', '🟩 Herbe'], ['#', '🟫 Mur'], ['B', '🌳 Buisson'], ['W', '🟦 Eau'], ['P', '🧍 Départ joueur'], ['E', '👹 Départ boss'], ['C', '🎁 Coffre (objet rare)'], ['Z', '🎯 Zone à tenir'], ['T', '💎 Cristal à détruire']];
+    const PAL = [['.', '🟩 Herbe'], ['#', '🟫 Mur'], ['B', '🌳 Buisson'], ['W', '🟦 Eau'], ['S', '🟨 Sable'], ['P', '🧍 Départ joueur'], ['E', '👹 Départ boss'], ['C', '🎁 Coffre (objet rare)'], ['Z', '🎯 Zone à tenir'], ['T', '💎 Cristal à détruire']];
     const pal = el('div', { className: 'outils palette' });
     PAL.forEach(([c, t]) => pal.append(el('button', { textContent: t, className: c === pinceau ? 'on' : '', onclick: () => { pinceau = c; afficher(); } })));
 
     const grid = el('div', { className: 'grid', style: `grid-template-columns:repeat(${m.grille[0].length},22px)` });
-    const couleur = c => ({ '#': m.mur, 'B': m.buissonFonce, 'W': m.eau, 'P': '#3498db', 'E': '#e74c3c', 'C': '#f1c40f', 'Z': '#5ac8fa', 'T': '#b57bff' }[c] || m.herbe1);
+    const couleur = c => ({ '#': m.mur, 'B': m.buissonFonce, 'W': m.eau, 'P': '#3498db', 'E': '#e74c3c', 'C': '#f1c40f', 'Z': '#5ac8fa', 'T': '#b57bff', 'S': m.sable || '#f4d68e' }[c] || m.herbe1);
     m.grille.forEach((r, y) => [...r].forEach((c, x) => grid.append(el('div', { className: 'c', textContent: c === 'P' ? 'J' : c === 'E' ? 'B' : '', style: 'background:' + couleur(c), dataset: { x, y } }))));
     const peindre = cible => {
       if (!cible || !cible.dataset || cible.dataset.x === undefined) return;
