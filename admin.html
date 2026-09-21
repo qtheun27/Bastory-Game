@@ -13,11 +13,11 @@
          radial-gradient(rgba(255,255,255,.07) 1.5px, transparent 2px) 0 0/14px 14px,
          linear-gradient(180deg,#18b8ff 0,#5a4dff 45%,#2a1760 100%); background-attachment:fixed; }
   header { background:#1d1558; border-bottom:4px solid #0b0620; box-shadow:0 5px 0 rgba(11,6,32,.5); }
-  header h1, .carte h3, h2, #login h2 { font-family:Bangers,Impact,sans-serif; font-weight:400; letter-spacing:1.2px; color:#ffe14a; -webkit-text-stroke:1.5px #0b0620; paint-order:stroke fill; text-shadow:2px 3px 0 #0b0620; }
+  header h1, .carte h3, h2, #login h2 { font-family:Bangers,Impact,sans-serif; font-weight:400; letter-spacing:1.2px; color:#ffe14a; text-shadow:-1px -1px 0 #0b0620,1px -1px 0 #0b0620,-1px 1px 0 #0b0620,1px 1px 0 #0b0620,0 3px 0 #0b0620; }
   header h1 { font-size:30px; transform:rotate(-2deg); }
   .carte h3 { font-size:24px; }
   button { font-family:Bangers,Impact,sans-serif; font-weight:400; font-size:17px; letter-spacing:1px; border:3px solid #0b0620; border-radius:14px;
-           background:linear-gradient(180deg,#ffd23f,#ff8a1f); box-shadow:0 4px 0 #0b0620; -webkit-text-stroke:1px #0b0620; paint-order:stroke fill; text-shadow:0 1px 0 #0b0620; transition:transform .08s, box-shadow .08s; }
+           background:linear-gradient(180deg,#ffd23f,#ff8a1f); box-shadow:0 4px 0 #0b0620; text-shadow:-1px -1px 0 #0b0620,1px -1px 0 #0b0620,-1px 1px 0 #0b0620,1px 1px 0 #0b0620,0 3px 0 #0b0620; transition:transform .08s, box-shadow .08s; }
   button:active { transform:translateY(4px); box-shadow:0 0 0 #0b0620; }
   button.sec { background:linear-gradient(180deg,#5ff0ff,#1e7bff); box-shadow:0 4px 0 #0b0620; }
   button.danger { background:linear-gradient(180deg,#ff6b9a,#ff2d55); box-shadow:0 4px 0 #0b0620; }
@@ -93,6 +93,7 @@
 <script src="profil.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" onerror="document.write('<script src=&quot;https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js&quot;><\/script>')"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
 <script src="modele3d.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>

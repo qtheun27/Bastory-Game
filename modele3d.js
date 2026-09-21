@@ -34,6 +34,7 @@ const Modele3D = (() => {
     const contre = new THREE.DirectionalLight(0x9fe3ff, 0.55); contre.position.set(3, 2, -3); scene.add(contre);
     camera = new THREE.PerspectiveCamera(30, 1, 0.1, 60); camera.position.set(0, 5.3, 4.9); camera.lookAt(0, 0.9, 0); // vue 3/4 du dessus (avec de la marge pour les grands gestes)
     loader = new THREE.GLTFLoader();
+    if (THREE.DRACOLoader) { const dr = new THREE.DRACOLoader(); dr.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.4.1/'); loader.setDRACOLoader(dr); } // modèles compressés (Meshy)
     return true;
   }
 
@@ -59,9 +60,9 @@ const Modele3D = (() => {
     const trouver = (nom, ...motifs) => clips.find(c => nom && c.name === nom) || motifs.map(m => clips.find(c => m.test(c.name))).find(Boolean);
     const air = p.element === 'air', VOL = /fly|flap|glide|hover|wing/i; // 💨 perso volant : jamais d'animation de marche dans le vide
     const anims = {
-      repos: trouver(p.animRepos, ...(air ? [VOL] : []), /idle/i, /breath|repos/i),
+      repos: trouver(p.animRepos, ...(air ? [VOL] : []), /idle/i, /breath|repos|look.?around/i, /baselayer|clip0/i),
       marche: air ? trouver(p.animMarche, VOL) : trouver(p.animMarche, /walk(?!.*inplace)/i, /walk/i, /run|marche|move|swim/i),
-      attaque: trouver(p.animAttaque, /attack|swing|smash|punch|slash|shoot|cast|throw|bow|arch|spell|skill|strike|kick|combat|atk|magic/i),
+      attaque: trouver(p.animAttaque, /^(?!.*(react|hit|hurt)).*(attack|swing|smash|punch|slash|thrust|shoot|shot|cast|throw|bow|arch|spell|skill|strike|kick|combat|atk|magic)/i), // jamais une « réaction » au coup
       touche: trouver(p.animTouche, /hit|hurt|react|damage|impact/i),
       mort: trouver(p.animMort, /dead|death|dying|die/i),
       releve: trouver(p.animReleve, /stand.?up|get.?up|revive|rise|power.?up/i)

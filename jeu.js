@@ -976,13 +976,17 @@ function bd(txt, x, y, taille, couleur = '#ffe14a', rot = 0, halo = '#fff') { //
 
 // ---------- TYPOGRAPHIE : textes contourés façon arcade ----------
 function texte(t, x, y, taille, couleur, align = 'center', maxW) {
+  if (fonce(couleur)) couleur = '#fff';
   t = String(t); const f = s => `600 ${s}px ${POLICE}`; ctx.font = f(taille);
   if (maxW && ctx.measureText(t).width > maxW) { taille = Math.max(7, taille * maxW / ctx.measureText(t).width); ctx.font = f(taille); }
   ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; ctx.miterLimit = 2;
   ctx.lineWidth = Math.max(2, taille * 0.26); ctx.strokeStyle = NOIR; ctx.strokeText(t, x, y + taille * 0.09); ctx.strokeText(t, x, y);
   ctx.fillStyle = couleur; ctx.fillText(t, x, y);
 }
+const fonce = c => { const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c || ''); if (!m) return false; let h = m[1]; if (h.length === 3) h = [...h].map(x => x + x).join('');
+  const n = parseInt(h, 16); return ((n >> 16) * 0.299 + (n >> 8 & 255) * 0.587 + (n & 255) * 0.114) < 90; }; // couleur de texte sombre → on force un texte clair
 function titre(t, x, y, taille, couleur, align = 'center', maxW) {
+  if (fonce(couleur)) couleur = '#fff';
   t = String(t).toUpperCase(); taille *= 1.1; const f = s => `${s}px ${POLICE_BD}`; ctx.font = f(taille);
   if (maxW && ctx.measureText(t).width > maxW) { taille = Math.max(8, taille * maxW / ctx.measureText(t).width); ctx.font = f(taille); }
   ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; ctx.miterLimit = 2; const ep = Math.max(3, taille * 0.17);
