@@ -118,7 +118,7 @@ const CH = {
   mode:  [['nom','Nom','text'],['description','Description','text'],['actif','Visible dans le jeu','check'],
           ['type','Type de jeu','select',[['solo','🧍 Solo'],['multi','👥 Multijoueur en ligne']]],
           ['joueursMin','Joueurs minimum (multi)','number'],['joueursMax','Joueurs maximum (multi)','number'],
-          ['equipes','Équipes (multi)','select',[['chacun','Chacun pour soi'],['deux','2 équipes'],['coop','Tous ensemble (coop)']]],
+          ['equipes','Équipes (multi)','select',[['chacun','Chacun pour soi'],['deux','2 équipes'],['trois','3 équipes'],['quatre','4 équipes'],['coop','Tous ensemble (coop)']]],
           ['pointsVictoire','Points par victoire','number'],['pointsDefaite','Points par défaite','number'],
           ['reapparition','Réapparition après la mort','check'],['delaiReapparition','Délai de réapparition (s)','number'],['duree','Durée max de la partie (s, 0 = illimité)','number'],
           ['objectif','Objectif de victoire','select',[['standard','⚔️ Éliminer (ou battre les boss)'],['zone','🎯 Tenir la zone (outil Zone sur la map)'],['bloc','💎 Détruire le cristal (outil Cristal sur la map)'],['tresor','💰 Chasse au trésor (trésors cachés)'],['marathon','🏃 Marathon (plusieurs objectifs à la suite)']]],
@@ -420,12 +420,12 @@ const VUES = {
       el('button', { className: 'sec', textContent: 'Redimensionner', onclick: () => { redim(m, +larg.value, +haut.value); modifie(); afficher(); } }),
       el('button', { className: 'sec', textContent: '▭ Bordure de murs', onclick: () => { bordure(m); modifie(); afficher(); } })));
 
-    const PAL = [['.', '🟩 Herbe'], ['#', '🟫 Mur'], ['B', '🌳 Buisson'], ['W', '🟦 Eau'], ['S', '🟨 Sable'], ['P', '🧍 Départ joueur'], ['E', '👹 Départ boss'], ['C', '🎁 Coffre (objet rare)'], ['Z', '🎯 Zone à tenir'], ['T', '💎 Cristal à détruire']];
+    const PAL = [['.', '🟩 Herbe'], ['#', '🟫 Mur'], ['B', '🌳 Buisson'], ['W', '🟦 Eau'], ['S', '🟨 Sable'], ['P', '🧍 Départ joueur'], ['E', '👹 Départ boss'], ['C', '🎁 Coffre (objet rare)'], ['Z', '🎯 Zone à tenir'], ['T', '💎 Cristal à détruire'], ['1', '🔵 Départ équipe 1'], ['2', '🔴 Départ équipe 2'], ['3', '🟢 Départ équipe 3'], ['4', '🟡 Départ équipe 4'], ['5', '💎🔵 Cristal équipe 1'], ['6', '💎🔴 Cristal équipe 2'], ['7', '💎🟢 Cristal équipe 3'], ['8', '💎🟡 Cristal équipe 4'], ['N', '💎⚪ Cristal neutre (1re équipe qui le casse)'], ['O', '💰 Cachette de trésor']];
     const pal = el('div', { className: 'outils palette' });
     PAL.forEach(([c, t]) => pal.append(el('button', { textContent: t, className: c === pinceau ? 'on' : '', onclick: () => { pinceau = c; afficher(); } })));
 
     const grid = el('div', { className: 'grid', style: `grid-template-columns:repeat(${m.grille[0].length},22px)` });
-    const couleur = c => ({ '#': m.mur, 'B': m.buissonFonce, 'W': m.eau, 'P': '#3498db', 'E': '#e74c3c', 'C': '#f1c40f', 'Z': '#5ac8fa', 'T': '#b57bff', 'S': m.sable || '#f4d68e' }[c] || m.herbe1);
+    const couleur = c => ({ '#': m.mur, 'B': m.buissonFonce, 'W': m.eau, 'P': '#3498db', 'E': '#e74c3c', 'C': '#f1c40f', 'Z': '#5ac8fa', 'T': '#b57bff', 'S': m.sable || '#f4d68e', '1': '#1e90ff', '2': '#ff2d55', '3': '#1fc46b', '4': '#ffd23f', '5': '#0b5bd6', '6': '#b3002d', '7': '#0b8a45', '8': '#c9a200', 'N': '#fff3a0', 'O': '#8a5a2b' }[c] || m.herbe1);
     m.grille.forEach((r, y) => [...r].forEach((c, x) => grid.append(el('div', { className: 'c', textContent: c === 'P' ? 'J' : c === 'E' ? 'B' : '', style: 'background:' + couleur(c), dataset: { x, y } }))));
     const peindre = cible => {
       if (!cible || !cible.dataset || cible.dataset.x === undefined) return;

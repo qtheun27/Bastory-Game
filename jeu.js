@@ -92,6 +92,8 @@ let objets = [], degatsTuiles = {}, mesPoints = 0, finInfo = null, attente = { n
 let cam = { x: 0, y: 0 }, secousse = 0, temps = 0, finDans = 0, resultat = '', messageFin = '', zones = [];
 const modes = () => { const m = CONFIG.modes.filter(m => m.actif !== false); return m.length ? m : CONFIG.modes; };
 const modeChoisi = () => modes()[modeIndex % modes().length];
+const nbEquipes = m => ({ deux: 2, trois: 3, quatre: 4 })[m && m.equipes] || 0; // modes en équipes (2 à 4)
+const EQ_COUL = ['#1e90ff', '#ff2d55', '#1fc46b', '#ffd23f'];                 // bleu, rouge, vert, jaune
 const signature = m => { // empreinte unique d'un mode : deux joueurs ne se croisent que s'ils ont exactement le même mode
   const t = [m.nom, m.type, m.equipes, m.joueursMin, m.joueursMax, m.objectif, m.boss ? m.nbBoss : 0, m.duree].join('|'); let h = 0;
   for (const c of t) h = (h * 31 + c.charCodeAt(0)) | 0;
@@ -163,18 +165,23 @@ auth.onAuthStateChanged(u => {
 });
 
 // ---------- 6. MAP & COLLISIONS ----------
+// 1-4 départs d'équipe  5-8 cristaux d'équipe  N cristal neutre  O cachette de trésor
 // '.' herbe  'S' sable  '#' mur  'B' buisson  'W' eau  'P' départ joueur (2 pour le 1V1)  'E' départ boss  'C' coffre mystère
 function chargerMap(def) {
   const l = Math.max(...def.grille.map(r => r.length));
   const g = def.grille.map(r => r.padEnd(l, '.'));
-  const m = { def, g, l, h: g.length, j: [], b: [], t: [], z: 0 };
+  const m = { def, g, l, h: g.length, j: [], b: [], t: [], z: 0, eqj: [[], [], [], []], tc: [], tn: [], o: [] };
   const obj = mode ? mode.objectif : '';
   g.forEach((r, y) => { for (let x = 0; x < l; x++) {
     if (r[x] === 'P') m.j.push({ x, y }); if (r[x] === 'E') m.b.push({ x, y });
-    if (r[x] === 'T') m.t.push({ x, y });   // 💎 cristal à détruire
+    if (r[x] === 'T') m.t.push({ x, y });   // 💎 cristal (à l'équipe dont le départ est le plus proche)
+    if (r[x] >= '1' && r[x] <= '4') m.eqj[r[x] - 1].push({ x, y });      // 🔵🔴🟢🟡 départs de l'équipe 1 à 4
+    if (r[x] >= '5' && r[x] <= '8') m.tc.push({ x, y, eq: r[x] - 5 });   // 💎 cristal de l'équipe 1 à 4
+    if (r[x] === 'N') m.tn.push({ x, y });  // 💎 cristal neutre : à la 1re équipe qui le casse
+    if (r[x] === 'O') m.o.push({ x, y });   // 💰 cachette de trésor
     if (r[x] === 'Z') m.z++;                 // 🎯 zone à tenir
   } });
-  m.g = g.map(r => r.replace(/T/g, '.').replace(obj === 'zone' || obj === 'marathon' ? /$^/ : /Z/g, '.')); // la zone n'existe qu'en mode "zone"
+  m.g = g.map(r => r.replace(/[T1-8NO]/g, '.').replace(obj === 'zone' || obj === 'marathon' ? /$^/ : /Z/g, '.')); // la zone n'existe qu'en mode "zone"
   return m;
 }
 const tuile = (tx, ty) => (!map || tx < 0 || ty < 0 || tx >= map.l || ty >= map.h) ? '#' : map.g[ty][tx];
@@ -235,9 +242,10 @@ function demarrer(mapIdx, liste) {
   const c = t => (t + 0.5) * TUILE, places = [];
   autres = {}; moi = null;
   liste.forEach((d, k) => {
-    const sp = map.j[k] ? { x: c(map.j[k].x), y: c(map.j[k].y) }
+    const eq = d.eq !== undefined && d.eq !== null ? d.eq : nbEquipes(mode) ? k % nbEquipes(mode) : mode.equipes === 'coop' ? 0 : k;
+    const pe = map.eqj[eq] || [], n = pe.filter(p => p.pris).length, libreE = pe.find(p => !p.pris); // départs réservés à l'équipe
+    const sp = libreE ? (libreE.pris = true, { x: c(libreE.x), y: c(libreE.y) }) : map.j[k] ? { x: c(map.j[k].x), y: c(map.j[k].y) }
       : (k === 1 && map.j[0]) ? { x: c(map.l - 1 - map.j[0].x), y: c(map.h - 1 - map.j[0].y) } : caseLibre(places);
-    const eq = d.eq !== undefined && d.eq !== null ? d.eq : mode.equipes === 'deux' ? k % 2 : mode.equipes === 'coop' ? 0 : k;
     const j = creerJoueur(d.p, sp.x, sp.y, d.uid, d.nom, eq, d.nv || (d.uid === user.uid ? niveauDe(CONFIG.persos[d.p]) : 1));
     places.push(j);
     if (d.bot) { j.bot = true; j.niv = d.niv || 1; j.pvMax = j.pv = Math.round(j.pvMax * (0.8 + 0.2 * j.niv)); }
@@ -276,8 +284,12 @@ function verifierFin() {
   }
   if (o === 'zone') for (const [eq, t] of Object.entries(zoneProg)) if (t >= (+mode.tempsZone || 30) * 60) return gagnerObjectif(+eq, 'Zone contrôlée !', 'Zone perdue');
   if (o === 'tresor') for (const [eq, n] of Object.entries(scoreTresor)) if (n >= (+mode.objectifTresors || 7)) return gagnerObjectif(+eq, 'Trésors trouvés !', 'Les trésors sont à eux…');
-  const detruit = bosses.find(b => b.def.cristal && b.pv <= 0);
-  if (detruit && ennemis.length) return gagnerObjectif(detruit.eq === moi.eq ? ennemis[0].eq : moi.eq, 'Cristal adverse détruit !', 'Ton cristal est détruit');
+  if (o === 'bloc' && ennemis.length) { // 💎 1re équipe à casser un cristal adverse → gagne ; cristaux neutres → la majorité gagne
+    const adv = cristauxCasses.find(c => c.p >= 0 && c.eq != null && c.eq !== c.p);
+    if (adv) return gagnerObjectif(adv.eq, 'Cristal adverse détruit !', adv.p === moi.eq ? 'Ton cristal est détruit' : 'Un cristal est tombé…');
+    const N = nbNeutres(), sc = scoreNeutres(), best = Object.entries(sc).sort((a, b) => b[1] - a[1])[0];
+    if (N && best && (best[1] > N / 2 || cristauxCasses.filter(c => c.p === -2).length >= N)) return gagnerObjectif(+best[0], 'Cristaux conquis !', 'Ils ont cassé plus de cristaux…');
+  }
   if (mode.reapparition && ennemis.length) return; // avec réapparition, le match se joue au temps ou à l'objectif
   if (ennemis.length) {
     if (!ennemis.some(vivant)) finir('VICTOIRE', ennemis.length > 1 ? 'Équipe adverse éliminée' : 'Tu as battu ' + ennemis[0].nom);
@@ -355,11 +367,11 @@ function lancerSalle(avecBots) {
     let k = 1;
     const humains = Object.values(s.js), moy = humains.reduce((t, d) => t + (+d.pp || 0), 0) / Math.max(1, humains.length);
     const niv = +((+mode.niveauBots || 1) * (mode.botsAdaptatifs !== false ? Math.max(0.7, Math.min(2.2, 0.7 + moy / 400)) : 1)).toFixed(2); // 🤖 niveau selon les points des joueurs
-    while (liste.length < s.min || (mode.equipes === 'deux' && liste.length % 2 && liste.length < s.max))
+    while (liste.length < s.min || (nbEquipes(mode) && liste.length % nbEquipes(mode) && liste.length < s.max))
       liste.push({ uid: 'bot' + k, nom: '🤖 Bot ' + k++, p: Math.floor(Math.random() * CONFIG.persos.length), bot: true, niv });
   }
   const grp = {}; liste.forEach(j => (grp[j.g || j.uid] = grp[j.g || j.uid] || []).push(j)); // 👥 amis = même équipe
-  if (mode.equipes === 'deux') { const n = [0, 0]; Object.values(grp).sort((a, b) => b.length - a.length).forEach(gr => { const t = n[0] <= n[1] ? 0 : 1; gr.forEach(j => j.eq = t); n[t] += gr.length; }); }
+  if (nbEquipes(mode)) { const n = Array(nbEquipes(mode)).fill(0); Object.values(grp).sort((a, b) => b.length - a.length).forEach(gr => { const t = n.indexOf(Math.min(...n)); gr.forEach(j => j.eq = t); n[t] += gr.length; }); }
   else if (mode.equipes !== 'coop') Object.values(grp).forEach((gr, k) => gr.forEach(j => j.eq = k));
   s.ref.child('info').once('value', i => s.ref.child('info/debut').set({ map: (i.val() || {}).map || 0, liste, sig: s.sig }));
 }
@@ -419,7 +431,7 @@ function majBossDistants(liste) {
 function recevoir(e) {
   const j = entite(e.de);
   if (e.t === 'tir' && j) { j.angle = e.a; creerProjectile(j, e.a, e.f, e.x, e.y, e.d); }
-  else if (e.t === 'db' && hote && bosses[e.i]) blesserBoss(bosses[e.i], e.deg);
+  else if (e.t === 'db' && hote && bosses[e.i]) blesserBoss(bosses[e.i], e.deg, e.de);
   else if (e.t === 'fr') frappe(e, false);
   else if (e.t === 'ca') casser(e.tx, e.ty, e.o);
   else if (e.t === 'pr') objets = objets.filter(o => o.tx !== e.tx || o.ty !== e.ty);
@@ -427,6 +439,7 @@ function recevoir(e) {
   else if (e.t === 'su' && j) lancerSuper(j, e.a, true);
   else if (e.t === 'ac' && j) lancerAction(j, e.a, true);
   else if (e.t === 'tr') prendreTresor(e.i, e.eq, true);
+  else if (e.t === 'cr') cristalCasse(e.p, e.eq, true);
   else if (e.t === 'et') etapeSuivante(e.n, e.eq, true);
 }
 
@@ -606,7 +619,7 @@ function degats(e, de, deg, x, y, ang, a) { // applique les dégâts selon qui a
   if (e.bot) { if (hote) { e.dernier = de; blesserBot(e, deg, ang); } return; } // les bots sont gérés par l'hôte
   if (!e.def) return;                                 // autre joueur : il gère ses PV lui-même
   if (hote) { e.kx += Math.cos(ang) * kb; e.ky += Math.sin(ang) * kb; }
-  if (de === moi.uid || (hote && pr && pr.bot)) hote ? blesserBoss(e, deg) : envoyer({ t: 'db', i: e.i, deg }); // les dégâts des invités passent par l'hôte
+  if (de === moi.uid || (hote && pr && pr.bot)) hote ? blesserBoss(e, deg, de) : envoyer({ t: 'db', i: e.i, deg, de }); // les dégâts des invités passent par l'hôte
 }
 const entite = uid => uid === moi.uid ? moi : autres[uid] || (String(uid).startsWith('boss') ? bosses[+String(uid).slice(4)] : null);
 const auteur = p => { const e = entite(p.de); return p.de === moi.uid || (hote && !!e && (!!e.def || !!e.bot)); }; // qui décide des murs cassés
@@ -644,7 +657,7 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
   }
   if (j.objet && !objets.includes(j.objet)) j.objet = null;
   let c = null, dm = 1e9;
-  for (const e of [...joueurs().filter(o => o.eq !== j.eq && o.pv > 0), ...bosses.filter(b => b.pv > 0)]) {
+  for (const e of [...joueurs().filter(o => o.eq !== j.eq && o.pv > 0), ...bosses.filter(b => b.pv > 0 && b.eq !== j.eq)]) {
     const d = Math.hypot(e.x - j.x, e.y - j.y);
     if ((!e.cache || d < 170) && d < dm) { dm = d; c = e; }
   }
@@ -683,7 +696,10 @@ function toucherMoi(deg, x, y, de) {
   texteFlottant('-' + deg, moi.x, moi.y - 50, '#ff4d4d');
   if (moi.pv === 0) mourir(moi);
 }
-function blesserBoss(b, deg) { if (b.pv <= 0) return; b.pv = Math.max(0, b.pv - deg); b.flash = 8; if (b.pv === 0) mortBoss(b); }
+function blesserBoss(b, deg, de) {
+  if (b.pv <= 0) return; b.pv = Math.max(0, b.pv - deg); b.flash = 8;
+  if (b.pv === 0) { mortBoss(b); if (b.def.cristal && hote) { const e = entite(de); cristalCasse(b.eq, e ? e.eq : (joueurs().find(j => j.eq !== b.eq) || {}).eq); } }
+}
 function mortBoss(b) { effet('explosion', b.x, b.y, '#7fbf3f', 130); secousse = 22; animMort(b, img(b.def.image)); }
 function frappe(e, local) { // coup de massue d'un boss (local = calculé ici par l'hôte)
   const b = bosses.find(b => Math.hypot(b.x - e.x, b.y - e.y) < 180); if (b) b.anim = { n: 'attaque', t: temps };
@@ -1462,21 +1478,29 @@ let tresors = [], scoreTresor = {}, etape = 0, scoreEtapes = {}, bandeauEtape = 
 const etapesDe = m => String(m.etapes || 'bloc,zone').split(',').map(s => s.trim()).filter(s => ['bloc', 'zone', 'tresor'].includes(s));
 const obj = () => mode.objectif === 'marathon' ? (etapesDe(mode)[etape] || 'zone') : mode.objectif;
 const NOM_OBJ = { bloc: 'Guerre des cristaux', zone: 'Zone de contrôle', tresor: 'Chasse au trésor', standard: 'Élimination' };
-function placerCristaux() {
-  const tous = joueurs(), pvp = new Set(tous.map(j => j.eq)).size > 1, c = t => (t + 0.5) * TUILE, pos = j => j.spawn || j;
-  (map.t.length ? map.t.map(t => ({ x: c(t.x), y: c(t.y) })) : [caseLibre(tous)]).forEach(t => {
-    const b = creerBoss('bloc', t.x, t.y, bosses.length); // en équipes : chaque cristal appartient à l'équipe dont le départ est le plus proche
-    b.eq = pvp ? tous.reduce((a, j) => Math.hypot(pos(j).x - t.x, pos(j).y - t.y) < Math.hypot(pos(a).x - t.x, pos(a).y - t.y) ? j : a).eq : -1;
-    bosses.push(b);
-  });
+let cristauxCasses = []; // { p: équipe du cristal (-2 = neutre), eq: équipe qui l'a cassé }
+function cristalCasse(p, eq, distant) {
+  cristauxCasses.push({ p, eq }); if (!distant) envoyer({ t: 'cr', p, eq });
+  if (eq === moi.eq) ono(p === -2 ? 'CRISTAL CONQUIS!' : 'CRISTAL BRISÉ!!', moi.x, moi.y - 80, 1.4, '#ffe14a');
+}
+const scoreNeutres = () => { const s = {}; cristauxCasses.filter(c => c.p === -2 && c.eq != null).forEach(c => s[c.eq] = (s[c.eq] || 0) + 1); return s; };
+const nbNeutres = () => { const eqs = new Set(joueurs().map(j => j.eq)); return map.tn.length + map.tc.filter(t => !eqs.has(t.eq)).length + (eqs.size > 1 && !map.t.length && !map.tc.length && !map.tn.length ? 1 : 0); };
+function placerCristaux() { // T = équipe la plus proche • 5-8 = cristal de l'équipe 1-4 • N = neutre
+  const tous = joueurs(), eqs = new Set(tous.map(j => j.eq)), pvp = eqs.size > 1, c = t => (t + 0.5) * TUILE, pos = j => j.spawn || j;
+  const ajouter = (x, y, eq) => { const b = creerBoss('bloc', x, y, bosses.length); b.eq = eq; bosses.push(b); };
+  map.tc.forEach(t => ajouter(c(t.x), c(t.y), eqs.has(t.eq) ? t.eq : -2)); // équipe absente de la partie → cristal neutre
+  map.tn.forEach(t => ajouter(c(t.x), c(t.y), -2));
+  map.t.forEach(t => { const x = c(t.x), y = c(t.y); ajouter(x, y, pvp ? tous.reduce((a, j) => Math.hypot(pos(j).x - x, pos(j).y - y) < Math.hypot(pos(a).x - x, pos(a).y - y) ? j : a).eq : -1); });
+  if (!map.t.length && !map.tc.length && !map.tn.length) { const p = caseLibre(tous); ajouter(p.x, p.y, pvp ? -2 : -1); }
 }
 function placerTresors(g) { // positions identiques chez tous les joueurs (même graine)
   tresors = []; scoreTresor = {}; const libres = [];
-  map.g.forEach((r, y) => [...r].forEach((c, x) => { if (c === '.' || c === 'B' || c === 'S') libres.push({ x, y }); }));
+  if (map.o.length) map.o.forEach(c => libres.push(c)); // 💰 cachettes posées sur la map
+  else map.g.forEach((r, y) => [...r].forEach((c, x) => { if (c === '.' || c === 'B' || c === 'S') libres.push({ x, y }); }));
   for (let i = 0, n = Math.min(libres.length, +mode.nbTresors || 14); i < n; i++) { const c = libres.splice(Math.floor(alea(g + i * 7.31) * libres.length), 1)[0]; tresors.push({ x: (c.x + 0.5) * TUILE, y: (c.y + 0.5) * TUILE, pris: null }); }
 }
 function preparerObjectif() { // met en place l'objectif en cours (cristaux, zone, trésors)
-  zoneProg = {}; zoneControle = null;
+  zoneProg = {}; zoneControle = null; cristauxCasses = [];
   if (hote) { bosses = bosses.filter(b => !b.def.cristal); if (obj() === 'bloc') placerCristaux(); }
   if (obj() === 'tresor') placerTresors(graine + etape * 101);
 }
@@ -1522,6 +1546,8 @@ function hudObjectif() { // compteurs trésors / étapes + bandeau d'étape anim
     eqs.forEach((eq, i) => { const y = 84 * u + i * 24 * u; verre(W - 190 * u, y, 178 * u, 20 * u, 10 * u);
       rect(W - 188 * u, y + 2 * u, 174 * u * Math.min(1, (scoreTresor[eq] || 0) / but), 16 * u, 8 * u, eq === moi.eq ? '#ffd23f' : '#ff5a6e');
       texte((eq === moi.eq ? '💰 Nous ' : '💰 Eux ') + (scoreTresor[eq] || 0) + ' / ' + but, W - 101 * u, y + 10 * u, 11 * u, '#fff'); }); }
+  if (obj() === 'bloc' && nbNeutres()) { const sc = scoreNeutres(), eqs = [...new Set(joueurs().map(j => j.eq))];
+    eqs.forEach((eq, i) => { const y = 84 * u + i * 24 * u; verre(W - 190 * u, y, 178 * u, 20 * u, 10 * u); texte((eq === moi.eq ? '💎 Nous ' : '💎 Équipe ' + (eq + 1) + ' ') + (sc[eq] || 0) + ' / ' + nbNeutres(), W - 101 * u, y + 10 * u, 11 * u, eq === moi.eq ? '#5ff0ff' : '#fff'); }); }
   if (mode.objectif === 'marathon') { const l = etapesDe(mode), mien = scoreEtapes[moi.eq] || 0, leur = Math.max(0, ...Object.entries(scoreEtapes).filter(([k]) => +k !== moi.eq).map(([, v]) => v));
     verre(W / 2 - 120 * u, 44 * u, 240 * u, 26 * u, 13 * u); titre(`Étape ${Math.min(etape + 1, l.length)}/${l.length} • ${NOM_OBJ[obj()]}  ${mien}-${leur}`, W / 2, 57 * u, 14 * u, '#ffe14a', 'center', 230 * u); }
   if (bandeauEtape && temps - bandeauEtape.t < 150) { const t = temps - bandeauEtape.t, e = elastique(Math.min(1, t / 20)), s = Math.max(0, (t - 120) / 30);
@@ -1620,6 +1646,8 @@ function miniMap(def) {
     else if (ch === 'B') { x.fillStyle = def.buisson || '#2fae4a'; x.beginPath(); x.arc(X + m, Y + m, m * 0.95, 0, 7); x.fill(); x.stroke(); x.fillStyle = 'rgba(255,255,255,.35)'; x.beginPath(); x.arc(X + m - 2, Y + m - 2, 2, 0, 7); x.fill(); }
     else if (ch === 'C') { x.fillStyle = '#ffd23f'; x.fillRect(X + 2, Y + 3, T - 4, T - 5); x.strokeRect(X + 2, Y + 3, T - 4, T - 5); }
     else if (ch === 'T') { x.fillStyle = '#b57bff'; x.beginPath(); x.moveTo(X + m, Y + 1); x.lineTo(X + T - 2, Y + m); x.lineTo(X + m, Y + T - 1); x.lineTo(X + 2, Y + m); x.closePath(); x.fill(); x.stroke(); }
+    else if (ch >= '1' && ch <= '4') { x.fillStyle = EQ_COUL[ch - 1]; x.beginPath(); x.arc(X + m, Y + m, m * 0.8, 0, 7); x.fill(); x.lineWidth = 2; x.strokeStyle = '#fff'; x.stroke(); }
+    else if ((ch >= '5' && ch <= '8') || ch === 'N') { x.fillStyle = ch === 'N' ? '#ffd23f' : EQ_COUL[ch - 5]; x.beginPath(); x.moveTo(X + m, Y + 1); x.lineTo(X + T - 2, Y + m); x.lineTo(X + m, Y + T - 1); x.lineTo(X + 2, Y + m); x.closePath(); x.fill(); x.stroke(); }
     else if (ch === 'P' || ch === 'E') { x.fillStyle = ch === 'P' ? '#1e90ff' : '#ff2d55'; x.beginPath(); x.arc(X + m, Y + m, m * 0.8, 0, 7); x.fill(); x.lineWidth = 2; x.strokeStyle = '#fff'; x.stroke(); } }));
   return cacheMini[cle] = c;
 }
@@ -1760,7 +1788,7 @@ function ombreDouce(x, y, rx, ry) {
   ctx.save(); ctx.translate(x, y); ctx.scale(1, ry / rx); ctx.translate(-x, -y); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, rx, 0, 7); ctx.fill(); ctx.restore();
 }
 function dessinerCristal(b) { // 💎 cristal flottant aux couleurs de son équipe
-  const col = b.eq === -1 ? '#b57bff' : b.eq === moi.eq ? '#5ac8fa' : '#ff5a6e', f = Math.sin(temps * 0.06) * 6, y = b.y - 30 + f;
+  const col = b.eq === -1 ? '#b57bff' : b.eq === -2 ? '#ffd23f' : b.eq === moi.eq ? '#5ac8fa' : '#ff5a6e', f = Math.sin(temps * 0.06) * 6, y = b.y - 30 + f;
   ombreDouce(b.x, b.y + 18, 40, 14);
   const halo = ctx.createRadialGradient(b.x, y, 4, b.x, y, 80); halo.addColorStop(0, col + '88'); halo.addColorStop(1, col + '00'); ctx.fillStyle = halo; ctx.fillRect(b.x - 80, y - 80, 160, 160);
   const pts = [[0, -46], [26, -14], [18, 30], [-18, 30], [-26, -14]];
@@ -2082,7 +2110,7 @@ const cacheMini = {};
 const U = () => Math.max(0.6, Math.min(1.35, Math.min(W / 900, H / 440)));   // échelle de l'interface selon l'écran
 const selPerso = () => CONFIG.persos[persoIndex] || CONFIG.persos[0];
 const modesStyle = m => m.type === 'solo' ? ['🧍', '#4cd964', '#1f9d3a', 'Solo'] : m.equipes === 'coop' ? ['🤝', '#5ac8fa', '#1d74c9', 'Coop']
-  : m.equipes === 'deux' ? ['⚔️', '#ff9f43', '#d35400', 'Équipes'] : ['👥', '#ff6b6b', '#c0392b', 'Chacun pour soi'];
+  : nbEquipes(m) ? ['⚔️', '#ff9f43', '#d35400', nbEquipes(m) + ' équipes'] : ['👥', '#ff6b6b', '#c0392b', 'Chacun pour soi'];
 function emoji(t, x, y, taille) { // les emojis d'éléments sont remplacés par des icônes dessinées
   const k = Object.keys(ELEM_DEF).find(k => ((CONFIG.elements || {})[k] || {}).icone === t); if (k) return iconeElement(k, x, y, taille);
   ctx.font = `${taille}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(t, x, y); }
