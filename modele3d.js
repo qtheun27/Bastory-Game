@@ -201,5 +201,5 @@ const Modele3D = (() => {
     const res = { murs: PAL.flatMap(c => [1, 2, 3].map(n => bloc(n, false, c))), coffre: bloc(9, true), buissons: [1, 2, 3].map(buisson) };
     return res;
   }
-  return { dispo, generer, visage, vitrine, apercu, decor };
+  return { dispo, generer, visage, vitrine, apercu, decor, instance: charger }; // instance = modèle animé pour la vraie 3D
 })();

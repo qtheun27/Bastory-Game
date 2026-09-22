@@ -756,7 +756,7 @@ const CONFIG_PAR_DEFAUT = {
       "rarete": 1
     }
   },
-  "version": 11,
+  "version": 12,
   "app": {
     "nom": "Bastory",
     "nomCourt": "Bastory",
@@ -913,6 +913,7 @@ function migrerConfig(c) {
     c.persos.forEach(p => { if (p.nom === 'ROKH') p.portee = 240; });
     c.version = 11;
   }
+  if ((c.version || 0) < 12) { if (c.armes.rocher) c.armes.rocher.vitesse = 26; c.version = 12; } // v12 : le marteau frappe le sol tout de suite
   if (/wixy\.png$/i.test((c.app || {}).icone || '')) c.app.icone = 'images/icone-maskable-512.png'; // nouvelle icône PWA
   c.modes.forEach(m => {
     if (m.type === '1v1') { m.type = 'multi'; m.joueursMin = m.joueursMin || 2; m.joueursMax = m.joueursMax || 2; }

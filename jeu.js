@@ -83,8 +83,11 @@ function pleinEcran() { // mobile : plein écran + verrouillage en paysage (si l
   if (!mobile || document.fullscreenElement || !document.documentElement.requestFullscreen) return;
   document.documentElement.requestFullscreen().then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => {});
 }
-const monde = (sx, sy) => ctx.setTransform(zoom * dpr, 0, 0, zoom * dpr, (W / 2 - cam.x * zoom + sx) * dpr, (H / 2 - cam.y * zoom + sy) * dpr);
-const versMonde = (x, y) => { // écran → monde (en tenant compte de la vue 2,5D)
+let aff3 = null; // transformation sol → écran de la caméra 3D (null = vue 2D)
+const monde = (sx, sy) => aff3 ? ctx.setTransform(aff3[0] * dpr, aff3[1] * dpr, aff3[2] * dpr, aff3[3] * dpr, aff3[4] * dpr, aff3[5] * dpr)
+  : ctx.setTransform(zoom * dpr, 0, 0, zoom * dpr, (W / 2 - cam.x * zoom + sx) * dpr, (H / 2 - cam.y * zoom + sy) * dpr);
+const versMonde = (x, y) => { // écran → monde (vue 3D, 2,5D ou 2D)
+  if (aff3) return Rendu3D.versMonde(x, y);
   if (vue25) { const t = Math.max(0, Math.min(1, y / H)); x = W / 2 + (x - W / 2) / (1 + PERSP * t); y = H / PERSP * Math.log(1 + PERSP * t); }
   return { x: (x - W / 2) / zoom + cam.x, y: (y - H / 2) / zoom + cam.y };
 };
@@ -605,7 +608,8 @@ function exploser(p) {
   if (p.sombre) effetSombre(p.x, p.y);
   if (auteur(p)) abimerZone(p.x, p.y, r, p.deg);
   if (+p.arme.onde) { // 🌍 onde de choc au sol autour de l'impact (marteau de Rokh)
-    ondes.push({ x: p.x, y: p.y, r, max: +p.arme.onde, c: '#fff3c4', vie: 1, ep: 12 }); ono('DOGOOON!', p.x, p.y, 1.2, '#ffe14a');
+    ondes.push({ x: p.x, y: p.y, r, max: +p.arme.onde, c: '#fff3c4', vie: 1, ep: 12 }); ono('KRAKOOM!', p.x, p.y, 1.3, '#ffe14a');
+    fissuresSol.push({ x: p.x, y: p.y, t: temps, g: Math.random() * 100 }); secousse = Math.max(secousse, 12); effet('impact', p.x, p.y, '#c98a4b', 110); // sol fracassé
     for (const c of cibles(p)) { const d = Math.hypot(p.x - c.e.x, p.y - c.e.y); if (d >= r + c.e.r * 0.6 && d < +p.arme.onde) impact(c.e, { ...p, deg: Math.round(p.deg * 0.45) }, p.x, p.y, false); }
   }
 }
@@ -1240,7 +1244,7 @@ function dessinerIntro() {
   else introDecompte(t - nV - VS);
 }
 function boucle() {
-  if (etat === 'AUTH' || etat === 'MENU') { temps++; zoneSure(dessinerMenu); }
+  if (etat === 'AUTH' || etat === 'MENU') { temps++; if (typeof Rendu3D !== 'undefined') Rendu3D.cacher(); aff3 = null; zoneSure(dessinerMenu); }
   else if (etat === 'ATTENTE') { temps++; zoneSure(dessinerAttente); rafraichirAttente(); }
   else if (etat === 'INTRO') {
     temps++; majEffets(); dessinerJeu(); zoneSure(dessinerIntro);
@@ -1299,6 +1303,8 @@ function dessiner3D(e, sp, anneau, taille) { // perso 3D : on choisit la vignett
   ctx.globalAlpha = 1;
 }
 function dessinerEntite(e, im, anneau, taille) {
+  if (typeof Rendu3D !== 'undefined' && Rendu3D.gere(e)) { // modèle 3D animé en direct : ici on ne dessine que l'anneau d'équipe au sol
+    ctx.save(); ctx.globalAlpha = 0.85; ctx.strokeStyle = anneau; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(e.x, e.y, e.r * 1.15, e.r * 1.15, 0, 0, 7); ctx.stroke(); ctx.restore(); auraElem(e); return; }
   e.alt = e.dep === 'vol' ? ((elemDe(e.perso) || {}).altitude || 22) + Math.sin(temps * 0.08 + e.x * 0.01) * 4 : 0; // 💨 altitude
   if (e.dash && e.dash.saut && temps < e.dash.fin) e.alt = Math.sin((1 - (e.dash.fin - temps) / e.dash.duree) * Math.PI) * 70; // hauteur du saut
   auraElem(e);
@@ -1734,8 +1740,8 @@ function menuCommandes() {
   });
   const by = H - 50 * u;
   bouton3D(x, by, 150 * u, 38 * u, '#8e7bff', '#5b3fd6', () => { mesTouches = { ...TOUCHES_DEF }; toucheAttendue = null; sauverTouches(); }); titre('Par défaut', x + 75 * u, by + 17 * u, 16 * u, '#fff');
-  bouton3D(x + 160 * u, by, 170 * u, 38 * u, vue25 ? '#b6ff4a' : '#b0b3c8', vue25 ? '#1fc46b' : '#6b6f86', () => { vue25 = !vue25; try { localStorage.setItem('bastoryVue', vue25 ? '1' : '0'); } catch (e) {} });
-  titre('Vue 3D : ' + (vue25 ? 'OUI' : 'NON'), x + 245 * u, by + 17 * u, 16 * u, '#fff');
+  bouton3D(x + 160 * u, by, 170 * u, 38 * u, '#b6ff4a', '#1fc46b', () => { vueMode = ({ '3d': '25', '25': '2d', '2d': '3d' })[vueMode]; vue25 = vueMode === '25'; try { localStorage.setItem('bastoryVue', vueMode); } catch (e) {} });
+  titre('Vue : ' + NOM_VUE[vueMode], x + 245 * u, by + 17 * u, 16 * u, '#fff');
   texte('🖱️ Clic : tirer vers la souris • Échap : quitter • 📱 Glisse le Super pour viser', x + 340 * u + (w - 340 * u) / 2, by + 19 * u, 11 * u, '#fff', 'center', w - 350 * u);
 }
 const angleSouris = () => { if (!souris || !moi) return moi ? moi.angle : 0; const m = versMonde(souris.x, souris.y); return Math.atan2(m.y - moi.y, m.x - moi.x); };
@@ -1753,8 +1759,10 @@ function viseeSuper() { // 🎯 flèche de visée du super, dessinée sous le pe
 
 
 // ---------- 🎥 FAUSSE PERSPECTIVE 2,5D (le bas de l'écran, plus proche, est agrandi) ----------
-const PERSP = 0.24; let persp = null, vue25 = true;
-try { vue25 = localStorage.getItem('bastoryVue') !== '0'; } catch (e) {}
+const PERSP = 0.24; let persp = null, vueMode = '3d'; // '3d' = vraie 3D • '25' = fausse perspective • '2d' = vue du dessus
+try { vueMode = ({ '0': '2d', '1': '25' })[localStorage.getItem('bastoryVue')] || localStorage.getItem('bastoryVue') || '3d'; } catch (e) {}
+let vue25 = vueMode === '25';
+const NOM_VUE = { '3d': '3D', '25': '2,5D', '2d': '2D' };
 function perspective25D() {
   const cw = canvas.width, ch = canvas.height;
   if (!persp || persp.width !== cw || persp.height !== ch) { persp = document.createElement('canvas'); persp.width = cw; persp.height = ch; }
@@ -1819,6 +1827,15 @@ function lumiereSol(T) { // taches de soleil et zones d'ombre douces sur le sol
   ctx.restore();
 }
 
+let fissuresSol = []; // 🔨 craquelures laissées au sol par le marteau
+function dessinerFissuresSol() {
+  fissuresSol = fissuresSol.filter(f => temps - f.t < 150);
+  for (const f of fissuresSol) { const a = Math.min(1, (150 - (temps - f.t)) / 40), k = Math.min(1, (temps - f.t) / 6);
+    ctx.save(); ctx.globalAlpha = a; ellipse(f.x, f.y, 70 * k, 40 * k, 'rgba(90,55,25,.35)'); ctx.strokeStyle = '#2a1608'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (let i = 0; i < 9; i++) { let an = i / 9 * Math.PI * 2 + alea(f.g + i), x = f.x, y = f.y; const L = (60 + alea(f.g + i * 3) * 70) * k; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(x, y);
+      for (let s = 1; s <= 4; s++) { an += (alea(f.g + i * 7 + s) - 0.5) * 0.9; x += Math.cos(an) * L / 4; y += Math.sin(an) * L / 4 * 0.7; ctx.lineTo(x, y); ctx.lineWidth = 5 - s; } ctx.stroke(); }
+    ctx.restore(); }
+}
 // ---------- 12c. GRAPHISMES : textures & sprites pré-calculés (rapides) ----------
 const cacheGfx = {};
 function ombrer(hex, k) { // éclaircit (k>0) ou assombrit (k<0) une couleur #rrggbb
@@ -1888,18 +1905,19 @@ function dessinerCristal(b) { // 💎 cristal flottant aux couleurs de son équi
 
 // ---------- 13. DESSIN : monde ----------
 function dessinerJeu() {
-  ecran(); ctx.fillStyle = '#16351f'; ctx.fillRect(0, 0, W, H);
-  const s = secousse; secousse = secousse < 0.3 ? 0 : secousse * 0.85;
-  monde((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
+  const s = secousse; secousse = secousse < 0.3 ? 0 : secousse * 0.85, sx = (Math.random() - 0.5) * s, sy = (Math.random() - 0.5) * s;
+  aff3 = vueMode === '3d' && typeof Rendu3D !== 'undefined' ? Rendu3D.rendre(sx, sy) : null; const v3 = !!aff3; // 🎥 vraie 3D
+  if (v3) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height); } else { if (typeof Rendu3D !== 'undefined') Rendu3D.cacher(); ecran(); ctx.fillStyle = '#16351f'; ctx.fillRect(0, 0, W, H); }
+  monde(sx, sy);
   const T = TUILE, d = map.def, vw = W / zoom / 2 + T, vh = H / zoom / 2 + T * 2;
   const x0 = Math.max(0, Math.floor((cam.x - vw) / T)), x1 = Math.min(map.l - 1, Math.ceil((cam.x + vw) / T));
   const y0 = Math.max(0, Math.floor((cam.y - vh) / T)), y1 = Math.min(map.h - 1, Math.ceil((cam.y + vh) / T));
   const tuiles = f => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) f(tuile(x, y), x, y, x * T, y * T); };
 
-  decorExterieur(T, vw, vh);
+  if (!v3) { decorExterieur(T, vw, vh);
   ctx.fillStyle = motifHerbe(d); ctx.fillRect(x0 * T, y0 * T, (x1 - x0 + 1) * T, (y1 - y0 + 1) * T); // herbe texturée
-  lumiereSol(T);
-  tuiles((c, x, y, px, py) => { if (c === '.' && alea(x * 97 + y * 13) < 0.16) ctx.drawImage(spriteDeco(Math.floor(alea(x + y * 7) * 4)), px + alea(x * 3 + y) * 30, py + alea(y * 5 + x) * 30); }); // fleurs & cailloux
+  lumiereSol(T); }
+  if (!v3) tuiles((c, x, y, px, py) => { if (c === '.' && alea(x * 97 + y * 13) < 0.16) ctx.drawImage(spriteDeco(Math.floor(alea(x + y * 7) * 4)), px + alea(x * 3 + y) * 30, py + alea(y * 5 + x) * 30); }); // fleurs & cailloux
   tuiles((c, x, y, px, py) => { // eau : dégradé, reflets animés et écume sur les bords
     if (c === 'Z') { // 🎯 zone
       const col = zoneControle === moi.eq ? '90,200,255' : typeof zoneControle === 'number' ? '255,90,90' : zoneControle ? '255,210,63' : '255,255,255';
@@ -1909,7 +1927,7 @@ function dessinerJeu() {
       if (tuile(x - 1, y) !== 'Z') { ctx.moveTo(px, py); ctx.lineTo(px, py + T); } if (tuile(x + 1, y) !== 'Z') { ctx.moveTo(px + T, py); ctx.lineTo(px + T, py + T); }
       ctx.stroke(); return;
     }
-    if (c !== 'W') return;
+    if (c !== 'W' || v3) return;
     ctx.fillStyle = d.eau || '#3aa6e0'; ctx.fillRect(px, py, T, T);
     ctx.fillStyle = `rgba(255,255,255,${0.05 + 0.04 * Math.sin(temps * 0.03 + x * 0.7 + y * 0.9)})`; ctx.fillRect(px, py, T, T); // scintillement
     ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 2;
@@ -1920,9 +1938,9 @@ function dessinerJeu() {
     if (tuile(x - 1, y) !== 'W') ctx.fillRect(px, py, 3, T);
     if (tuile(x + 1, y) !== 'W') ctx.fillRect(px + T - 3, py, 3, T);
   });
-  tuiles((c, x, y, px, py) => { if (c === 'S') dessinerSable(x, y, px, py); else if (c === 'W') encreEau(x, y, px, py); }); // 🏖️ sable + bords d'eau encrés
-  ombresPortees(tuiles, T);
-  tuiles((c, x, y, px, py) => { if (bloqueTir(c)) ctx.drawImage(spriteOmbre(), px - 6, py - 2); }); // ombres douces
+  if (!v3) { tuiles((c, x, y, px, py) => { if (c === 'S') dessinerSable(x, y, px, py); else if (c === 'W') encreEau(x, y, px, py); }); // 🏖️ sable + bords d'eau encrés
+  ombresPortees(tuiles, T); }
+  if (!v3) tuiles((c, x, y, px, py) => { if (bloqueTir(c)) ctx.drawImage(spriteOmbre(), px - 6, py - 2); }); // ombres douces
   for (const o of objets) { // objets rares au sol
     const p = CONFIG.pouvoirs[o.id] || {}, b = Math.sin(temps * 0.1 + o.x) * 5;
     ellipse(o.x, o.y + 14, 16, 7, 'rgba(0,0,0,.3)');
@@ -1937,29 +1955,29 @@ function dessinerJeu() {
     ellipse(b.fx, b.fy, R, R * 0.8, 'rgba(255,40,40,.2)');
     ellipse(b.fx, b.fy, R * k, R * 0.8 * k, 'rgba(255,40,40,.45)');
   }
-  dessinerTresors();
+  dessinerFissuresSol(); dessinerTresors();
   const objs = []; // tri par profondeur = effet 3D
-  tuiles((c, x, y, px, py) => { if (c === '#') objs.push([(y + 1) * T - 1, () => { // les murs qui sortent du sol montent
+  if (!v3) tuiles((c, x, y, px, py) => { if (c === '#') objs.push([(y + 1) * T - 1, () => { // les murs qui sortent du sol montent
                                    const f = levees[x + ',' + y] !== undefined ? Math.min(1, (temps - levees[x + ',' + y]) / 12) : 1;
                                    ctx.save(); ctx.translate(0, (1 - f) * 40); mur(px, py); fissures(x, y, px, py); ctx.restore(); }]);
                                  if (c === 'C') objs.push([(y + 1) * T - 1, () => { coffre(px, py); fissures(x, y, px, py); }]); });
-  dessinerNuages();
+  if (!v3) dessinerNuages();
   for (const j of joueurs()) if (visible(j) && (j.pv > 0 || ((obtenir3D(j.perso) || {}).spec || { lignes: {} }).lignes.mort))
     objs.push([j.y + j.r * 0.5, () => { aura(j); dessinerEntite(j, img(j.perso.image), j === moi ? '#3aa0ff' : j.eq === moi.eq ? '#2ecc71' : '#ff3b3b', j.r * 3.3); }]);
   for (const b of bosses) if (b.pv > 0) objs.push([b.y + b.r * 0.5, () => b.def.cristal ? dessinerCristal(b) : dessinerEntite(b, img(b.def.image), '#ff7b1a', b.r * 3.4)]);
   for (const p of projectiles) if (p.type !== 'lob' && p.type !== 'terrain') objs.push([p.y, () => dessinerProjectile(p)]);
   objs.sort((a, b) => a[0] - b[0]).forEach(o => o[1]());
 
-  tuiles((c, x, y, px, py) => { if (c === 'B') buisson(px, py); });
+  if (!v3) tuiles((c, x, y, px, py) => { if (c === 'B') buisson(px, py); });
   for (const p of projectiles) if (p.type === 'lob') dessinerProjectile(p);
   bullesElem(); dessinerEffets();
   for (const j of joueurs()) if (j.pv > 0 && visible(j)) barreVie(j, j === moi ? '#3aa0ff' : j.eq === moi.eq ? '#2ecc71' : '#ff3b3b', j.nom);
   for (const b of bosses) if (b.pv > 0) barreVie(b, '#ff7b1a');
-  for (let k = 0; k < 5; k++) { // ombres de nuages qui glissent sur la map
+  if (!v3) for (let k = 0; k < 5; k++) { // ombres de nuages qui glissent sur la map
     const nx = ((alea(k) * map.l * T + temps * (0.25 + k * 0.05)) % (map.l * T + 600)) - 300, ny = alea(k + 20) * map.h * T;
     const gn = ctx.createRadialGradient(nx, ny, 0, nx, ny, 260); gn.addColorStop(0, 'rgba(10,20,40,.12)'); gn.addColorStop(1, 'rgba(10,20,40,0)'); ctx.fillStyle = gn; ctx.fillRect(nx - 260, ny - 260, 520, 520);
   }
-  if (vue25) perspective25D();
+  if (vue25 && !v3) perspective25D();
   ecran(); ctx.fillStyle = vignette(); ctx.fillRect(0, 0, W, H); // vignette cinéma
   const lum = ctx.createLinearGradient(0, 0, W, H); lum.addColorStop(0, 'rgba(255,225,160,.08)'); lum.addColorStop(1, 'rgba(60,90,200,.08)'); ctx.fillStyle = lum; ctx.fillRect(0, 0, W, H); // lumière chaude / ombre froide
   zoneSure(dessinerHUD);
