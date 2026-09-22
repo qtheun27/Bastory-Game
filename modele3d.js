@@ -7,7 +7,7 @@
 const Modele3D = (() => {
   const DIRS = 16, S = 224, MARCHE = 6;           // 16 directions, 1 pose de repos + 6 poses de marche
   let rendu = null, scene = null, camera = null, loader = null;
-  const fichiers = {};                            // cache des fichiers .glb téléchargés
+  const fichiers = {}, decodes = {};                            // cache des fichiers .glb téléchargés
   const dispo = () => typeof THREE !== 'undefined' && !!THREE.GLTFLoader;
   let GRAD = null; // 3 tons : ombre / mi-ton / lumière (rendu "anime")
   const aplats = new Map();
@@ -15,9 +15,8 @@ const Modele3D = (() => {
     if (!t || !t.image) return t; if (aplats.has(t)) return aplats.get(t);
     try {
       const im = t.image, w = Math.min(512, im.width || 512), hh = Math.min(512, im.height || 512), c = document.createElement('canvas'); c.width = w; c.height = hh;
-      const x = c.getContext('2d'); x.filter = 'blur(1.2px) saturate(1.4) contrast(1.12)'; x.drawImage(im, 0, 0, w, hh); x.filter = 'none';
-      const d = x.getImageData(0, 0, w, hh), p = d.data, q = 36; for (let i = 0; i < p.length; i += 4) for (let k = 0; k < 3; k++) p[i + k] = Math.min(255, Math.round(p[i + k] / q) * q);
-      x.putImageData(d, 0, 0); const n = new THREE.CanvasTexture(c); n.flipY = t.flipY; n.encoding = THREE.sRGBEncoding; n.wrapS = t.wrapS; n.wrapT = t.wrapT;
+      const x = c.getContext('2d'); x.filter = 'saturate(1.15)'; x.drawImage(im, 0, 0, w, hh); x.filter = 'none';
+      const n = new THREE.CanvasTexture(c); n.flipY = t.flipY; n.encoding = THREE.sRGBEncoding; n.wrapS = t.wrapS; n.wrapT = t.wrapT;
       aplats.set(t, n); return n;
     } catch (e) { return t; }
   }
@@ -40,9 +39,9 @@ const Modele3D = (() => {
     GRAD = new THREE.DataTexture(new Uint8Array([70, 70, 70, 255, 150, 150, 150, 255, 225, 225, 225, 255]), 3, 1, THREE.RGBAFormat);
     GRAD.minFilter = GRAD.magFilter = THREE.NearestFilter; GRAD.generateMipmaps = false; GRAD.needsUpdate = true;
     scene = new THREE.Scene();
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x4b4070, 0.5));
-    const soleil = new THREE.DirectionalLight(0xfff4e0, 1.0); soleil.position.set(-2, 5, 3); scene.add(soleil);
-    const contre = new THREE.DirectionalLight(0x9fe3ff, 0.3); contre.position.set(3, 2, -3); scene.add(contre);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x4b4070, 0.42));
+    const soleil = new THREE.DirectionalLight(0xfff4e0, 0.78); soleil.position.set(-2, 5, 3); scene.add(soleil);
+    const contre = new THREE.DirectionalLight(0x9fe3ff, 0.22); contre.position.set(3, 2, -3); scene.add(contre);
     camera = new THREE.PerspectiveCamera(30, 1, 0.1, 60); camera.position.set(0, 5.3, 4.9); camera.lookAt(0, 0.9, 0); // vue 3/4 du dessus (avec de la marge pour les grands gestes)
     loader = new THREE.GLTFLoader();
     if (THREE.DRACOLoader) { const dr = new THREE.DRACOLoader(); dr.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.4.1/'); loader.setDRACOLoader(dr); } // modèles compressés (Meshy)
@@ -53,9 +52,10 @@ const Modele3D = (() => {
   async function charger(p) {
     if (!p || !p.modele || !initialiser()) return null;
     if (!fichiers[p.modele]) fichiers[p.modele] = fetch(p.modele).then(r => { if (!r.ok) throw new Error('Modèle introuvable : ' + p.modele); return r.arrayBuffer(); });
-    const buf = await fichiers[p.modele];
-    const gltf = await new Promise((ok, ko) => loader.parse(buf.slice(0), '', ok, ko));
-    const racine = new THREE.Group(), obj = gltf.scene; racine.add(obj);
+    const clonable = !!(THREE.SkeletonUtils && THREE.SkeletonUtils.clone);
+    if (!clonable || !decodes[p.modele]) decodes[p.modele] = fichiers[p.modele].then(buf => new Promise((ok, ko) => loader.parse(buf.slice(0), '', ok, ko)));
+    const gltf = await decodes[p.modele];
+    const racine = new THREE.Group(), obj = clonable ? THREE.SkeletonUtils.clone(gltf.scene) : gltf.scene; racine.add(obj);
     // mise à l'échelle automatique : le perso mesure ~2 unités, pieds au sol, centré
     obj.updateMatrixWorld(true);
     let boite = new THREE.Box3(); const v = new THREE.Vector3();
@@ -81,7 +81,7 @@ const Modele3D = (() => {
     };
     if (!anims.attaque) anims.attaque = clips.find(c => c !== anims.repos && c !== anims.marche && !/idle|walk|run|dead|death|die|hit|hurt|react|stand|breath|t-?pose|fly|hover/i.test(c.name)); // repli : 1re animation « d'action »
     let hanches = null; obj.traverse(o => { if (!hanches && o.isBone && /hips|pelvis/i.test(o.name)) hanches = o; });
-    return { racine, mixer, anims, hanches, repos: hanches && hanches.position.clone(), decalage: (+p.modeleRotation || 0) * Math.PI / 180, liberer: () => obj.traverse(o => { if (o.geometry) o.geometry.dispose(); }) };
+    return { racine, mixer, anims, hanches, repos: hanches && hanches.position.clone(), decalage: (+p.modeleRotation || 0) * Math.PI / 180, liberer: () => clonable || obj.traverse(o => { if (o.geometry) o.geometry.dispose(); }) };
   }
   function poser(m, anim, t) { // place le modèle à l'instant t d'une animation
     m.mixer.stopAllAction();
@@ -90,8 +90,8 @@ const Modele3D = (() => {
       if (m.hanches) { m.hanches.position.x = m.repos.x; m.hanches.position.z = m.repos.z; } } // le perso reste sur place (pas de glissade)
     else m.racine.position.y = anim === 'marche' ? Math.abs(Math.sin(t * Math.PI * 2)) * 0.06 : 0; // pas d'animation : petit rebond
   }
-  function photo(m, angle, anim, t, taille) {
-    rendu.setSize(taille, taille, false);
+  function photo(m, angle, anim, t, taille, zoom = 1) {
+    rendu.setSize(taille, taille, false); if (camera.zoom !== zoom) { camera.zoom = zoom; camera.updateProjectionMatrix(); }
     m.racine.rotation.y = Math.PI / 2 - angle + m.decalage; poser(m, anim, t);
     scene.add(m.racine); rendu.render(scene, camera); scene.remove(m.racine);
     return rendu.domElement;
@@ -130,7 +130,7 @@ const Modele3D = (() => {
   }
   async function visage(p) { // image de face (cartes, portraits)
     const m = await charger(p); if (!m) return null;
-    const c = document.createElement('canvas'); c.width = c.height = 384; c.getContext('2d').drawImage(contour(photo(m, Math.PI / 2, 'repos', 0, 384), 4.5), 0, 0); // portrait HD
+    const c = document.createElement('canvas'); c.width = c.height = 384; c.getContext('2d').drawImage(contour(photo(m, Math.PI / 2, 'repos', 0, 384, 0.8), 4.5), 0, 0); // portrait HD
     m.liberer(); return c;
   }
   async function vitrine(p) { // rendu en direct (menu) : animation de repos + rotation au doigt
@@ -140,7 +140,7 @@ const Modele3D = (() => {
       rendre(angle, taille, t = 0, anim = 'repos') {
         const now = performance.now(); if (this.fait && now - this.fait < 33 && taille === this.taille && anim === this.anim && Math.abs(angle - this.angle) < 0.005) return c; // 30 images/s suffisent
         Object.assign(this, { fait: now, taille, anim, angle });
-        c.width = c.height = taille; const x = c.getContext('2d'); x.clearRect(0, 0, taille, taille); x.drawImage(contour(photo(m, angle, anim, t % 1, taille), Math.max(2, taille / 90), cache), 0, 0);
+        c.width = c.height = taille; const x = c.getContext('2d'); x.clearRect(0, 0, taille, taille); x.drawImage(contour(photo(m, angle, anim, t % 1, taille, 0.84), Math.max(2, taille / 90), cache), 0, 0);
         if (!this.haut) { const cad = cadrage(c); this.haut = cad.haut / taille; this.bas = cad.bas / taille; } return c;
       },
       a: k => !!m.anims[k], liberer: () => m.liberer()

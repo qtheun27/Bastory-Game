@@ -17,8 +17,8 @@ const Rendu3D = (() => {
     document.body.prepend(R.domElement); canvas.style.position = 'relative'; canvas.style.zIndex = '1'; // l'interface 2D passe devant
     scene = new THREE.Scene(); scene.background = new THREE.Color('#8fd3ff'); scene.fog = new THREE.Fog('#8fd3ff', 2600, 5200);
     camera = new THREE.PerspectiveCamera(34, 1, 10, 8000);
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x5a4d8a, 0.7));
-    soleil = new THREE.DirectionalLight(0xfff1d6, 0.9); soleil.castShadow = true; soleil.shadow.mapSize.set(2048, 2048); soleil.shadow.bias = -0.0006;
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x5a4d8a, 0.55));
+    soleil = new THREE.DirectionalLight(0xfff1d6, 0.75); soleil.castShadow = true; soleil.shadow.mapSize.set(2048, 2048); soleil.shadow.bias = -0.0006;
     Object.assign(soleil.shadow.camera, { left: -1300, right: 1300, top: 1300, bottom: -1300, near: 10, far: 4000 });
     scene.add(soleil, soleil.target);
     GRAD = new THREE.DataTexture(new Uint8Array([95, 95, 95, 255, 175, 175, 175, 255, 255, 255, 255, 255]), 3, 1, THREE.RGBAFormat);

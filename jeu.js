@@ -464,6 +464,7 @@ addEventListener('keydown', e => {
     toucheAttendue = null; e.preventDefault(); return;
   }
   touches[k] = true;
+  if (etat === 'MENU' && ecranMenu === 'persos' && (k === 'arrowleft' || k === 'arrowright')) changerPerso(k === 'arrowleft' ? -1 : 1);
   if (etat === 'JEU') {
     if (k === mesTouches.auto) { e.preventDefault(); tirerAuto(); }
     if (k === mesTouches.action) lancerAction(moi);            // 🎮 action d'élément
@@ -497,7 +498,7 @@ canvas.addEventListener('touchmove', e => {
 }, { passive: false });
 function finTouche(e) {
   if (hudDrag) { hudDrag = null; sauverHud(); }
-  if (glisse) for (const t of e.changedTouches) if (t.identifier === glisse.id) { const dx = pt(t).x - glisse.x; if (Math.abs(dx) > 60 && ecranMenu === 'modes' && etat === 'MENU') changerMode(dx < 0 ? 1 : -1); glisse = null; }
+  if (glisse) for (const t of e.changedTouches) if (t.identifier === glisse.id) { const dx = pt(t).x - glisse.x; if (Math.abs(dx) > 60 && etat === 'MENU') { if (ecranMenu === 'modes') changerMode(dx < 0 ? 1 : -1); if (ecranMenu === 'persos') changerPerso(dx < 0 ? 1 : -1); } glisse = null; }
   if (heroDrag) for (const t of e.changedTouches) if (t.identifier === heroDrag.id) lacherHero();
   for (const t of e.changedTouches) {
     if (joyG.actif && joyG.id === t.identifier) joyG.actif = false;
@@ -2358,7 +2359,7 @@ function menuAccueil() {
   const im = carteDe(p), b = Math.sin(temps * 0.045) * 6 * u;
   const vh = vitrineHero(p);
   if (vh) { // héros 3D haute définition, immobile ; on le fait tourner en glissant le doigt
-    const T = Math.round(Math.min(900, taille * 1.6 * dpr)), c = vh.rendre(heroAngle, T, temps / 150), D = taille * 0.82 * Math.min(1.25, +p.modeleEchelle || 1) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
+    const T = Math.round(Math.min(900, taille * 1.6 * dpr)), cyc = temps % 420, att = cyc < 80 && vh.a && vh.a('attaque'), c = vh.rendre(heroAngle, T, att ? cyc / 80 : temps / 150, att ? 'attaque' : 'repos'), D = taille * 0.82 * Math.min(1.25, +p.modeleEchelle || 1) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
     ctx.imageSmoothingQuality = 'high'; ctx.drawImage(c, cx - D / 2, sol - 4 * u - vh.bas * D, D, D);
   } else if (pret(im)) ctx.drawImage(im, cx - taille / 2, cy - taille / 2 - 14 * u + b, taille, taille);
   heroZone = { x: cx - taille / 2, y: cy - taille / 2, w: taille, h: taille };
@@ -2408,18 +2409,25 @@ function menuAccueil() {
 function menuPersos() {
   const u = U(), top = barreHaut('PERSOS', true), n = CONFIG.persos.length;
   const panW = Math.min(360 * u, W * 0.42), zoneW = W - panW - 36 * u, x0 = 14 * u, y0 = top + 14 * u, zoneH = H - y0 - 14 * u;
-  const cols = Math.max(2, Math.floor(zoneW / (125 * u))), cw = (zoneW - (cols - 1) * 12 * u) / cols, chh = cw * 1.4;
-  const rows = Math.max(1, Math.floor((zoneH - 30 * u) / (chh + 10 * u))), parPage = cols * rows, pages = Math.ceil(n / parPage);
-  pageMenu = Math.min(pageMenu, pages - 1);
-  CONFIG.persos.slice(pageMenu * parPage, (pageMenu + 1) * parPage).forEach((p, k) => { // 📖 une case de BD par perso
-    const i = pageMenu * parPage + k, x = x0 + (k % cols) * (cw + 12 * u), y = y0 + Math.floor(k / cols) * (chh + 10 * u);
-    caseBD(p, x, y, cw, chh, i === persoVue, i === persoIndex, k); zones.push({ x, y, w: cw, h: chh, action: () => persoVue = i });
-  });
-  if (pages > 1) {
-    bouton3D(x0, H - 40 * u, 60 * u, 30 * u, '#8e7bff', '#5b3fd6', () => pageMenu = (pageMenu + pages - 1) % pages); texte('◀', x0 + 30 * u, H - 25 * u, 14 * u, '#fff');
-    texte((pageMenu + 1) + ' / ' + pages, x0 + zoneW / 2, H - 25 * u, 13 * u, '#fff');
-    bouton3D(x0 + zoneW - 60 * u, H - 40 * u, 60 * u, 30 * u, '#8e7bff', '#5b3fd6', () => pageMenu = (pageMenu + 1) % pages); texte('▶', x0 + zoneW - 30 * u, H - 25 * u, 14 * u, '#fff');
+  heroZone = null; persoVue = persoVue % n;
+  { // grand perso au centre
+  const p = CONFIG.persos[persoVue], el = elemDe(p), c = (el && el.couleur) || p.couleur || '#5a4dff', cx = x0 + zoneW / 2, sol = y0 + zoneH - 70 * u, taille = Math.min(zoneH * 0.9, zoneW * 0.75);
+  const off = (1 - sortir(Math.min(1, (temps - persoAnim.t) / 14))) * persoAnim.d * 140 * u;
+  ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, zoneW, zoneH); ctx.clip(); rayons(cx, sol - taille * 0.45, temps * 0.004, ombrer(c, 0.35), 0.3, 16);
+  const hg = ctx.createRadialGradient(cx, sol - taille * 0.4, 0, cx, sol - taille * 0.4, taille * 0.6); hg.addColorStop(0, c + '88'); hg.addColorStop(1, c + '00'); ctx.fillStyle = hg; ctx.fillRect(x0, y0, zoneW, zoneH); ctx.restore();
+  ctx.save(); ctx.translate(cx, sol); ctx.scale(1, 0.26); const og = ctx.createRadialGradient(0, 0, 0, 0, 0, taille * 0.4); og.addColorStop(0, 'rgba(0,0,0,.5)'); og.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = og; ctx.beginPath(); ctx.arc(0, 0, taille * 0.4, 0, 7); ctx.fill(); ctx.restore();
+  const vh = vitrineHero(p);
+  if (vh) { const T = Math.round(Math.min(900, taille * 1.5 * dpr)), cyc = temps % 420, att = cyc < 80 && vh.a && vh.a('attaque'), im3 = vh.rendre(heroAngle, T, att ? cyc / 80 : temps / 150, att ? 'attaque' : 'repos'), D = taille * 0.95 * Math.min(1.25, +p.modeleEchelle || 1) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
+    ctx.drawImage(im3, cx - D / 2 + off, sol - 4 * u - vh.bas * D, D, D); }
+  else { const im = carteDe(p); if (pret(im)) ctx.drawImage(im, cx - taille / 2 + off, sol - taille, taille, taille); }
+  titre(p.nom, cx + off * 0.5, sol + 26 * u, 42 * u, '#fff', 'center', zoneW - 120 * u);
+  if (ELEM_DEF[cleElem(p)]) iconeElement(cleElem(p), cx - 70 * u, sol + 58 * u, 20 * u);
+  texte('Niveau ' + niveauDe(p) + (persoVue === persoIndex ? '  •  ✔ Choisi' : ''), cx + 10 * u, sol + 58 * u, 13 * u, persoVue === persoIndex ? '#b6ff4a' : '#ffe14a');
+  [[-1, 'retour', x0 + 34 * u], [1, 'suite', x0 + zoneW - 34 * u]].forEach(([d, ic, fx]) => { bouton3D(fx - 26 * u, y0 + zoneH / 2 - 26 * u, 52 * u, 52 * u, '#ffe14a', '#ff8a1f', () => changerPerso(d), 26 * u); icone(ic, fx, y0 + zoneH / 2 - 2 * u, 24 * u); });
+  CONFIG.persos.forEach((_, k) => { ctx.beginPath(); ctx.arc(cx + (k - (n - 1) / 2) * 16 * u, y0 + zoneH - 8 * u, (k === persoVue ? 5 : 3.5) * u, 0, 7); ctx.fillStyle = k === persoVue ? '#ffe14a' : 'rgba(255,255,255,.55)'; ctx.fill(); });
+  texte('↔ Glisse pour changer de perso', cx, y0 + 12 * u, 10 * u, 'rgba(255,255,255,.6)');
   }
+
   // fiche du perso
   const p = CONFIG.persos[persoVue] || selPerso(), a = CONFIG.armes[p.arme] || {}, px = W - panW - 14 * u, py = y0, ph = H - py - 14 * u;
   verre(px, py, panW, ph, 18 * u); rect(px, py, panW, 6 * u, 3 * u, p.couleur);
@@ -2452,7 +2460,8 @@ function menuPersos() {
 
 // --- Modes de jeu + choix de la map
 const mapsActives = () => { const l = CONFIG.maps.map((m, i) => i).filter(i => CONFIG.maps[i].actif !== false); return l.length ? l : CONFIG.maps.map((m, i) => i); }; // maps cochées dans l'admin
-let modeAnim = { t: -99, d: 0 }, glisse = null;
+let modeAnim = { t: -99, d: 0 }, glisse = null, persoAnim = { t: -99, d: 0 };
+const changerPerso = d => { const n = CONFIG.persos.length; persoVue = ((persoVue % n) + d + n) % n; persoAnim = { t: temps, d }; };
 const changerMode = d => { const n = modes().length; modeIndex = ((modeIndex % n) + d + n) % n; modeAnim = { t: temps, d }; };
 const changerMap = d => { const n = mapsActives().length; mapIndex = ((mapIndex % n) + d + n) % n; };
 function carteMode(md, x, y, w, h, sel, grand) { // case de BD d'un mode (mini-map du terrain en fond)
