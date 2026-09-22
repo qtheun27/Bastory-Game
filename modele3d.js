@@ -12,8 +12,7 @@ const Modele3D = (() => {
   let GRAD = null; // 3 tons : ombre / mi-ton / lumière (rendu "anime")
   const aplats = new Map();
   function aplat(t) { if (t) { t.anisotropy = 8; t.needsUpdate = true; } return t; } // texture Meshy telle quelle (pleine résolution)
-  const toon = (m, skin) => new THREE.MeshToonMaterial({ map: aplat(m.map) || null, color: m.color || new THREE.Color(0xffffff), emissive: m.emissive || new THREE.Color(0), emissiveMap: m.emissiveMap || null,
-    gradientMap: GRAD, transparent: !!m.transparent, opacity: m.opacity === undefined ? 1 : m.opacity, alphaTest: m.alphaTest || 0, side: m.side === undefined ? THREE.FrontSide : m.side, skinning: skin, morphTargets: !!m.morphTargets });
+  const toon = (m, skin) => new THREE.MeshBasicMaterial({ map: aplat(m.map) || null, color: m.color || new THREE.Color(0xffffff), transparent: !!m.transparent, opacity: m.opacity === undefined ? 1 : m.opacity, alphaTest: m.alphaTest || 0, side: m.side === undefined ? THREE.FrontSide : m.side, skinning: skin, morphTargets: !!m.morphTargets }); // couleurs de la texture telles quelles (seul effet : le contour noir)
   function contour(src, ep, cache = {}) { // ✒️ contour noir : silhouette élargie dessinée sous l'image
     const w = src.width, h = src.height;
     for (const k of ['sil', 'out']) { if (!cache[k]) cache[k] = document.createElement('canvas'); if (cache[k].width !== w || cache[k].height !== h) { cache[k].width = w; cache[k].height = h; } }
@@ -83,8 +82,9 @@ const Modele3D = (() => {
       if (m.hanches) { m.hanches.position.x = m.repos.x; m.hanches.position.z = m.repos.z; } } // le perso reste sur place (pas de glissade)
     else m.racine.position.y = anim === 'marche' ? Math.abs(Math.sin(t * Math.PI * 2)) * 0.06 : 0; // pas d'animation : petit rebond
   }
-  function photo(m, angle, anim, t, taille, zoom = 1) {
+  function photo(m, angle, anim, t, taille, zoom = 1, face = false) {
     rendu.setSize(taille, taille, false); if (camera.zoom !== zoom) { camera.zoom = zoom; camera.updateProjectionMatrix(); }
+    if (face) camera.position.set(0, 0.75, 7.3); else camera.position.set(0, 5.6, 5.4); camera.lookAt(0, face ? 1.05 : 1.15, 0); // face = vue droite, un peu par en dessous (effet de grandeur)
     m.racine.rotation.y = Math.PI / 2 - angle + m.decalage; poser(m, anim, t);
     scene.add(m.racine); rendu.render(scene, camera); scene.remove(m.racine);
     return rendu.domElement;
@@ -123,7 +123,7 @@ const Modele3D = (() => {
   }
   async function visage(p) { // image de face (cartes, portraits)
     const m = await charger(p); if (!m) return null;
-    const c = document.createElement('canvas'); c.width = c.height = 512; c.getContext('2d').drawImage(contour(photo(m, Math.PI / 2, 'repos', 0, 512, 0.9), 5), 0, 0); // portrait HD
+    const c = document.createElement('canvas'); c.width = c.height = 512; c.getContext('2d').drawImage(contour(photo(m, Math.PI / 2, 'repos', 0, 512, 1, true), 5), 0, 0); // portrait HD
     m.liberer(); return c;
   }
   async function vitrine(p) { // rendu en direct (menu) : animation de repos + rotation au doigt
@@ -133,7 +133,7 @@ const Modele3D = (() => {
       rendre(angle, taille, t = 0, anim = 'repos') {
         const now = performance.now(); if (this.fait && now - this.fait < 33 && taille === this.taille && anim === this.anim && Math.abs(angle - this.angle) < 0.005) return c; // 30 images/s suffisent
         Object.assign(this, { fait: now, taille, anim, angle });
-        c.width = c.height = taille; const x = c.getContext('2d'); x.clearRect(0, 0, taille, taille); x.drawImage(contour(photo(m, angle, anim, t % 1, taille, 0.92), Math.max(2, taille / 90), cache), 0, 0);
+        c.width = c.height = taille; const x = c.getContext('2d'); x.clearRect(0, 0, taille, taille); x.drawImage(contour(photo(m, angle, anim, t % 1, taille, 1, true), Math.max(2, taille / 90), cache), 0, 0);
         if (!this.haut) { const cad = cadrage(c); this.haut = cad.haut / taille; this.bas = cad.bas / taille; } return c;
       },
       a: k => !!(m.anims[k] || m.parNom[k]), liberer: () => m.liberer()

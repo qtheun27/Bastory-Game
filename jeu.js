@@ -1026,6 +1026,16 @@ function bd(txt, x, y, taille, couleur = '#ffe14a', rot = 0, halo = '#fff') { //
 
 // ---------- TYPOGRAPHIE : textes contourés façon arcade ----------
 function texte(t, x, y, taille, couleur, align = 'center', maxW) {
+  t = String(t);
+  const ems = Object.entries(CONFIG.elements || {}).filter(([k, e]) => ELEM_DEF[k] && e.icone && t.includes(e.icone));
+  if (ems.length) {
+    const re = new RegExp('(' + ems.map(([, e]) => e.icone.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')'), parts = t.split(re).filter(Boolean), cle = s => (ems.find(([, e]) => e.icone === s) || [])[0];
+    ctx.font = `600 ${taille}px ${POLICE}`; const tw = parts.reduce((a, s) => a + (cle(s) ? taille * 1.3 : ctx.measureText(s).width), 0);
+    if (maxW && tw > maxW) return texte(t, x, y, taille * maxW / tw * 0.98, couleur, align);
+    let px = align === 'left' ? x : align === 'right' ? x - tw : x - tw / 2;
+    for (const s of parts) { const k = cle(s); if (k) { iconeElement(k, px + taille * 0.62, y, taille * 1.1); px += taille * 1.3; } else { texte(s, px, y, taille, couleur, 'left'); ctx.font = `600 ${taille}px ${POLICE}`; px += ctx.measureText(s).width; } }
+    return;
+  }
   if (fonce(couleur)) couleur = '#fff';
   t = String(t); const f = s => `600 ${s}px ${POLICE}`; ctx.font = f(taille);
   if (maxW && ctx.measureText(t).width > maxW) { taille = Math.max(7, taille * maxW / ctx.measureText(t).width); ctx.font = f(taille); }
@@ -2414,7 +2424,7 @@ function menuPersos() {
   const panW = Math.min(360 * u, W * 0.42), zoneW = W - panW - 36 * u, x0 = 14 * u, y0 = top + 14 * u, zoneH = H - y0 - 14 * u;
   heroZone = null; persoVue = persoVue % n;
   { // grand perso au centre
-  const p = CONFIG.persos[persoVue], el = elemDe(p), c = (el && el.couleur) || p.couleur || '#5a4dff', cx = x0 + zoneW / 2, sol = y0 + zoneH - 70 * u, taille = Math.min(zoneH * 0.9, zoneW * 0.75);
+  const p = CONFIG.persos[persoVue], el = elemDe(p), c = (el && el.couleur) || p.couleur || '#5a4dff', cx = x0 + zoneW / 2, sol = y0 + zoneH - 84 * u, taille = Math.min(zoneH * 0.9, zoneW * 0.75);
   const off = (1 - sortir(Math.min(1, (temps - persoAnim.t) / 14))) * persoAnim.d * 140 * u;
   ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, zoneW, zoneH); ctx.clip(); rayons(cx, sol - taille * 0.45, temps * 0.004, ombrer(c, 0.35), 0.3, 16);
   const hg = ctx.createRadialGradient(cx, sol - taille * 0.4, 0, cx, sol - taille * 0.4, taille * 0.6); hg.addColorStop(0, c + '88'); hg.addColorStop(1, c + '00'); ctx.fillStyle = hg; ctx.fillRect(x0, y0, zoneW, zoneH); ctx.restore();
@@ -2423,11 +2433,11 @@ function menuPersos() {
   if (vh) { const T = Math.round(Math.min(900, taille * 1.5 * dpr)), im3 = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = taille * 0.95 * Math.min(1.25, +p.modeleEchelle || 1) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
     ctx.drawImage(im3, cx - D / 2 + off, sol - 4 * u - vh.bas * D, D, D); }
   else { const im = carteDe(p); if (pret(im)) ctx.drawImage(im, cx - taille / 2 + off, sol - taille, taille, taille); }
-  titre(p.nom, cx + off * 0.5, sol + 26 * u, 42 * u, '#fff', 'center', zoneW - 120 * u);
-  if (ELEM_DEF[cleElem(p)]) iconeElement(cleElem(p), cx - 70 * u, sol + 58 * u, 20 * u);
-  texte('Niveau ' + niveauDe(p) + (persoVue === persoIndex ? '  •  ✔ Choisi' : ''), cx + 10 * u, sol + 58 * u, 13 * u, persoVue === persoIndex ? '#b6ff4a' : '#ffe14a');
+  titre(p.nom, cx + off * 0.5, sol + 24 * u, 40 * u, '#fff', 'center', zoneW - 120 * u);
+  if (ELEM_DEF[cleElem(p)]) iconeElement(cleElem(p), cx - 70 * u, sol + 56 * u, 20 * u);
+  texte('Niveau ' + niveauDe(p) + (persoVue === persoIndex ? '  •  ✔ Choisi' : ''), cx + 10 * u, sol + 56 * u, 13 * u, persoVue === persoIndex ? '#b6ff4a' : '#ffe14a');
   [[-1, 'retour', x0 + 34 * u], [1, 'suite', x0 + zoneW - 34 * u]].forEach(([d, ic, fx]) => { bouton3D(fx - 26 * u, y0 + zoneH / 2 - 26 * u, 52 * u, 52 * u, '#ffe14a', '#ff8a1f', () => changerPerso(d), 26 * u); icone(ic, fx, y0 + zoneH / 2 - 2 * u, 24 * u); });
-  CONFIG.persos.forEach((_, k) => { ctx.beginPath(); ctx.arc(cx + (k - (n - 1) / 2) * 16 * u, y0 + zoneH - 8 * u, (k === persoVue ? 5 : 3.5) * u, 0, 7); ctx.fillStyle = k === persoVue ? '#ffe14a' : 'rgba(255,255,255,.55)'; ctx.fill(); });
+  CONFIG.persos.forEach((_, k) => { ctx.beginPath(); ctx.arc(cx + (k - (n - 1) / 2) * 16 * u, y0 + 30 * u, (k === persoVue ? 5 : 3.5) * u, 0, 7); ctx.fillStyle = k === persoVue ? '#ffe14a' : 'rgba(255,255,255,.55)'; ctx.fill(); });
   texte('↔ Glisse pour changer de perso', cx, y0 + 12 * u, 10 * u, 'rgba(255,255,255,.6)');
   }
 
