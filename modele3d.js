@@ -10,7 +10,18 @@ const Modele3D = (() => {
   const fichiers = {};                            // cache des fichiers .glb téléchargés
   const dispo = () => typeof THREE !== 'undefined' && !!THREE.GLTFLoader;
   let GRAD = null; // 3 tons : ombre / mi-ton / lumière (rendu "anime")
-  const toon = (m, skin) => new THREE.MeshToonMaterial({ map: m.map || null, color: m.color || new THREE.Color(0xffffff), emissive: m.emissive || new THREE.Color(0), emissiveMap: m.emissiveMap || null,
+  const aplats = new Map();
+  function aplat(t) { // 🎨 texture Meshy « peinte » : couleurs en aplats (postérisées) et plus saturées → rendu dessiné
+    if (!t || !t.image) return t; if (aplats.has(t)) return aplats.get(t);
+    try {
+      const im = t.image, w = Math.min(512, im.width || 512), hh = Math.min(512, im.height || 512), c = document.createElement('canvas'); c.width = w; c.height = hh;
+      const x = c.getContext('2d'); x.filter = 'blur(1.2px) saturate(1.4) contrast(1.12)'; x.drawImage(im, 0, 0, w, hh); x.filter = 'none';
+      const d = x.getImageData(0, 0, w, hh), p = d.data, q = 36; for (let i = 0; i < p.length; i += 4) for (let k = 0; k < 3; k++) p[i + k] = Math.min(255, Math.round(p[i + k] / q) * q);
+      x.putImageData(d, 0, 0); const n = new THREE.CanvasTexture(c); n.flipY = t.flipY; n.encoding = THREE.sRGBEncoding; n.wrapS = t.wrapS; n.wrapT = t.wrapT;
+      aplats.set(t, n); return n;
+    } catch (e) { return t; }
+  }
+  const toon = (m, skin) => new THREE.MeshToonMaterial({ map: aplat(m.map) || null, color: m.color || new THREE.Color(0xffffff), emissive: m.emissive || new THREE.Color(0), emissiveMap: m.emissiveMap || null,
     gradientMap: GRAD, transparent: !!m.transparent, opacity: m.opacity === undefined ? 1 : m.opacity, alphaTest: m.alphaTest || 0, side: m.side === undefined ? THREE.FrontSide : m.side, skinning: skin, morphTargets: !!m.morphTargets });
   function contour(src, ep, cache = {}) { // ✒️ contour noir : silhouette élargie dessinée sous l'image
     const w = src.width, h = src.height;
@@ -179,10 +190,11 @@ const Modele3D = (() => {
     };
     const buisson = seed => {
       const o = new THREE.Group(), mats = [d.buissonFonce || '#1f7a35', d.buisson || '#2fae4a'].map(c => new THREE.MeshToonMaterial({ color: couleur(c), gradientMap: GRAD }));
-      for (let i = 0; i < 14; i++) { const r = 0.2 + h(i + seed * 20) * 0.16, geo = new THREE.IcosahedronGeometry(r, 2), p = geo.attributes.position, v = new THREE.Vector3();
-        for (let k = 0; k < p.count; k++) { v.fromBufferAttribute(p, k); v.multiplyScalar(1 + (h(Math.round(v.x * 60 + v.y * 70 + v.z * 80) + i) - 0.5) * 0.25); p.setXYZ(k, v.x, v.y, v.z); } geo.computeVertexNormals();
-        const m = new THREE.Mesh(geo, mats[i < 6 ? 0 : 1]), a = h(i + seed) * Math.PI * 2, dist = i < 6 ? 0.35 : 0.18 * h(i + 3);
-        m.position.set(Math.cos(a) * dist * 1.3, (i < 6 ? 0.2 : 0.42) + h(i + 5) * 0.12, Math.sin(a) * dist); o.add(m); }
+      for (let i = 0; i < 46; i++) { // 🌿 hautes herbes dessinées (brins en cône)
+        const hg = 0.45 + h(i + seed * 20) * 0.4, b = new THREE.Mesh(new THREE.ConeGeometry(0.09 + h(i + 3) * 0.05, hg, 4), mats[i % 3 ? 1 : 0]);
+        b.position.set((h(i * 3 + seed) - 0.5) * 1.25, hg / 2, (h(i * 7 + seed) - 0.5) * 0.95); b.rotation.set((h(i + 9) - 0.5) * 0.5, h(i) * 3, (h(i + 5) - 0.5) * 0.5); o.add(b);
+      }
+      const socle = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.2, 0.95), mats[0]); socle.position.y = 0.1; o.add(socle);
       return contour(photo(o, -0.85, 0.85, -0.6, 1.0, 2), 3.5);
     };
     const res = { murs: [1, 2, 3].map(n => bloc(n, false)), coffre: bloc(9, true), buissons: [1, 2, 3].map(buisson) };

@@ -1085,21 +1085,14 @@ function vignette() {
 }
 
 // ---------- SOL DES MAPS : herbe cartoon (aplats + touffes contourées) ----------
-function motifHerbe(d) {
-  const k = 'toon' + d.herbe1 + d.herbe2; if (cacheGfx[k]) return cacheGfx[k];
-  const c1 = /^#[0-9a-f]{6}$/i.test(d.herbe1 || '') ? d.herbe1 : '#5fd14a', T = 64, N = T * 2;
-  const c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d');
-  for (let i = 0; i < 4; i++) { x.fillStyle = (i === 0 || i === 3) ? ombrer(c1, 0.07) : c1; x.fillRect((i % 2) * T, Math.floor(i / 2) * T, T, T); } // damier doux
-  const fonce = ombrer(c1, -0.3), clair = ombrer(c1, 0.35);
-  for (let i = 0; i < 14; i++) { // touffes d'herbe dessinées
-    const px = hasard(i * 3) * N, py = hasard(i * 5 + 1) * N, s = 5 + hasard(i + 2) * 5;
-    for (const [ox, oy] of [[0, 0], [N, 0], [0, N], [-N, 0], [0, -N]]) {
-      x.beginPath(); x.moveTo(px + ox - s, py + oy); x.lineTo(px + ox - s * 0.6, py + oy - s * 1.3); x.lineTo(px + ox - s * 0.1, py + oy - s * 0.2); x.lineTo(px + ox + s * 0.3, py + oy - s * 1.6); x.lineTo(px + ox + s * 0.5, py + oy - s * 0.2); x.lineTo(px + ox + s, py + oy - s * 1.1); x.lineTo(px + ox + s * 1.1, py + oy); x.closePath();
-      x.fillStyle = fonce; x.fill(); x.lineWidth = 1.5; x.strokeStyle = ombrer(c1, -0.5); x.stroke();
-    }
-  }
-  x.fillStyle = clair; for (let i = 0; i < 22; i++) { x.globalAlpha = 0.5; x.beginPath(); x.arc(hasard(i * 7 + 3) * N, hasard(i * 11 + 2) * N, 1.5 + hasard(i) * 2, 0, 7); x.fill(); }
-  x.globalAlpha = 1;
+function motifHerbe(d) { // 🟩 sol dessiné : dalles d'herbe biseautées (propre et lisible, peu de détails)
+  const k = 'toon2' + d.herbe1; if (cacheGfx[k]) return cacheGfx[k];
+  const c1 = /^#[0-9a-f]{6}$/i.test(d.herbe1 || '') ? d.herbe1 : '#5fd14a', T = 64, N = T * 2, c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d');
+  for (let i = 0; i < 4; i++) { const px = (i % 2) * T, py = Math.floor(i / 2) * T; x.fillStyle = i === 0 || i === 3 ? ombrer(c1, 0.08) : c1; x.fillRect(px, py, T, T);
+    x.fillStyle = 'rgba(255,255,255,.13)'; x.fillRect(px, py, T, 3); x.fillRect(px, py, 3, T);          // biseau clair
+    x.fillStyle = 'rgba(0,0,0,.07)'; x.fillRect(px, py + T - 3, T, 3); x.fillRect(px + T - 3, py, 3, T); } // biseau sombre
+  x.strokeStyle = ombrer(c1, -0.22); x.lineWidth = 2.5; x.lineCap = 'round';
+  for (const [px, py] of [[20, 40], [96, 104], [84, 22]]) { x.beginPath(); x.moveTo(px - 5, py); x.lineTo(px - 7, py - 8); x.moveTo(px, py); x.lineTo(px, py - 11); x.moveTo(px + 5, py); x.lineTo(px + 7, py - 8); x.stroke(); } // quelques touffes
   return cacheGfx[k] = ctx.createPattern(c, 'repeat');
 }
 
@@ -1120,6 +1113,7 @@ function onoEffet(type, x, y) { // onomatopée selon l'effet de l'arme
   if (fort) { choc = Math.max(choc, 0.8); flash = Math.max(flash, 0.35); }
 }
 function dessinerOnos() { // onomatopées (repère du monde)
+  viseeSuper();
   for (const o of onos) {
     const age = 1 - o.vie, k = elastique(Math.min(1, age * 4)), s = 26 * o.gros * (0.3 + 0.7 * k);
     ctx.globalAlpha = Math.min(1, o.vie * 2.5);
@@ -1437,27 +1431,31 @@ function dash(j) { // avance pendant la charge / la rafale ; la charge de Rokh b
 }
 let hudBoutons = [];
 const boutonHUD = q => hudBoutons.find(b => Math.hypot(q.x - sa.l - b.x, q.y - sa.t - b.y) < b.r * 1.3);
-function hudElem() { // boutons SUPER et ACTION (sous le pouce droit)
+function hudElem() { // 🎮 boutons ronds façon arcade : SUPER (anneau de charge) + ACTION (recharge)
   hudBoutons = []; hudObjectif();
   const e = infoElem(moi); if (!e || moi.pv <= 0 || etat !== 'JEU') return;
-  const u = U(), tact = 'ontouchstart' in window, S = { x: W - (tact ? 200 : 150) * u, y: H - (tact ? 190 : 100) * u, r: 34 * u }, A = { x: W - (tact ? 215 : 66) * u, y: H - (tact ? 58 : 100) * u, r: 27 * u };
-  const k = Math.min(1, (moi.superC || 0) / chargeSuper(moi)), ok = moi.superPret;
-  ctx.save(); ctx.translate(S.x, S.y);
-  if (ok) { ctx.save(); ctx.beginPath(); ctx.arc(0, 0, S.r * 2, 0, 7); ctx.clip(); rayons(0, 0, temps * 0.05, '#ffe14a', 0.45, 12); ctx.restore();
-    const p = 1 + Math.sin(temps * 0.2) * 0.07; ctx.scale(p, p); eclat(0, 0, S.r, 10, '#ffe14a', 1, NOIR, 3 * u); }
-  else { ctx.beginPath(); ctx.arc(0, 0, S.r, 0, 7); ctx.fillStyle = 'rgba(11,6,32,.72)'; ctx.fill(); ctx.lineWidth = 3 * u; ctx.strokeStyle = NOIR; ctx.stroke();
-    ctx.beginPath(); ctx.arc(0, 0, S.r - 5 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 6 * u; ctx.lineCap = 'round'; ctx.stroke(); }
-  ctx.restore();
-  iconeElement(e.k, S.x, S.y - 5 * u, S.r * 0.85); titre(ok ? 'SUPER !' : Math.round(k * 100) + '%', S.x, S.y + S.r * 0.62, 13 * u, ok ? '#ff2d55' : '#fff');
+  const u = U(), tact = 'ontouchstart' in window, S = { x: W - (tact ? 205 : 150) * u, y: H - (tact ? 180 : 100) * u, r: (tact ? 40 : 32) * u }, A = { x: W - (tact ? 222 : 66) * u, y: H - (tact ? 60 : 100) * u, r: (tact ? 31 : 26) * u };
+  const rond = (b, c1, c2, halo) => { // ombre portée, dégradé bombé, contour épais, reflet
+    ctx.beginPath(); ctx.arc(b.x, b.y + 5 * u, b.r, 0, 7); ctx.fillStyle = 'rgba(11,6,32,.55)'; ctx.fill();
+    if (halo) { ctx.save(); ctx.globalAlpha = 0.45 + 0.3 * Math.sin(temps * 0.2); ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 1.4, 0, 7); ctx.fillStyle = halo; ctx.fill(); ctx.restore(); }
+    const g = ctx.createRadialGradient(b.x - b.r * 0.3, b.y - b.r * 0.4, b.r * 0.1, b.x, b.y, b.r); g.addColorStop(0, c1); g.addColorStop(1, c2);
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 4 * u; ctx.strokeStyle = NOIR; ctx.stroke();
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r - 5 * u, 0, 7); ctx.lineWidth = 2 * u; ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(b.x - b.r * 0.25, b.y - b.r * 0.45, b.r * 0.45, b.r * 0.2, -0.4, 0, 7); ctx.fillStyle = 'rgba(255,255,255,.28)'; ctx.fill();
+  };
+  const k = Math.min(1, (moi.superC || 0) / chargeSuper(moi)), ok = moi.superPret, ec = e.couleur || '#5ac8fa';
+  rond(S, ok ? '#fff3a0' : '#3a2d9c', ok ? '#ff8a1f' : '#140c3a', ok ? 'rgba(255,225,74,.55)' : null);
+  if (ok) { ctx.save(); ctx.translate(S.x, S.y); ctx.rotate(temps * 0.03); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3 * u; ctx.lineCap = 'round';
+    for (let i = 0; i < 8; i++) { ctx.rotate(Math.PI / 4); ctx.beginPath(); ctx.moveTo(S.r + 7 * u, 0); ctx.lineTo(S.r + 15 * u, 0); ctx.stroke(); } ctx.restore(); }
+  else { ctx.beginPath(); ctx.arc(S.x, S.y, S.r + 3 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 6 * u; ctx.lineCap = 'round'; ctx.stroke(); }
+  ctx.save(); ctx.globalAlpha = ok ? 1 : 0.5; iconeElement(e.k, S.x, S.y, S.r * 1.05); ctx.restore();
   hudBoutons.push({ ...S, vise: true, f: () => lancerSuper(moi, angleAuto()) });
   const reste = Math.max(0, (moi.actionT || 0) - temps), tot = (+e.actionRecharge || 7) * 60;
-  ctx.beginPath(); ctx.arc(A.x, A.y + 4 * u, A.r, 0, 7); ctx.fillStyle = NOIR; ctx.fill();
-  ctx.beginPath(); ctx.arc(A.x, A.y, A.r, 0, 7); ctx.fillStyle = e.couleur || '#5ac8fa'; ctx.fill(); ctx.lineWidth = 3 * u; ctx.strokeStyle = NOIR; ctx.stroke();
-  if (reste) { ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.arc(A.x, A.y, A.r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * reste / tot); ctx.closePath(); ctx.fillStyle = 'rgba(11,6,32,.65)'; ctx.fill(); titre(Math.ceil(reste / 60), A.x, A.y, 20 * u, '#fff'); }
-  else titre(e.actionNom, A.x, A.y, 11 * u, '#fff', 'center', A.r * 1.8);
+  rond(A, ombrer(ec, 0.4), ombrer(ec, -0.35));
+  icone('eclair', A.x, A.y, A.r * 0.95, '#fff');
+  if (reste) { ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.arc(A.x, A.y, A.r - 2 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * reste / tot); ctx.closePath(); ctx.fillStyle = 'rgba(11,6,32,.7)'; ctx.fill(); titre(Math.ceil(reste / 60), A.x, A.y, 20 * u, '#fff'); }
   hudBoutons.push({ ...A, f: () => lancerAction(moi) });
   if (!tact) texte(libTouche(mesTouches.action) + ' : ' + e.actionNom + '  •  ' + libTouche(mesTouches.super) + ' : ' + e.superNom, W / 2, H - 36, 12, '#ffe14a');
-  viseeSuper();
 }
 function auraElem(e) { // au sol : super prêt, vol de Zéphyr, traînée de charge
   if (e.superPret) { ctx.save(); ctx.globalAlpha = 0.55 + 0.3 * Math.sin(temps * 0.25); ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(e.x, e.y + e.r * 0.45, e.r * 1.4, e.r * 0.75, 0, 0, 7); ctx.stroke(); ctx.restore(); }
@@ -1729,11 +1727,10 @@ function angleAuto() { // ennemi visible le plus proche (sinon devant soi)
   return c ? Math.atan2(c.y - moi.y, c.x - moi.x) : moi.angle;
 }
 const joyS = { actif: false }; // 🎯 viser le super en glissant depuis son bouton
-function viseeSuper() { // trait de visée du super (coordonnées de l'interface)
+function viseeSuper() { // 🎯 flèche de visée du super, dessinée sous le perso (repère du monde)
   if (!joyS.actif || !moi) return; const v = vec(joyS); if (v.d < 15) return;
-  const px = (moi.x - cam.x) * zoom + W / 2 - ox, py = (moi.y - cam.y) * zoom + H / 2 - oy - 20 * zoom, L = 260 * zoom;
-  ctx.save(); ctx.translate(px, py); ctx.rotate(v.a); ctx.globalAlpha = 0.55; ctx.fillStyle = '#ffe14a'; ctx.strokeStyle = NOIR; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(10, -14); ctx.lineTo(L, -26); ctx.lineTo(L + 30, 0); ctx.lineTo(L, 26); ctx.lineTo(10, 14); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+  ctx.save(); ctx.translate(moi.x, moi.y); ctx.rotate(v.a); ctx.globalAlpha = 0.6; ctx.fillStyle = '#ffe14a'; ctx.strokeStyle = NOIR; ctx.lineWidth = 3; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(moi.r, -14); ctx.lineTo(260, -26); ctx.lineTo(292, 0); ctx.lineTo(260, 26); ctx.lineTo(moi.r, 14); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
 }
 
 // ---------- 12c. GRAPHISMES : textures & sprites pré-calculés (rapides) ----------
@@ -1859,7 +1856,7 @@ function dessinerJeu() {
                                  if (c === 'C') objs.push([(y + 1) * T - 1, () => { coffre(px, py); fissures(x, y, px, py); }]); });
   dessinerNuages();
   for (const j of joueurs()) if (visible(j) && (j.pv > 0 || ((obtenir3D(j.perso) || {}).spec || { lignes: {} }).lignes.mort))
-    objs.push([j.y + j.r * 0.5, () => { aura(j); dessinerEntite(j, img(j.perso.image), j === moi ? '#3aa0ff' : j.eq === moi.eq ? '#2ecc71' : '#ff3b3b', j.r * 2.95); }]);
+    objs.push([j.y + j.r * 0.5, () => { aura(j); dessinerEntite(j, img(j.perso.image), j === moi ? '#3aa0ff' : j.eq === moi.eq ? '#2ecc71' : '#ff3b3b', j.r * 3.3); }]);
   for (const b of bosses) if (b.pv > 0) objs.push([b.y + b.r * 0.5, () => b.def.cristal ? dessinerCristal(b) : dessinerEntite(b, img(b.def.image), '#ff7b1a', b.r * 3.4)]);
   for (const p of projectiles) if (p.type !== 'lob' && p.type !== 'terrain') objs.push([p.y, () => dessinerProjectile(p)]);
   objs.sort((a, b) => a[0] - b[0]).forEach(o => o[1]());
