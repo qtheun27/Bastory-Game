@@ -1162,6 +1162,12 @@ function migrerConfig(c) {
     D.maps.filter(m => ['ville', 'desert', 'neige', 'volcan'].includes(m.theme)).forEach(m => { if (!c.maps.some(x => x.nom === m.nom)) c.maps.push(copie(m)); });
     c.version = 13;
   }
+  if ((c.version || 0) < 14) { // v14 : persos de base / à débloquer, récompenses jetons et photos de profil
+    c.persos.forEach(p => { if (p.base === undefined) p.base = true; if (p.coutJetons === undefined) p.coutJetons = 3; });
+    (c.recompenses || []).forEach(r => { if (!r.type) r.type = 'essence'; });
+    if (!c.recompenses.some(r => r.type !== 'essence')) { c.recompenses.push({ victoires: 10, type: 'avatar', quantite: 2 }, { victoires: 15, type: 'jetons', quantite: 3 }, { victoires: 25, type: 'avatar', quantite: 2 }, { victoires: 35, type: 'jetons', quantite: 3 }, { victoires: 50, type: 'avatar', quantite: 3 }); c.recompenses.sort((a, b) => a.victoires - b.victoires); }
+    c.version = 14;
+  }
   if ((c.version || 0) < 12) { if (c.armes.rocher) c.armes.rocher.vitesse = 26; c.version = 12; } // v12 : le marteau frappe le sol tout de suite
   if (/wixy\.png$/i.test((c.app || {}).icone || '')) c.app.icone = 'images/icone-maskable-512.png'; // nouvelle icône PWA
   c.modes.forEach(m => {

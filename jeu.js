@@ -332,7 +332,7 @@ function finir(r, msg) {
       persos: { [cleP(baseDe(moi.perso))]: { points: inc(finInfo.points), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0) } } }, { merge: true }).catch(e => console.warn(e));
   }
 }
-function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; if (!persoCharge && v.perso !== undefined) { persoCharge = true; persoIndex = persoSauve = Math.max(0, Math.min(CONFIG.persos.length - 1, +v.perso)); } if (v.hud) Object.assign(hudPerso, v.hud); mesPoints = v.points || 0; if (v.touches && !toucheAttendue) mesTouches = { ...TOUCHES_DEF, ...v.touches }; mesStats = { points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {}, essences: v.essences || {}, recompenses: v.recompenses || [] }; }, () => {}); }
+function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; if (!persoCharge && v.perso !== undefined) { persoCharge = true; persoIndex = persoSauve = Math.max(0, Math.min(CONFIG.persos.length - 1, +v.perso)); } if (v.hud) Object.assign(hudPerso, v.hud); mesPoints = v.points || 0; if (v.touches && !toucheAttendue) mesTouches = { ...TOUCHES_DEF, ...v.touches }; mesStats = { points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {}, essences: v.essences || {}, recompenses: v.recompenses || [], jetons: v.jetons || 0, persosDebloques: v.persosDebloques || [], avatars: v.avatars || [], avatar: v.avatar || null }; }, () => {}); }
 
 // ---------- 8. MULTIJOUEUR (Realtime Database) ----------
 // Salle d'attente → départ quand le max est atteint (ou 10 s après avoir atteint le minimum).
@@ -376,7 +376,7 @@ async function chercherPartie(opts = {}) {
     demarrer(d.map, d.liste);
   });
   s.ref.child('evts').on('child_added', snap => { const e = snap.val(); if (salle === s && etat === 'JEU' && e && (e.par || e.de) !== user.uid) recevoir(e); });
-  s.ref.child('bots').on('value', snap => { if (salle === s && etat === 'JEU' && !hote) for (const [uid, d] of Object.entries(snap.val() || {})) if (autres[uid]) { transitionPV(autres[uid], d.pv); Object.assign(autres[uid], { tx: d.x, ty: d.y, angle: d.a, pv: d.pv, cache: d.c, marche: d.m, bo: d.bo ? d.bo.split(',') : [] }); } });
+  s.ref.child('bots').on('value', snap => { if (salle === s && etat === 'JEU' && !hote && !s.hote) for (const [uid, d] of Object.entries(snap.val() || {})) if (autres[uid]) { transitionPV(autres[uid], d.pv); Object.assign(autres[uid], { tx: d.x, ty: d.y, angle: d.a, pv: d.pv, cache: d.c, marche: d.m, bo: d.bo ? d.bo.split(',') : [] }); } });
   s.ref.child('boss').on('value', snap => { if (salle === s && etat === 'JEU' && !hote) majBossDistants(snap.val() || []); });
 }
 function lancerSalle(avecBots) {
@@ -435,7 +435,9 @@ function majAutres(js) {
   for (const [uid, j] of Object.entries(autres)) {
     if (j.bot) continue; // les bots sont envoyés par l'hôte
     const d = js[uid];
-    if (!d) { j.bot = true; j.niv = j.niv || 1; if (j.pv <= 0) j.pv = 1; continue; } // déconnecté : son perso continue en bot (piloté par l'hôte)
+    if (!d) { j.bot = true; j.niv = j.niv || 1; if (j.pv <= 0) j.pv = 1; // déconnecté : son perso continue en bot
+      if (!hote) { const humains = [moi, ...Object.values(autres)].filter(x => !x.bot && !String(x.uid).startsWith('bot')).map(x => x.uid).sort(); if (humains[0] === moi.uid) { hote = true; if (salle) salle.hote = true; notif('👑 Tu reprends la partie (l\'hôte est parti)'); } }
+      continue; }
     if (d.x !== undefined) { transitionPV(j, d.pv); Object.assign(j, { tx: d.x, ty: d.y, angle: d.a, pv: d.pv, cache: d.c, marche: d.m, bo: d.bo ? d.bo.split(',') : [] }); }
   }
 }
@@ -1757,8 +1759,11 @@ function dessinerMiniMap(def, x, y, w, h) {
 // ---------- 🎁 RÉCOMPENSES : paliers selon le total de victoires ----------
 async function reclamer(i) {
   const r = (CONFIG.recompenses || [])[i]; if (!r || !db || (mesStats.recompenses || []).includes(i) || (mesStats.victoires || 0) < r.victoires) return;
-  const inc = firebase.firestore.FieldValue.increment, ess = {}; (r.element === 'tous' ? Object.keys(CONFIG.elements) : [r.element]).forEach(k => ess[k] = inc(+r.quantite || 0));
-  try { await db.collection('joueurs').doc(user.uid).set({ essences: ess, recompenses: firebase.firestore.FieldValue.arrayUnion(i) }, { merge: true }); notif('🎁 Récompense récupérée !'); vagues.push({ x: W / 2, y: H / 2, t: temps }); }
+  const inc = firebase.firestore.FieldValue.increment, ess = {}, maj = { recompenses: firebase.firestore.FieldValue.arrayUnion(i) };
+  if (r.type === 'jetons') maj.jetons = inc(+r.quantite || 1);
+  else if (r.type === 'avatar') { const ok = avatarsDebloques(), dispo = libAvatars().filter(a => !ok.has(a.cle)).sort(() => Math.random() - 0.5).slice(0, +r.quantite || 1).map(a => a.cle); if (dispo.length) maj.avatars = firebase.firestore.FieldValue.arrayUnion(...dispo); }
+  else { (r.element === 'tous' ? Object.keys(CONFIG.elements) : [r.element]).forEach(k => ess[k] = inc(+r.quantite || 0)); maj.essences = ess; }
+  try { await db.collection('joueurs').doc(user.uid).set(maj, { merge: true }); notif('🎁 Récompense récupérée !'); vagues.push({ x: W / 2, y: H / 2, t: temps }); }
   catch (e) { notif('Impossible : ' + e.message); }
 }
 const nbRecompenses = () => (CONFIG.recompenses || []).filter((r, i) => (mesStats.victoires || 0) >= r.victoires && !(mesStats.recompenses || []).includes(i)).length;
@@ -1775,8 +1780,8 @@ function menuRecompenses() {
     rect(x, y, cw, ch, 16 * u, null, NOIR, 3.5 * u);
     titre('🏆 ' + r.victoires, x + cw / 2, y + 20 * u, 20 * u, '#fff');
     const cy = y + ch * 0.42, sz = Math.min(cw * 0.42, ch * 0.3);
-    if (el) iconeElement(r.element, x + cw / 2, cy, sz); else Object.keys(ELEM_DEF).forEach((kk, n) => iconeElement(kk, x + cw / 2 + (n % 2 ? 1 : -1) * sz * 0.33, cy + (n < 2 ? -1 : 1) * sz * 0.33, sz * 0.55));
-    titre('+' + r.quantite, x + cw / 2, cy + sz * 0.72, 26 * u, '#ffe14a'); texte(el ? 'Essence ' + el.nom : 'Toutes les essences', x + cw / 2, cy + sz * 0.72 + 22 * u, 11 * u, '#fff', 'center', cw - 10 * u);
+    if (r.type === 'jetons') titre('🎟️', x + cw / 2, cy, sz, '#fff'); else if (r.type === 'avatar') titre('🖼️', x + cw / 2, cy, sz, '#fff'); else if (el) iconeElement(r.element, x + cw / 2, cy, sz); else Object.keys(ELEM_DEF).forEach((kk, n) => iconeElement(kk, x + cw / 2 + (n % 2 ? 1 : -1) * sz * 0.33, cy + (n < 2 ? -1 : 1) * sz * 0.33, sz * 0.55));
+    titre('+' + r.quantite, x + cw / 2, cy + sz * 0.72, 26 * u, '#ffe14a'); texte(r.type === 'jetons' ? 'Jetons perso' : r.type === 'avatar' ? 'Photo de profil' : el ? 'Essence ' + el.nom : 'Toutes les essences', x + cw / 2, cy + sz * 0.72 + 22 * u, 11 * u, '#fff', 'center', cw - 10 * u);
     const by = y + ch - 44 * u;
     if (deja) titre('✔ Récupéré', x + cw / 2, by + 17 * u, 16 * u, '#fff');
     else if (ok) { boutonJeu(x + 10 * u, by, cw - 20 * u, 34 * u, '#b6ff4a', '#1fc46b', () => reclamer(i)); titre('Récupérer', x + cw / 2, by + 17 * u, 16 * u, '#fff', 'center', cw - 30 * u); }
@@ -1935,6 +1940,53 @@ async function chercherAmi() {
   try { const r = await db.collection('joueurs').orderBy('pseudo').startAt(q).endAt(q + '\uf8ff').limit(8).get(); rechercheAmis.l = r.docs.filter(d => d.id !== user.uid).map(d => ({ uid: d.id, nom: d.data().pseudo || 'Joueur' })); }
   catch (e) { rechercheAmis.l = []; notif('Recherche impossible : ' + e.message); }
 }
+
+
+// ---------- 🖼️ PHOTOS DE PROFIL (4 par perso / boss, créées automatiquement) & 🔓 PERSOS À DÉBLOQUER ----------
+const estDebloque = p => p.base !== false || (mesStats.persosDebloques || []).includes(cleP(p));
+function bboxImage(im) { // zone réellement dessinée d'un portrait (pour bien centrer)
+  if (im._bb) return im._bb; const c = document.createElement('canvas'), w = c.width = im.width, h = c.height = im.height, x = c.getContext('2d'); x.drawImage(im, 0, 0);
+  const d = x.getImageData(0, 0, w, h).data; let x0 = w, y0 = h, x1 = 0, y1 = 0;
+  for (let y = 0; y < h; y += 2) for (let i = 0; i < w; i += 2) if (d[(y * w + i) * 4 + 3] > 40) { if (i < x0) x0 = i; if (i > x1) x1 = i; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  return im._bb = x1 > x0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : { x: 0, y: 0, w, h };
+}
+const libAvatars = () => [...CONFIG.persos.map(p => ['p', p]), ...Object.values(CONFIG.bosses).filter(b => !b.cristal).map(b => ['b', b])].flatMap(([t, p]) => [0, 1, 2, 3].map(v => ({ cle: t + ':' + p.nom + ':' + v, p, v })));
+const avatarsDebloques = () => new Set([...CONFIG.persos.filter(estDebloque).map(p => 'p:' + p.nom + ':0'), ...(mesStats.avatars || [])]);
+function avatarPerso(p, v = 0) { // 4 styles : en pied • gros plan • gros plan miroir sur rayons • en pied halo sombre
+  const im = carteDe(p); if (!pret(im)) return null; const k = 'av' + v + (p.nom || '') + im.width; if (cacheGfx[k]) return cacheGfx[k];
+  const S = 256, c = document.createElement('canvas'); c.width = c.height = S; const x = c.getContext('2d'), el = elemDe(p), col = /^#[0-9a-f]{6}$/i.test((el && el.couleur) || p.couleur || '') ? (el && el.couleur) || p.couleur : '#5a4dff', bb = bboxImage(im);
+  const g = x.createRadialGradient(S / 2, S * 0.4, 10, S / 2, S / 2, S * 0.7);
+  if (v === 3) { g.addColorStop(0, ombrer(col, 0.1)); g.addColorStop(1, '#140c3a'); } else { g.addColorStop(0, ombrer(col, 0.45)); g.addColorStop(1, ombrer(col, -0.35)); }
+  x.fillStyle = g; x.fillRect(0, 0, S, S);
+  if (v === 2) { x.fillStyle = 'rgba(255,255,255,.22)'; for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; x.beginPath(); x.moveTo(S / 2, S / 2); x.lineTo(S / 2 + Math.cos(a) * S, S / 2 + Math.sin(a) * S); x.lineTo(S / 2 + Math.cos(a + 0.26) * S, S / 2 + Math.sin(a + 0.26) * S); x.fill(); } }
+  const gros = v === 1 || v === 2, cw = gros ? bb.w * 0.8 : bb.w, ch = gros ? Math.min(bb.h, cw) : bb.h, sx = bb.x + (bb.w - cw) / 2, sy = bb.y, k2 = (S * (gros ? 1.05 : 0.86)) / Math.max(cw, ch);
+  x.save(); if (v === 2) { x.translate(S, 0); x.scale(-1, 1); }
+  x.drawImage(im, sx, sy, cw, ch, S / 2 - cw * k2 / 2, gros ? S * 0.08 : S / 2 - ch * k2 / 2, cw * k2, ch * k2); x.restore();
+  return cacheGfx[k] = c;
+}
+function monAvatar() { const a = mesStats.avatar; if (a && a.d) { const i = img(a.d); if (pret(i)) return i; }
+  const l = a && a.cle && libAvatars().find(o => o.cle === a.cle); return l ? avatarPerso(l.p, l.v) : avatarPerso(selPerso(), 1); }
+function dessinerAvatar(im, x, y, r, col = '#fff') { ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.clip(); if (im && pret(im)) ctx.drawImage(im, x - r, y - r, r * 2, r * 2); else { ctx.fillStyle = '#3a2d9c'; ctx.fillRect(x - r, y - r, r * 2, r * 2); } ctx.restore();
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.lineWidth = Math.max(2, r * 0.12); ctx.strokeStyle = col; ctx.stroke(); }
+const sauverAvatar = a => { if (db && user) db.collection('joueurs').doc(user.uid).set({ avatar: a }, { merge: true }).then(() => notif('🖼️ Photo de profil changée')).catch(e => notif('Impossible : ' + e.message)); };
+function importerAvatar() { const f = document.createElement('input'); f.type = 'file'; f.accept = 'image/*';
+  f.onchange = async () => { const fi = f.files[0]; if (!fi) return; const im = new Image(); im.src = URL.createObjectURL(fi); await im.decode();
+    const c = document.createElement('canvas'); c.width = c.height = 192; const x = c.getContext('2d'), k = Math.max(192 / im.width, 192 / im.height); x.drawImage(im, 96 - im.width * k / 2, 96 - im.height * k / 2, im.width * k, im.height * k);
+    sauverAvatar({ d: c.toDataURL('image/jpeg', 0.85) }); }; f.click(); }
+function menuAvatar() { // 🖼️ choisir sa photo de profil
+  const u = U(), top = barreHaut('PHOTO DE PROFIL', true), l = libAvatars(), ok = avatarsDebloques(), s = 74 * u, cols = Math.max(4, Math.floor((W - 40 * u) / (s + 12 * u))), par = cols * Math.max(1, Math.floor((H - top - 110 * u) / (s + 12 * u))), pages = Math.ceil(l.length / par);
+  pageMenu = Math.min(pageMenu, pages - 1);
+  bouton3D(20 * u, top + 8 * u, 230 * u, 40 * u, '#5ff0ff', '#1e7bff', importerAvatar); titre('📷 Importer ma photo', 135 * u, top + 27 * u, 15 * u, '#fff');
+  texte(ok.size + ' / ' + l.length + ' débloquées • gagne-en dans les Récompenses', 270 * u, top + 28 * u, 12 * u, '#ffe14a', 'left');
+  l.slice(pageMenu * par, pageMenu * par + par).forEach((a, i) => { const x = 20 * u + (i % cols) * (s + 12 * u) + s / 2, y = top + 64 * u + Math.floor(i / cols) * (s + 12 * u) + s / 2, dispo = ok.has(a.cle), sel = (mesStats.avatar || {}).cle === a.cle;
+    ctx.save(); if (!dispo) ctx.globalAlpha = 0.35; dessinerAvatar(avatarPerso(a.p, a.v), x, y, s / 2, sel ? '#ffe14a' : '#fff'); ctx.restore();
+    if (!dispo) texte('🔒', x, y, 20 * u, '#fff'); else zones.push({ x: x - s / 2, y: y - s / 2, w: s, h: s, action: () => sauverAvatar({ cle: a.cle }) }); });
+  if (pages > 1) { bouton3D(20 * u, H - 44 * u, 60 * u, 32 * u, '#8e7bff', '#5b3fd6', () => pageMenu = (pageMenu + pages - 1) % pages); texte('◀', 50 * u, H - 28 * u, 14 * u, '#fff');
+    texte((pageMenu + 1) + ' / ' + pages, W / 2, H - 28 * u, 13 * u, '#fff'); bouton3D(W - 80 * u, H - 44 * u, 60 * u, 32 * u, '#8e7bff', '#5b3fd6', () => pageMenu = (pageMenu + 1) % pages); texte('▶', W - 50 * u, H - 28 * u, 14 * u, '#fff'); }
+}
+async function debloquerPerso(p) { const c = +p.coutJetons || 3; if ((mesStats.jetons || 0) < c) return notif('Il te faut ' + c + ' 🎟️ jetons perso (Récompenses)');
+  try { await db.collection('joueurs').doc(user.uid).set({ jetons: firebase.firestore.FieldValue.increment(-c), persosDebloques: firebase.firestore.FieldValue.arrayUnion(cleP(p)), avatars: firebase.firestore.FieldValue.arrayUnion('p:' + p.nom + ':0') }, { merge: true }); notif('🔓 ' + p.nom + ' débloqué !'); vagues.push({ x: W / 2, y: H / 2, t: temps }); }
+  catch (e) { notif('Impossible : ' + e.message); } }
 
 // ---------- 12c. GRAPHISMES : textures & sprites pré-calculés (rapides) ----------
 const cacheGfx = {};
@@ -2362,8 +2414,7 @@ function barreHaut(titreEcran, retour) {
   } else { // profil
     const p = selPerso(), im = carteDe(p);
     verre(12 * u, 9 * u, 230 * u, 42 * u, 21 * u);
-    ctx.beginPath(); ctx.arc(33 * u, 30 * u, 17 * u, 0, 7); ctx.fillStyle = p.couleur; ctx.fill();
-    if (pret(im)) ctx.drawImage(im, 17 * u, 14 * u, 32 * u, 32 * u);
+    dessinerAvatar(monAvatar(), 33 * u, 30 * u, 17 * u); zones.push({ x: 12 * u, y: 9 * u, w: 230 * u, h: 42 * u, action: () => allerA('avatar') });
     texte(nomJoueur(), 58 * u, 23 * u, 14 * u, '#fff', 'left', 175 * u);
     texte(mesStats.victoires + ' victoires • ' + mesStats.parties + ' parties', 58 * u, 39 * u, 10 * u, 'rgba(255,255,255,.65)', 'left');
     zones.push({ x: 12 * u, y: 9 * u, w: 230 * u, h: 42 * u, action: () => ouvrirProfil(auth, p => db && db.collection('joueurs').doc(user.uid).set({ pseudo: p }, { merge: true })) });
@@ -2395,7 +2446,7 @@ function dessinerMenu() {
   ecran(); zones = [];
   fondMenu();
   if (etat === 'AUTH') return;
-  ({ accueil: menuAccueil, persos: menuPersos, modes: menuModes, classement: menuClassement, pouvoirs: menuPouvoirs, amis: menuAmis, recompenses: menuRecompenses, commandes: menuCommandes, hud: menuHud })[ecranMenu]();
+  ({ accueil: menuAccueil, persos: menuPersos, modes: menuModes, classement: menuClassement, pouvoirs: menuPouvoirs, amis: menuAmis, recompenses: menuRecompenses, commandes: menuCommandes, hud: menuHud, avatar: menuAvatar })[ecranMenu]();
   const kt = Math.min(1, (temps - transT) / 14); if (kt < 1) { ctx.fillStyle = `rgba(5,7,15,${(1 - kt) * 0.9})`; ctx.fillRect(-100, -100, W + 200, H + 200); } // fondu entre écrans
   dessinerVagues(); dessinerNotif();
   if (invitations.length) modaleInvitation();
@@ -2431,7 +2482,7 @@ function menuAccueil() {
   const im = carteDe(p), b = Math.sin(temps * 0.045) * 6 * u;
   const vh = vitrineHero(p);
   if (vh) { // héros 3D haute définition, immobile ; on le fait tourner en glissant le doigt
-    const T = Math.round(Math.min(720, taille * 1.35 * dpr)), c = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = taille * 0.82 * Math.min(1.25, +p.modeleEchelle || 1) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
+    const T = Math.round(Math.min(720, taille * 1.35 * dpr)), c = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = taille * 0.82 * Math.min(1, 0.72 + 0.2 * Math.min(1.4, +p.modeleEchelle || 1)) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
     ctx.imageSmoothingQuality = 'high'; ctx.drawImage(c, cx - D / 2, sol - 4 * u - vh.bas * D, D, D);
   } else if (pret(im)) ctx.drawImage(im, cx - taille / 2, cy - taille / 2 - 14 * u + b, taille, taille);
   heroZone = { x: cx - taille / 2, y: cy - taille / 2, w: taille, h: taille };
@@ -2465,7 +2516,7 @@ function menuAccueil() {
   const membres = [{ nom: chefMoi ? nomJoueur() : groupe.nomChef, moi: chefMoi }, ...Object.entries(groupe.membres).map(([uid, v]) => ({ nom: v.nom, moi: uid === user.uid }))];
   for (let i = 0; i < slots; i++) {
     const sx = mx + r + 4 * u + i * (r * 2 + 12 * u), sy = ly + 22 * u + r, mb = membres[i];
-    if (mb) { if (mb.moi && pret(im)) { ctx.beginPath(); ctx.arc(sx, sy, r, 0, 7); ctx.fillStyle = p.couleur; ctx.fill(); ctx.drawImage(im, sx - r * 0.9, sy - r * 0.9, r * 1.8, r * 1.8); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); } else avatarLettre(mb.nom, sx, sy, r); }
+    if (mb) { if (mb.moi) dessinerAvatar(monAvatar(), sx, sy, r); else avatarLettre(mb.nom, sx, sy, r); }
     else { ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.arc(sx, sy, r, 0, 7); ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]); icone('plus', sx, sy, 16 * u, 'rgba(255,255,255,.8)');
       zones.push({ x: sx - r, y: sy - r, w: r * 2, h: r * 2, action: () => allerA('amis') }); }
   }
@@ -2488,10 +2539,11 @@ function menuPersos() {
   ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, zoneW, zoneH); ctx.clip(); rayons(cx, sol - taille * 0.45, temps * 0.004, ombrer(c, 0.35), 0.3, 16);
   const hg = ctx.createRadialGradient(cx, sol - taille * 0.4, 0, cx, sol - taille * 0.4, taille * 0.6); hg.addColorStop(0, c + '88'); hg.addColorStop(1, c + '00'); ctx.fillStyle = hg; ctx.fillRect(x0, y0, zoneW, zoneH); ctx.restore();
   ctx.save(); ctx.translate(cx, sol); ctx.scale(1, 0.26); const og = ctx.createRadialGradient(0, 0, 0, 0, 0, taille * 0.4); og.addColorStop(0, 'rgba(0,0,0,.5)'); og.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = og; ctx.beginPath(); ctx.arc(0, 0, taille * 0.4, 0, 7); ctx.fill(); ctx.restore();
-  const vh = vitrineHero(p);
-  if (vh) { const T = Math.round(Math.min(720, taille * 1.3 * dpr)), im3 = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = taille * 0.95 * Math.min(1.25, +p.modeleEchelle || 1) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
+  const vh = vitrineHero(p), gris = !estDebloque(p); if (gris) ctx.filter = 'grayscale(1) brightness(.55)';
+  if (vh) { const T = Math.round(Math.min(720, taille * 1.3 * dpr)), im3 = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = taille * 0.95 * Math.min(1, 0.72 + 0.2 * Math.min(1.4, +p.modeleEchelle || 1)) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
     ctx.drawImage(im3, cx - D / 2 + off, sol - 4 * u - vh.bas * D, D, D); }
   else { const im = carteDe(p); if (pret(im)) ctx.drawImage(im, cx - taille / 2 + off, sol - taille, taille, taille); }
+  ctx.filter = 'none'; if (gris) { titre('🔒 ' + (+p.coutJetons || 3) + ' 🎟️', cx, sol - taille * 0.45, 34 * u, '#ffe14a'); texte('Tu as ' + (mesStats.jetons || 0) + ' 🎟️ jetons perso', cx, sol - taille * 0.45 + 30 * u, 13 * u, '#fff'); }
   titre(p.nom, cx + off * 0.5, sol + 24 * u, 40 * u, '#fff', 'center', zoneW - 120 * u);
   if (ELEM_DEF[cleElem(p)]) iconeElement(cleElem(p), cx - 70 * u, sol + 56 * u, 20 * u);
   texte('Niveau ' + niveauDe(p) + (persoVue === persoIndex ? '  •  ✔ Choisi' : ''), cx + 10 * u, sol + 56 * u, 13 * u, persoVue === persoIndex ? '#b6ff4a' : '#ffe14a');
@@ -2523,8 +2575,9 @@ function menuPersos() {
   const choisi = persoVue === persoIndex, bh = 44 * u, bw = (panW - 50 * u) / 2, by = py + ph - bh - 12 * u, ep = elemDe(p), nvP = niveauDe(p), maxN = +(CONFIG.progression || {}).niveauMax || 10;
   if (ep) { bouton3D(px + 20 * u, by, bw, bh, nvP >= maxN ? '#9aa5b8' : ep.couleur, nvP >= maxN ? '#5d6778' : ombrer(ep.couleur, -0.35), () => evoluer(p));
     texte(nvP >= maxN ? 'Niveau max' : `Évoluer • ${coutNiveau(nvP)} ${ep.icone}`, px + 20 * u + bw / 2, by + bh / 2, 13 * u, '#fff', 'center', bw - 12 * u); }
-  bouton3D(ep ? px + 30 * u + bw : px + 20 * u, by, ep ? bw : panW - 40 * u, bh, choisi ? '#9aa5b8' : '#4cd964', choisi ? '#5d6778' : '#1f9d3a', choisi ? null : () => { persoIndex = persoVue; allerA('accueil'); });
-  texte(choisi ? '✔ Choisi' : 'Choisir', (ep ? px + 30 * u + bw * 1.5 : px + panW / 2), by + bh / 2, 15 * u, '#fff');
+  const verrou = !estDebloque(p);
+  bouton3D(ep ? px + 30 * u + bw : px + 20 * u, by, ep ? bw : panW - 40 * u, bh, verrou ? '#ffd23f' : choisi ? '#9aa5b8' : '#4cd964', verrou ? '#ff8a1f' : choisi ? '#5d6778' : '#1f9d3a', verrou ? () => debloquerPerso(p) : choisi ? null : () => { persoIndex = persoVue; allerA('accueil'); });
+  texte(verrou ? '🔓 ' + (+p.coutJetons || 3) + ' 🎟️' : choisi ? '✔ Choisi' : 'Choisir', (ep ? px + 30 * u + bw * 1.5 : px + panW / 2), by + bh / 2, 15 * u, '#fff');
   // porte-monnaie d'essences
   const els = Object.entries(CONFIG.elements || {}), pw = (panW - 40 * u - (els.length - 1) * 6 * u) / Math.max(1, els.length);
   els.forEach(([k, e2], n) => { const ex = px + 20 * u + n * (pw + 6 * u); verre(ex, by - 36 * u, pw, 26 * u, 13 * u); texte(e2.icone + ' ' + ((mesStats.essences || {})[k] || 0), ex + pw / 2, by - 23 * u, 12 * u, '#fff', 'center', pw - 8 * u); }); // essences
@@ -2851,7 +2904,7 @@ async function detecterModeles() {
       const chemin = 'modeles/' + f.name; if (CONFIG.persos.some(p => p.modele === chemin)) continue;
       const m = f.name.replace(/\.glb$/i, '').match(/^(terre|air|eau|feu)[-_ ](.+)$/i), element = m ? m[1].toLowerCase() : '', nom = (m ? m[2] : f.name.replace(/\.glb$/i, '')).replace(/[-_]+/g, ' ').toUpperCase().slice(0, 16);
       const el = (CONFIG.elements || {})[element] || {}, a = ARME[element] && CONFIG.armes[ARME[element]] ? ARME[element] : Object.keys(CONFIG.armes)[0];
-      CONFIG.persos.push({ nom, element, modele: chemin, modeleEchelle: 1, modeleRotation: 0, couleur: el.couleur || '#8b5cf6', image: '', imageCarte: '', arme: a,
+      CONFIG.persos.push({ base: false, coutJetons: 3,  nom, element, modele: chemin, modeleEchelle: 1, modeleRotation: 0, couleur: el.couleur || '#8b5cf6', image: '', imageCarte: '', arme: a,
         pvMax: 5500, vitesse: 5, degats: 1400, portee: 400, delaiTir: 28, munitions: 3, recharge: 55 });
     }
   } catch (e) { console.warn('Détection des modèles', e); }

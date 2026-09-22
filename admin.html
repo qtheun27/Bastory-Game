@@ -132,7 +132,7 @@ const CH = {
           ['attenteDepart','Attente avant le départ quand il y a assez de joueurs (s)','number'],['bots','Compléter avec des bots 🤖','check'],['attenteBots','Attente avant les bots (s)','number'],
           ['boss','Boss activés','check'],['nbBoss','Nombre de boss (max 10)','number'],
           ['typesBoss','Types de boss (aucun coché = au hasard)','multi',() => Object.entries(cfg.bosses).map(([k, b]) => [k, b.nom])],['map','Map','select',optMaps]],
-  perso: [['nom','Nom','text'],['couleur','Couleur','color'],['animAccueil','🎬 Animation dans les menus (accueil, persos)','anims'],['pvMax','Points de vie','number'],
+  perso: [['nom','Nom','text'],['base','🔓 Perso de base (débloqué d\'office)','check'],['coutJetons','🎟️ Coût pour le débloquer (jetons perso)','number'],['couleur','Couleur','color'],['animAccueil','🎬 Animation dans les menus (accueil, persos)','anims'],['pvMax','Points de vie','number'],
           ['taille','Taille (rayon, px)','number'],['vitesse','Vitesse (px par image, 2 à 8)','number'],['arme','Arme','select',optArmes],['degats','Dégâts','number'],['portee','Portée (px)','number'],['delaiTir','Cadence : délai entre 2 tirs (60 = 1 s)','number'],
           ['munitions','Nombre de munitions','number'],['recharge','Recharge d\'1 munition (60 = 1 s)','number'],
           ['element','Élément','select',() => [['', 'Aucun'], ...Object.entries(cfg.elements || {}).map(([k, e]) => [k, e.icone + ' ' + e.nom])]],
@@ -222,6 +222,9 @@ function formulaire(obj, champs) {
     const el2 = [...f.children], maj = () => champs.forEach(([k], i) => { if (C[k] && el2[i]) el2[i].style.display = C[k](obj) ? '' : 'none'; });
     maj(); f.addEventListener('input', maj); f.addEventListener('change', maj);
   }
+  if (champs.some(c => c[0] === 'type') && champs.some(c => c[0] === 'element') && !champs.some(c => c[0] === 'nom')) { // 🎁 palier : essence seulement si type essence
+    const i = champs.findIndex(c => c[0] === 'element'), e2 = f.children[i], maj2 = () => e2.style.display = (obj.type || 'essence') === 'essence' ? '' : 'none'; maj2(); f.addEventListener('change', maj2);
+  }
   return f;
 }
 // 📷 Upload d'image (256 px) + 🪄 gomme magique qui retire le fond uni
@@ -308,12 +311,12 @@ const VUES = {
       try {
         const hote = location.hostname.match(/^([^.]+)\.github\.io$/), depot = (cfg.app && cfg.app.depot) || (hote && hote[1] + '/' + location.pathname.split('/')[1]); if (!depot) return;
         const l = await (await fetch(`https://api.github.com/repos/${depot}/contents/modeles`)).json(); if (!Array.isArray(l)) return;
-        const nouveaux = l.filter(f => /\.glb$/i.test(f.name) && !cfg.persos.some(p => p.modele === 'modeles/' + f.name)); if (!nouveaux.length) return;
+        const nouveaux = l.filter(f => /\.glb$/i.test(f.name) && !/^boss[-_ ]/i.test(f.name) && !cfg.persos.some(p => p.modele === 'modeles/' + f.name)); // les « boss-… » ne sont jamais des persos if (!nouveaux.length) return;
         z.prepend(el('div', { className: 'carte' }, el('h3', { textContent: '📂 Nouveaux modèles détectés' }),
           el('p', { className: 'aide', textContent: 'Déjà jouables avec des stats par défaut. Ajoute-les ici pour régler leurs stats, puis publie.' }),
           ...nouveaux.map(f => el('div', { className: 'outils' }, el('span', { textContent: f.name }), el('button', { textContent: '➕ Ajouter', onclick: () => {
             const m = f.name.replace(/\.glb$/i, '').match(/^(terre|air|eau|feu)[-_ ](.+)$/i);
-            cfg.persos.push({ nom: (m ? m[2] : f.name.replace(/\.glb$/i, '')).replace(/[-_]+/g, ' ').toUpperCase().slice(0, 16), element: m ? m[1].toLowerCase() : '', modele: 'modeles/' + f.name, modeleEchelle: 1, modeleRotation: 0,
+            cfg.persos.push({ base: false, coutJetons: 3, nom: (m ? m[2] : f.name.replace(/\.glb$/i, '')).replace(/[-_]+/g, ' ').toUpperCase().slice(0, 16), element: m ? m[1].toLowerCase() : '', modele: 'modeles/' + f.name, modeleEchelle: 1, modeleRotation: 0,
               couleur: '#8b5cf6', image: '', imageCarte: '', arme: Object.keys(cfg.armes)[0], pvMax: 5500, vitesse: 5, degats: 1400, portee: 400, delaiTir: 28, munitions: 3, recharge: 55 });
             modifie(); afficher(); } })))));
       } catch (e) {}
@@ -323,7 +326,7 @@ const VUES = {
       if (cfg.persos.length > 1 && confirm('Supprimer ' + p.nom + ' ?')) { cfg.persos.splice(i, 1); modifie(); afficher(); }
     })));
     z.append(el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouveau perso', onclick: () => {
-      cfg.persos.push({ nom: 'NOUVEAU', image: '', imageCarte: '', munitions: 3, recharge: 60, element: 'terre', modele: '', modeleEchelle: 1, modeleRotation: 0, couleur: '#e67e22', pvMax: 5000, vitesse: 5, arme: Object.keys(cfg.armes)[0], degats: 1000, portee: 350, delaiTir: 30 });
+      cfg.persos.push({ base: false, coutJetons: 3, nom: 'NOUVEAU', image: '', imageCarte: '', munitions: 3, recharge: 60, element: 'terre', modele: '', modeleEchelle: 1, modeleRotation: 0, couleur: '#e67e22', pvMax: 5000, vitesse: 5, arme: Object.keys(cfg.armes)[0], degats: 1000, portee: 350, delaiTir: 30 });
       modifie(); afficher();
     } })), g);
   },
@@ -373,7 +376,7 @@ const VUES = {
       ['gainVictoire','Essence gagnée par victoire','number'],['gainDefaite','Essence gagnée par défaite','number']])));
     const optEl = [...Object.entries(cfg.elements).map(([k, e]) => [k, e.icone + ' ' + e.nom]), ['tous', '🌈 Tous les éléments']];
     cfg.recompenses = cfg.recompenses || [];
-    cfg.recompenses.forEach((r, i) => g.append(carte('🎁 Palier ' + (i + 1), formulaire(r, [['victoires','Victoires totales nécessaires','number'],['element','Essence offerte','select',optEl],['quantite','Quantité','number']]),
+    cfg.recompenses.forEach((r, i) => g.append(carte('🎁 Palier ' + (i + 1), formulaire(r, [['victoires','Victoires totales nécessaires','number'],['type','Récompense','select',[['essence','💎 Essence'],['jetons','🎟️ Jetons perso (pour débloquer des persos)'],['avatar','🖼️ Photo(s) de profil au hasard (sans doublon)']]],['element','Essence offerte','select',optEl],['quantite','Quantité','number']]),
       () => { cfg.recompenses.splice(i, 1); modifie(); afficher(); })));
     z.append(el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouveau palier de récompense', onclick: () => { const d = cfg.recompenses[cfg.recompenses.length - 1];
       cfg.recompenses.push({ victoires: d ? d.victoires + 10 : 1, element: 'tous', quantite: 50 }); cfg.recompenses.sort((a, b) => a.victoires - b.victoires); modifie(); afficher(); } })));
