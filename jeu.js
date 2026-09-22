@@ -1027,7 +1027,8 @@ function bd(txt, x, y, taille, couleur = '#ffe14a', rot = 0, halo = '#fff') { //
 // ---------- TYPOGRAPHIE : textes contourés façon arcade ----------
 function texte(t, x, y, taille, couleur, align = 'center', maxW) {
   t = String(t);
-  const ems = Object.entries(CONFIG.elements || {}).filter(([k, e]) => ELEM_DEF[k] && e.icone && t.includes(e.icone));
+  if (!texte.re) { texte.all = Object.entries(CONFIG.elements || {}).filter(([k, e]) => ELEM_DEF[k] && e.icone); texte.re = new RegExp(texte.all.map(([, e]) => e.icone.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') || '$^'); }
+  const ems = texte.re.test(t) ? texte.all.filter(([, e]) => t.includes(e.icone)) : [];
   if (ems.length) {
     const re = new RegExp('(' + ems.map(([, e]) => e.icone.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')'), parts = t.split(re).filter(Boolean), cle = s => (ems.find(([, e]) => e.icone === s) || [])[0];
     ctx.font = `600 ${taille}px ${POLICE}`; const tw = parts.reduce((a, s) => a + (cle(s) ? taille * 1.3 : ctx.measureText(s).width), 0);
@@ -2310,8 +2311,8 @@ function barreHaut(titreEcran, retour) {
     texte(mesStats.victoires + ' victoires • ' + mesStats.parties + ' parties', 58 * u, 39 * u, 10 * u, 'rgba(255,255,255,.65)', 'left');
     zones.push({ x: 12 * u, y: 9 * u, w: 230 * u, h: 42 * u, action: () => ouvrirProfil(auth, p => db && db.collection('joueurs').doc(user.uid).set({ pseudo: p }, { merge: true })) });
   }
-  pastille(W - 356 * u, 12 * u, 124 * u, 'trophee', mesStats.points + ' pts', null, '#ffd400');
-  pastille(W - 224 * u, 12 * u, 118 * u, '●', enLigne + ' en ligne');
+  pastille(W - 356 * u, 12 * u, 124 * u, 'trophee', mesStats.points + ' pts', null, '#ffd400'); zones.push({ x: W - 356 * u, y: 12 * u, w: 124 * u, h: 34 * u, action: () => allerA('classement') });
+  pastille(W - 224 * u, 12 * u, 118 * u, '●', enLigne + ' en ligne'); zones.push({ x: W - 224 * u, y: 12 * u, w: 118 * u, h: 34 * u, action: () => allerA('amis') });
   ctx.beginPath(); ctx.arc(W - 224 * u + 19 * u, 29 * u, 5 * u, 0, 7); ctx.fillStyle = '#34d399'; ctx.fill();
   if (estAdmin(user)) { verre(W - 98 * u, 12 * u, 36 * u, 34 * u, 17 * u); icone('reglages', W - 80 * u, 29 * u, 18 * u); // ⚙️ visible seulement pour les admins
     zones.push({ x: W - 98 * u, y: 12 * u, w: 36 * u, h: 34 * u, action: () => location.href = 'admin.html' }); }
@@ -2372,7 +2373,7 @@ function menuAccueil() {
   const im = carteDe(p), b = Math.sin(temps * 0.045) * 6 * u;
   const vh = vitrineHero(p);
   if (vh) { // héros 3D haute définition, immobile ; on le fait tourner en glissant le doigt
-    const T = Math.round(Math.min(900, taille * 1.6 * dpr)), c = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = taille * 0.82 * Math.min(1.25, +p.modeleEchelle || 1) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
+    const T = Math.round(Math.min(720, taille * 1.35 * dpr)), c = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = taille * 0.82 * Math.min(1.25, +p.modeleEchelle || 1) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
     ctx.imageSmoothingQuality = 'high'; ctx.drawImage(c, cx - D / 2, sol - 4 * u - vh.bas * D, D, D);
   } else if (pret(im)) ctx.drawImage(im, cx - taille / 2, cy - taille / 2 - 14 * u + b, taille, taille);
   heroZone = { x: cx - taille / 2, y: cy - taille / 2, w: taille, h: taille };
@@ -2430,7 +2431,7 @@ function menuPersos() {
   const hg = ctx.createRadialGradient(cx, sol - taille * 0.4, 0, cx, sol - taille * 0.4, taille * 0.6); hg.addColorStop(0, c + '88'); hg.addColorStop(1, c + '00'); ctx.fillStyle = hg; ctx.fillRect(x0, y0, zoneW, zoneH); ctx.restore();
   ctx.save(); ctx.translate(cx, sol); ctx.scale(1, 0.26); const og = ctx.createRadialGradient(0, 0, 0, 0, 0, taille * 0.4); og.addColorStop(0, 'rgba(0,0,0,.5)'); og.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = og; ctx.beginPath(); ctx.arc(0, 0, taille * 0.4, 0, 7); ctx.fill(); ctx.restore();
   const vh = vitrineHero(p);
-  if (vh) { const T = Math.round(Math.min(900, taille * 1.5 * dpr)), im3 = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = taille * 0.95 * Math.min(1.25, +p.modeleEchelle || 1) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
+  if (vh) { const T = Math.round(Math.min(720, taille * 1.3 * dpr)), im3 = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = taille * 0.95 * Math.min(1.25, +p.modeleEchelle || 1) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
     ctx.drawImage(im3, cx - D / 2 + off, sol - 4 * u - vh.bas * D, D, D); }
   else { const im = carteDe(p); if (pret(im)) ctx.drawImage(im, cx - taille / 2 + off, sol - taille, taille, taille); }
   titre(p.nom, cx + off * 0.5, sol + 24 * u, 40 * u, '#fff', 'center', zoneW - 120 * u);

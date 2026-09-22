@@ -12,7 +12,7 @@ const Modele3D = (() => {
   let GRAD = null; // 3 tons : ombre / mi-ton / lumière (rendu "anime")
   const aplats = new Map();
   function aplat(t) { if (t) { t.anisotropy = 8; t.needsUpdate = true; } return t; } // texture Meshy telle quelle (pleine résolution)
-  const toon = (m, skin) => new THREE.MeshBasicMaterial({ map: aplat(m.map) || null, color: m.color || new THREE.Color(0xffffff), transparent: !!m.transparent, opacity: m.opacity === undefined ? 1 : m.opacity, alphaTest: m.alphaTest || 0, side: m.side === undefined ? THREE.FrontSide : m.side, skinning: skin, morphTargets: !!m.morphTargets }); // couleurs de la texture telles quelles (seul effet : le contour noir)
+  const toon = (m, skin) => new THREE.MeshToonMaterial({ map: aplat(m.map) || null, color: m.color || new THREE.Color(0xffffff), gradientMap: GRAD, transparent: !!m.transparent, opacity: m.opacity === undefined ? 1 : m.opacity, alphaTest: m.alphaTest || 0, side: m.side === undefined ? THREE.FrontSide : m.side, skinning: skin, morphTargets: !!m.morphTargets }); // ombrage doux, couleurs d'origine
   function contour(src, ep, cache = {}) { // ✒️ contour noir : silhouette élargie dessinée sous l'image
     const w = src.width, h = src.height;
     for (const k of ['sil', 'out']) { if (!cache[k]) cache[k] = document.createElement('canvas'); if (cache[k].width !== w || cache[k].height !== h) { cache[k].width = w; cache[k].height = h; } }
@@ -27,12 +27,12 @@ const Modele3D = (() => {
     const c = document.createElement('canvas'); c.width = c.height = S;
     rendu = new THREE.WebGLRenderer({ canvas: c, alpha: true, antialias: true, preserveDrawingBuffer: true });
     rendu.setPixelRatio(1); rendu.setClearColor(0x000000, 0); rendu.outputEncoding = THREE.sRGBEncoding;
-    GRAD = new THREE.DataTexture(new Uint8Array([72, 72, 72, 255, 160, 160, 160, 255, 255, 255, 255, 255]), 3, 1, THREE.RGBAFormat);
+    GRAD = new THREE.DataTexture(new Uint8Array([160, 160, 160, 255, 215, 215, 215, 255, 255, 255, 255, 255]), 3, 1, THREE.RGBAFormat);
     GRAD.minFilter = GRAD.magFilter = THREE.NearestFilter; GRAD.generateMipmaps = false; GRAD.needsUpdate = true;
     scene = new THREE.Scene();
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x4b4070, 0.42));
-    const soleil = new THREE.DirectionalLight(0xfff4e0, 0.78); soleil.position.set(-2, 5, 3); scene.add(soleil);
-    const contre = new THREE.DirectionalLight(0x9fe3ff, 0.22); contre.position.set(3, 2, -3); scene.add(contre);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xd0c8e8, 0.4));
+    const soleil = new THREE.DirectionalLight(0xffffff, 0.62); soleil.position.set(-2, 5, 3); scene.add(soleil);
+    const contre = new THREE.DirectionalLight(0xffffff, 0.12); contre.position.set(3, 2, -3); scene.add(contre);
     camera = new THREE.PerspectiveCamera(30, 1, 0.1, 60); camera.position.set(0, 5.6, 5.4); camera.lookAt(0, 1.15, 0); // vue 3/4 du dessus (avec de la marge pour les grands gestes)
     loader = new THREE.GLTFLoader();
     if (THREE.DRACOLoader) { const dr = new THREE.DRACOLoader(); dr.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.4.1/'); loader.setDRACOLoader(dr); } // modèles compressés (Meshy)
@@ -89,6 +89,9 @@ const Modele3D = (() => {
     scene.add(m.racine); rendu.render(scene, camera); scene.remove(m.racine);
     return rendu.domElement;
   }
+  function bords(c0) { const c = document.createElement('canvas'); c.width = c0.width; c.height = c0.height; c.getContext('2d').drawImage(c0, 0, 0); // copie 2D de l'image WebGL
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data, w = c.width, h = c.height, a = (x, y) => d[(y * w + x) * 4 + 3] > 30; let t = false;
+    for (let x = 0; x < w; x += 3) if (a(x, 1) || a(x, h - 2)) { t = true; break; } if (!t) for (let y = 0; y < h; y += 3) if (a(1, y) || a(w - 2, y)) { t = true; break; } return t; }
   function cadrage(c) { // hauteur réelle du perso dans l'image (pour l'afficher à la bonne taille)
     const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let haut = c.height, bas = 0;
     for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x += 2) if (d[(y * c.width + x) * 4 + 3] > 30) { if (y < haut) haut = y; if (y > bas) bas = y; }
@@ -123,7 +126,8 @@ const Modele3D = (() => {
   }
   async function visage(p) { // image de face (cartes, portraits)
     const m = await charger(p); if (!m) return null;
-    const c = document.createElement('canvas'); c.width = c.height = 512; c.getContext('2d').drawImage(contour(photo(m, Math.PI / 2, 'repos', 0, 512, 1, true), 5), 0, 0); // portrait HD
+    const c = document.createElement('canvas'); c.width = c.height = 512; let z = 1; for (let n = 0; n < 5 && bords(photo(m, Math.PI / 2, 'repos', 0, 256, z, true)); n++) z *= 0.85; // recule tant que le perso est coupé
+    c.getContext('2d').drawImage(contour(photo(m, Math.PI / 2, 'repos', 0, 512, z * 0.95, true), 5), 0, 0); // portrait HD
     m.liberer(); return c;
   }
   async function vitrine(p) { // rendu en direct (menu) : animation de repos + rotation au doigt
@@ -133,7 +137,7 @@ const Modele3D = (() => {
       rendre(angle, taille, t = 0, anim = 'repos') {
         const now = performance.now(); if (this.fait && now - this.fait < 33 && taille === this.taille && anim === this.anim && Math.abs(angle - this.angle) < 0.005) return c; // 30 images/s suffisent
         Object.assign(this, { fait: now, taille, anim, angle });
-        c.width = c.height = taille; const x = c.getContext('2d'); x.clearRect(0, 0, taille, taille); x.drawImage(contour(photo(m, angle, anim, t % 1, taille, 1, true), Math.max(2, taille / 90), cache), 0, 0);
+        c.width = c.height = taille; const x = c.getContext('2d'); x.clearRect(0, 0, taille, taille); x.drawImage(contour(photo(m, angle, anim, t % 1, taille, this.z || (this.z = (() => { let z = 1; for (let n = 0; n < 5 && bords(photo(m, Math.PI / 2, 'repos', 0, 200, z, true)); n++) z *= 0.85; return z * 0.93; })()), true), Math.max(2, taille / 90), cache), 0, 0);
         if (!this.haut) { const cad = cadrage(c); this.haut = cad.haut / taille; this.bas = cad.bas / taille; } return c;
       },
       a: k => !!(m.anims[k] || m.parNom[k]), liberer: () => m.liberer()
@@ -148,7 +152,7 @@ const Modele3D = (() => {
     canvas.onpointerdown = e => { glisse = e.clientX; canvas.setPointerCapture(e.pointerId); };
     canvas.onpointermove = e => { if (glisse !== null) { angle -= (e.clientX - glisse) * 0.015; glisse = e.clientX; } };
     canvas.onpointerup = () => glisse = null; canvas.style.touchAction = 'none'; canvas.style.cursor = 'grab';
-    const boucle = () => { t += 1 / 120; x.clearRect(0, 0, canvas.width, canvas.height); x.drawImage(vue.rendre(angle, canvas.width, t), 0, 0); canvas._boucle = requestAnimationFrame(boucle); };
+    const boucle = () => { if ((boucle.n = (boucle.n || 0) + 1) % 3) { canvas._boucle = requestAnimationFrame(boucle); return; } t += 1 / 40; x.clearRect(0, 0, canvas.width, canvas.height); x.drawImage(vue.rendre(angle, canvas.width, t), 0, 0); canvas._boucle = requestAnimationFrame(boucle); };
     boucle();
   }
   // 🗺️ DÉCOR 3D : murs en pierre, coffres et buissons rendus en 3D (même lumière que les persos), en 3 variantes

@@ -214,6 +214,14 @@ function formulaire(obj, champs) {
       type === 'icone' ? el('span', { className: 'img-outils' }, prev, boutonIcone(src => { inp.value = src; inp.oninput(); }, obj)) :
       type === 'image' ? el('span', { className: 'img-outils' }, prev, boutonUpload(src => { inp.value = src; inp.oninput(); }, () => inp.value)) : ''));
   }
+  if (champs === CH.mode) { // ⚙️ n'afficher que les réglages utiles pour le type de jeu et l'objectif choisis
+    const ep = o => String(o.etapes || '').split(','), a = (o, k) => o.objectif === k || (o.objectif === 'marathon' && ep(o).includes(k)), multi = o => o.type === 'multi';
+    const C = { joueursMin: multi, joueursMax: multi, equipes: multi, bots: multi, attenteBots: o => multi(o) && o.bots, niveauBots: o => o.bots, botsAdaptatifs: o => o.bots, botsObjets: o => o.bots,
+      delaiReapparition: o => o.reapparition, etapes: o => o.objectif === 'marathon', nbTresors: o => a(o, 'tresor'), objectifTresors: o => a(o, 'tresor'), tempsZone: o => a(o, 'zone'),
+      pvCristal: o => a(o, 'bloc'), degatsCristal: o => a(o, 'bloc'), porteeCristal: o => a(o, 'bloc'), cadenceCristal: o => a(o, 'bloc'), nbBoss: o => o.boss, typesBoss: o => o.boss, niveauBoss: o => o.boss };
+    const el2 = [...f.children], maj = () => champs.forEach(([k], i) => { if (C[k] && el2[i]) el2[i].style.display = C[k](obj) ? '' : 'none'; });
+    maj(); f.addEventListener('input', maj); f.addEventListener('change', maj);
+  }
   return f;
 }
 // 📷 Upload d'image (256 px) + 🪄 gomme magique qui retire le fond uni

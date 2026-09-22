@@ -17,8 +17,8 @@ const Rendu3D = (() => {
     document.body.prepend(R.domElement); canvas.style.position = 'relative'; canvas.style.zIndex = '1'; // l'interface 2D passe devant
     scene = new THREE.Scene(); scene.background = new THREE.Color('#8fd3ff'); scene.fog = new THREE.Fog('#8fd3ff', 2600, 5200);
     camera = new THREE.PerspectiveCamera(34, 1, 10, 8000);
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x5a4d8a, 0.55));
-    soleil = new THREE.DirectionalLight(0xfff1d6, 0.75); soleil.castShadow = true; soleil.shadow.mapSize.set(2048, 2048); soleil.shadow.bias = -0.0006;
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x5a4d8a, 0.42));
+    soleil = new THREE.DirectionalLight(0xfff1d6, 0.62); soleil.castShadow = true; soleil.shadow.mapSize.set(2048, 2048); soleil.shadow.bias = -0.0006;
     Object.assign(soleil.shadow.camera, { left: -1300, right: 1300, top: 1300, bottom: -1300, near: 10, far: 4000 });
     scene.add(soleil, soleil.target);
     GRAD = new THREE.DataTexture(new Uint8Array([95, 95, 95, 255, 175, 175, 175, 255, 255, 255, 255, 255]), 3, 1, THREE.RGBAFormat);
@@ -147,7 +147,7 @@ const Rendu3D = (() => {
       o.racine.visible = e.pv > 0 ? (e.def ? true : visible(e)) : true; // un perso mort reste au sol
       const cache = e.pv > 0 && !e.def && tuileA(e.x, e.y) === 'B'; // 🌿 caché dans un buisson : translucide (invisible pour les autres)
       if (cache !== o.cache) { o.cache = cache; o.racine.traverse(x => { if (x.material) { x.material.transparent = cache; x.material.opacity = cache ? 0.45 : 1; } }); }
-      const ech = (e.def ? e.r * 3.4 : e.r * 3.3) * 0.6 * (+p.modeleEchelle || 1);
+      const ech = e.r * 1.95 * (+(e.def && e.def.modeleEchelle) || +p.modeleEchelle || 1); // même règle pour tous : taille (rayon) × échelle du modèle
       const saut = e.dash && e.dash.saut && temps < e.dash.fin, alt = saut ? Math.sin((1 - (e.dash.fin - temps) / e.dash.duree) * Math.PI) * 80 : (e.alt || 0);
       o.racine.scale.setScalar(ech); o.racine.position.set(e.x, alt, e.y);
       o.racine.rotation.y = Math.PI / 2 - (e.angle || 0) + (o.decalage || 0);
