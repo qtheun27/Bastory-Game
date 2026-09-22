@@ -129,7 +129,7 @@ const Modele3D = (() => {
   }
   async function visage(p) { // image de face (cartes, portraits)
     const m = await charger(p); if (!m) return null;
-    const c = document.createElement('canvas'); c.width = c.height = S; c.getContext('2d').drawImage(contour(photo(m, Math.PI / 2, 'repos', 0, S), 3), 0, 0);
+    const c = document.createElement('canvas'); c.width = c.height = 384; c.getContext('2d').drawImage(contour(photo(m, Math.PI / 2, 'repos', 0, 384), 4.5), 0, 0); // portrait HD
     m.liberer(); return c;
   }
   async function vitrine(p) { // rendu en direct (menu) : animation de repos + rotation au doigt

@@ -84,7 +84,10 @@ function pleinEcran() { // mobile : plein écran + verrouillage en paysage (si l
   document.documentElement.requestFullscreen().then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => {});
 }
 const monde = (sx, sy) => ctx.setTransform(zoom * dpr, 0, 0, zoom * dpr, (W / 2 - cam.x * zoom + sx) * dpr, (H / 2 - cam.y * zoom + sy) * dpr);
-const versMonde = (x, y) => ({ x: (x - W / 2) / zoom + cam.x, y: (y - H / 2) / zoom + cam.y });
+const versMonde = (x, y) => { // écran → monde (en tenant compte de la vue 2,5D)
+  if (vue25) { const t = Math.max(0, Math.min(1, y / H)); x = W / 2 + (x - W / 2) / (1 + PERSP * t); y = H / PERSP * Math.log(1 + PERSP * t); }
+  return { x: (x - W / 2) / zoom + cam.x, y: (y - H / 2) / zoom + cam.y };
+};
 
 // ---------- 4. ÉTAT ----------
 let etat = 'AUTH', modeIndex = 0, mapIndex = 0, persoIndex = 0, mode = null, hote = true, salle = null;
@@ -1073,6 +1076,8 @@ function fond() {
   const s = ctx.createRadialGradient(W / 2, H * 0.38, 0, W / 2, H * 0.38, Math.max(W, H) * 0.45); s.addColorStop(0, 'rgba(255,245,180,.55)'); s.addColorStop(1, 'rgba(255,245,180,0)');
   ctx.fillStyle = s; ctx.fillRect(0, 0, W, H);
   trame(0.07);
+  ctx.save(); ctx.fillStyle = '#fff'; for (let i = 0; i < 18; i++) { const x = hasard(i + 40) * W, y = H - ((temps * (0.4 + hasard(i) * 0.8) + hasard(i + 3) * H) % (H + 40)), r = 1.5 + hasard(i + 7) * 2.5; // ✨ étincelles qui montent
+    ctx.globalAlpha = 0.35 + 0.35 * Math.sin(temps * 0.08 + i); ctx.beginPath(); for (let k = 0; k < 8; k++) { const rr = k % 2 ? r * 0.35 : r * 1.8, an = k * Math.PI / 4; ctx.lineTo(x + Math.cos(an) * rr, y + Math.sin(an) * rr); } ctx.fill(); } ctx.restore();
   const u = U(); ctx.save(); ctx.globalAlpha = 0.13; // onomatopées géantes qui dérivent en fond
   DECO.forEach((t, i) => { const x = (((hasard(i) + temps * 0.00025 * (1 + i % 3)) % 1.3) - 0.15) * W, y = H * (0.12 + hasard(i + 4) * 0.8);
     bd(t, x, y + Math.sin(temps * 0.02 + i) * 6, (50 + hasard(i + 2) * 50) * u, '#fff', -0.25 + hasard(i + 8) * 0.5, null); });
@@ -1188,15 +1193,22 @@ function introVS(l) {
   ctx.save(); zig(1); ctx.fillStyle = '#ff2d55'; ctx.fill(); ctx.clip(); rayons(W * 0.75, H / 2, -temps * 0.01, '#fff', 0.16); trame(0.12, '#000'); ctx.restore();
   zig(1); ctx.strokeStyle = '#fff'; ctx.lineWidth = 10 * u; ctx.stroke(); ctx.strokeStyle = NOIR; ctx.lineWidth = 4 * u; ctx.stroke(); // éclair central
   titre(mode.nom, W / 2, 34 * u, 30 * u, '#ffe14a', 'center', W - 40);
-  const equipe = (l2, cote) => { // les persos de chaque équipe en grand, alignés côte à côte (le 1er devant)
-    const n = l2.length, larg = W * 0.34, pas = n > 1 ? larg / (n - 1) * 0.85 : 0, s = Math.min(H * 0.64, larg / Math.max(1, n) * 1.9);
-    l2.map((c, i) => ({ c, i, off: i - (n - 1) / 2 })).sort((a, b) => Math.abs(b.off) - Math.abs(a.off)).forEach(({ c, i, off }) => {
-      const x = W / 2 + cote * (W * 0.27 + dx) + off * pas, y = H * 0.86 - Math.abs(off) * 16 * u, sc = 1 - Math.abs(off) * 0.1, b = Math.sin(temps * 0.08 + i) * 3 * u;
-      ellipse(x, y, s * 0.26 * sc, s * 0.06 * sc, 'rgba(0,0,0,.4)');
-      if (pret(c.im)) ctx.drawImage(c.im, x - s * sc / 2, y - s * sc * 0.95 + b, s * sc, s * sc);
-      ctx.save(); ctx.translate(x, y + 16 * u); ctx.rotate(-0.05 * cote); rect(-58 * u, -12 * u, 116 * u, 24 * u, 6 * u, NOIR); rect(-58 * u, -12 * u, 116 * u, 4 * u, 2 * u, c.c); ctx.restore();
-      texte(c.nom, x, y + 17 * u, 12 * u, '#fff', 'center', 108 * u);
-    }); };
+  const equipe = (l2, cote) => { // une case de BD inclinée par perso, qui arrive en rebondissant
+    const n = l2.length, zw = W * 0.42, pw = Math.min(zw / Math.max(1, n), H * 0.46), ph = H * 0.6, x0 = W / 2 + cote * (W * 0.26 + dx) - (n * pw) / 2, y0 = H * 0.2;
+    l2.forEach((c, i) => {
+      const x = x0 + i * pw, sk = 16 * u, y = y0 + (i % 2) * 12 * u, t = elastique(Math.min(1, Math.max(0, (l - 6 - i * 5) / 18))), coul = /^#[0-9a-f]{6}$/i.test(c.c) ? c.c : '#5a4dff';
+      const chemin = () => { ctx.beginPath(); ctx.moveTo(x + sk, y); ctx.lineTo(x + pw - 4 * u, y); ctx.lineTo(x + pw - 4 * u - sk, y + ph); ctx.lineTo(x, y + ph); ctx.closePath(); };
+      ctx.save(); ctx.translate(x + pw / 2, y + ph / 2); ctx.scale(t, t); ctx.rotate(-0.04 * cote); ctx.translate(-x - pw / 2, -y - ph / 2);
+      ctx.save(); ctx.translate(6 * u, 7 * u); chemin(); ctx.fillStyle = NOIR; ctx.fill(); ctx.restore();
+      ctx.save(); chemin(); ctx.clip(); const g = ctx.createLinearGradient(0, y, 0, y + ph); g.addColorStop(0, ombrer(coul, 0.35)); g.addColorStop(1, ombrer(coul, -0.4)); ctx.fillStyle = g; ctx.fillRect(x - 5, y - 5, pw + 10, ph + 10);
+      rayons(x + pw / 2, y + ph * 0.4, temps * 0.01 * cote, '#fff', 0.2, 12); trame(0.1, '#000');
+      if (pret(c.im)) { const s = Math.max(pw * 1.3, ph * 1.0); ctx.drawImage(c.im, x + pw / 2 - s / 2, y + ph * 0.9 - s * 0.95 + Math.sin(temps * 0.08 + i) * 3 * u, s, s); }
+      ctx.fillStyle = NOIR; ctx.fillRect(x - 5, y + ph - 34 * u, pw + 10, 34 * u); ctx.fillStyle = coul; ctx.fillRect(x - 5, y + ph - 34 * u, pw + 10, 4 * u); ctx.restore();
+      chemin(); ctx.lineJoin = 'round'; ctx.lineWidth = 4 * u; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.lineWidth = 1.5 * u; ctx.strokeStyle = NOIR; ctx.stroke();
+      titre(c.nom, x + pw / 2 - 6 * u, y + ph - 16 * u, 16 * u, '#fff', 'center', pw - 24 * u);
+      ctx.restore();
+    });
+  };
   equipe(intro.gauche, -1); if (intro.droite.length) equipe(intro.droite, 1);
   ctx.save(); ctx.translate(W / 2 + (Math.random() - 0.5) * 6 * (1 - k * 0.7), H / 2 + 12 * u); ctx.scale(k, k);
   eclat(0, 0, 62 * u, 12, '#ffe14a', 2, NOIR, 5 * u); bd('VS', 0, 4 * u, 78 * u, '#ff2d55', -0.08); ctx.restore();
@@ -1321,6 +1333,7 @@ function dessinerProjectile(p) {
     ctx.restore();
   }
   const a = p.arme, im = img(a.image), s = (a.taille || 16) * 2.8;
+  if (a.forme === 'onde') return ondeMarteau(p);
   const k = 1 - p.z / 220;
   if (p.sombre) { ctx.save(); ctx.shadowColor = '#000'; ctx.shadowBlur = 25; ellipse(p.x, p.y - p.z - 10, s * 0.6, s * 0.6, 'rgba(30,0,45,.65)'); ctx.restore(); }
   ellipse(p.x, p.y + 6, s * 0.4 * k, s * 0.22 * k, 'rgba(0,0,0,.3)');
@@ -1571,6 +1584,8 @@ function dessinerSable(x, y, px, py) {
 }
 function encreEau(x, y, px, py) { // contour d'encre au bord de l'eau : lisible et "manga"
   const T = TUILE, e = (a, b) => tuile(x + a, y + b) !== 'W';
+  ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; // reflets qui ondulent
+  for (let k = 0; k < 2; k++) { const ox = px + ((temps * 0.4 + alea(x * 7 + y * 3 + k) * 64) % 54) + 5, oy = py + 18 + k * 26; ctx.beginPath(); ctx.moveTo(ox - 8, oy); ctx.quadraticCurveTo(ox, oy - 5, ox + 8, oy); ctx.stroke(); }
   ctx.strokeStyle = 'rgba(11,6,32,.7)'; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.beginPath();
   if (e(0, -1)) { ctx.moveTo(px, py); ctx.lineTo(px + T, py); } if (e(0, 1)) { ctx.moveTo(px, py + T); ctx.lineTo(px + T, py + T); }
   if (e(-1, 0)) { ctx.moveTo(px, py); ctx.lineTo(px, py + T); } if (e(1, 0)) { ctx.moveTo(px + T, py); ctx.lineTo(px + T, py + T); } ctx.stroke();
@@ -1718,7 +1733,9 @@ function menuCommandes() {
   });
   const by = H - 50 * u;
   bouton3D(x, by, 150 * u, 38 * u, '#8e7bff', '#5b3fd6', () => { mesTouches = { ...TOUCHES_DEF }; toucheAttendue = null; sauverTouches(); }); titre('Par défaut', x + 75 * u, by + 17 * u, 16 * u, '#fff');
-  texte('🖱️ Clic : tirer vers la souris (plus loin = plus fort) • Échap : quitter • 📱 Mobile : joysticks + boutons (glisse le Super pour viser)', x + 160 * u + (w - 160 * u) / 2, by + 19 * u, 11 * u, '#fff', 'center', w - 170 * u);
+  bouton3D(x + 160 * u, by, 170 * u, 38 * u, vue25 ? '#b6ff4a' : '#b0b3c8', vue25 ? '#1fc46b' : '#6b6f86', () => { vue25 = !vue25; try { localStorage.setItem('bastoryVue', vue25 ? '1' : '0'); } catch (e) {} });
+  titre('Vue 3D : ' + (vue25 ? 'OUI' : 'NON'), x + 245 * u, by + 17 * u, 16 * u, '#fff');
+  texte('🖱️ Clic : tirer vers la souris • Échap : quitter • 📱 Glisse le Super pour viser', x + 340 * u + (w - 340 * u) / 2, by + 19 * u, 11 * u, '#fff', 'center', w - 350 * u);
 }
 const angleSouris = () => { if (!souris || !moi) return moi ? moi.angle : 0; const m = versMonde(souris.x, souris.y); return Math.atan2(m.y - moi.y, m.x - moi.x); };
 function angleAuto() { // ennemi visible le plus proche (sinon devant soi)
@@ -1731,6 +1748,28 @@ function viseeSuper() { // 🎯 flèche de visée du super, dessinée sous le pe
   if (!joyS.actif || !moi) return; const v = vec(joyS); if (v.d < 15) return;
   ctx.save(); ctx.translate(moi.x, moi.y); ctx.rotate(v.a); ctx.globalAlpha = 0.6; ctx.fillStyle = '#ffe14a'; ctx.strokeStyle = NOIR; ctx.lineWidth = 3; ctx.lineJoin = 'round';
   ctx.beginPath(); ctx.moveTo(moi.r, -14); ctx.lineTo(260, -26); ctx.lineTo(292, 0); ctx.lineTo(260, 26); ctx.lineTo(moi.r, 14); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+}
+
+
+// ---------- 🎥 FAUSSE PERSPECTIVE 2,5D (le bas de l'écran, plus proche, est agrandi) ----------
+const PERSP = 0.24; let persp = null, vue25 = true;
+try { vue25 = localStorage.getItem('bastoryVue') !== '0'; } catch (e) {}
+function perspective25D() {
+  const cw = canvas.width, ch = canvas.height;
+  if (!persp || persp.width !== cw || persp.height !== ch) { persp = document.createElement('canvas'); persp.width = cw; persp.height = ch; }
+  const p = persp.getContext('2d'); p.clearRect(0, 0, cw, ch); p.drawImage(canvas, 0, 0);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const a = PERSP, sy = y => H / a * Math.log(1 + a * y / H), b = 3; // chaque bande horizontale est élargie et compressée selon sa profondeur
+  for (let y = 0; y < H; y += b) { const k = 1 + a * Math.min(1, (y + b / 2) / H), w = cw * k, s0 = sy(y), s1 = sy(Math.min(H, y + b));
+    ctx.drawImage(persp, 0, s0 * dpr, cw, Math.max(1, (s1 - s0) * dpr), (cw - w) / 2, y * dpr, w, b * dpr + 1); }
+}
+function ondeMarteau(p) { // 🔨 onde de choc du marteau de Rokh qui fend le sol
+  const r = 18 + Math.sin(temps * 0.6) * 3, a = Math.atan2(p.vy || 0, p.vx || 1);
+  ellipse(p.x, p.y + 4, r * 1.6, r * 0.7, 'rgba(90,60,30,.35)');
+  ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(a); ctx.lineJoin = 'round';
+  ctx.fillStyle = '#e8c38a'; ctx.strokeStyle = NOIR; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(-6, 0, 26, -1.1, 1.1); ctx.arc(-14, 0, 20, 1.0, -1.0, true); ctx.closePath(); ctx.fill(); ctx.stroke();
+  for (let i = 0; i < 4; i++) { const b = (temps * 3 + i * 17) % 30; ctx.fillStyle = '#9b7a55'; ctx.fillRect(-10 - i * 4, -18 + i * 11 - b * 0.6, 7, 7); ctx.strokeRect(-10 - i * 4, -18 + i * 11 - b * 0.6, 7, 7); }
+  ctx.restore();
 }
 
 // ---------- 12c. GRAPHISMES : textures & sprites pré-calculés (rapides) ----------
@@ -1870,6 +1909,7 @@ function dessinerJeu() {
     const nx = ((alea(k) * map.l * T + temps * (0.25 + k * 0.05)) % (map.l * T + 600)) - 300, ny = alea(k + 20) * map.h * T;
     const gn = ctx.createRadialGradient(nx, ny, 0, nx, ny, 260); gn.addColorStop(0, 'rgba(10,20,40,.12)'); gn.addColorStop(1, 'rgba(10,20,40,0)'); ctx.fillStyle = gn; ctx.fillRect(nx - 260, ny - 260, 520, 520);
   }
+  if (vue25) perspective25D();
   ecran(); ctx.fillStyle = vignette(); ctx.fillRect(0, 0, W, H); // vignette cinéma
   const lum = ctx.createLinearGradient(0, 0, W, H); lum.addColorStop(0, 'rgba(255,225,160,.08)'); lum.addColorStop(1, 'rgba(60,90,200,.08)'); ctx.fillStyle = lum; ctx.fillRect(0, 0, W, H); // lumière chaude / ombre froide
   zoneSure(dessinerHUD);

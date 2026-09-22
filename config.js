@@ -280,7 +280,7 @@ const CONFIG_PAR_DEFAUT = {
       "degatsNuage": 0,
       "onde": 150,
       "recul": 10,
-      "forme": "rocher"
+      "forme": "onde"
     },
     "vent": {
       "nom": "Arc de vent",
@@ -756,7 +756,7 @@ const CONFIG_PAR_DEFAUT = {
       "rarete": 1
     }
   },
-  "version": 10,
+  "version": 11,
   "app": {
     "nom": "Bastory",
     "nomCourt": "Bastory",
@@ -907,6 +907,11 @@ function migrerConfig(c) {
     c.persos.forEach(p => p.vitesse = +((+p.vitesse || 4) * 0.85).toFixed(2));
     if (c.elements.air) { if (c.elements.air.capacite === 'vol') c.elements.air.capacite = 'saut'; if (c.elements.air.actionNom === 'Rafale') c.elements.air.actionNom = 'Saut'; }
     c.version = 10;
+  }
+  if ((c.version || 0) < 11) { // v11 : Rokh frappe au marteau (onde de choc au sol, courte portée)
+    if (c.armes.rocher) Object.assign(c.armes.rocher, { forme: 'onde', vitesse: 11, taille: 22, rayon: 95, onde: 150, effet: 'impact' });
+    c.persos.forEach(p => { if (p.nom === 'ROKH') p.portee = 240; });
+    c.version = 11;
   }
   if (/wixy\.png$/i.test((c.app || {}).icone || '')) c.app.icone = 'images/icone-maskable-512.png'; // nouvelle icône PWA
   c.modes.forEach(m => {
