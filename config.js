@@ -1126,6 +1126,12 @@ const CONFIG_PAR_DEFAUT = {
   ]
 };
 
+// 🗡️ arme propre à un nouveau perso : copie de l'arme de son élément (réglable ensuite dans l'admin → Armes)
+function armePour(c, p) {
+  const mod = { terre: 'rocher', air: 'vent', eau: 'trident', feu: 'boulefeu' }[p.element] || Object.keys(c.armes)[0], id = 'arme_' + String(p.nom || 'perso').toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  if (!c.armes[id]) c.armes[id] = { ...JSON.parse(JSON.stringify(c.armes[mod] || {})), nom: 'Arme de ' + (p.nom || 'perso') };
+  p.arme = id; p.armeAuto = true; if (p.description === undefined) p.description = '';
+}
 // Met à niveau une config existante (ajoute les nouveaux réglages, retire les anciens)
 function migrerConfig(c) {
   const D = CONFIG_PAR_DEFAUT, copie = o => JSON.parse(JSON.stringify(o)), def = (o, d) => { for (const k in d) if (o[k] === undefined) o[k] = d[k]; return o; };
@@ -1157,6 +1163,7 @@ function migrerConfig(c) {
     c.persos.forEach(p => { if (p.nom === 'ROKH') p.portee = 240; });
     c.version = 11;
   }
+  if ((c.version || 0) < 12) { if (c.armes.rocher) c.armes.rocher.vitesse = 26; c.version = 12; } // v12 : le marteau frappe le sol tout de suite
   if ((c.version || 0) < 13) { // v13 : ambiances de map (thèmes 3D) + 4 maps thématiques
     c.maps.forEach(m => { if (!m.theme) m.theme = m.sable ? 'plage' : 'campagne'; });
     D.maps.filter(m => ['ville', 'desert', 'neige', 'volcan'].includes(m.theme)).forEach(m => { if (!c.maps.some(x => x.nom === m.nom)) c.maps.push(copie(m)); });
@@ -1168,7 +1175,12 @@ function migrerConfig(c) {
     if (!c.recompenses.some(r => r.type !== 'essence')) { c.recompenses.push({ victoires: 10, type: 'avatar', quantite: 2 }, { victoires: 15, type: 'jetons', quantite: 3 }, { victoires: 25, type: 'avatar', quantite: 2 }, { victoires: 35, type: 'jetons', quantite: 3 }, { victoires: 50, type: 'avatar', quantite: 3 }); c.recompenses.sort((a, b) => a.victoires - b.victoires); }
     c.version = 14;
   }
-  if ((c.version || 0) < 12) { if (c.armes.rocher) c.armes.rocher.vitesse = 26; c.version = 12; } // v12 : le marteau frappe le sol tout de suite
+  if ((c.version || 0) < 15) { // v15 : descriptions des persos
+    const DESC = { ROKH: 'Ours-golem de roche. Son marteau fend le sol en onde de choc, sa charge brise les blocs.', ZEPHYR: 'Faucon du vent. Ses flèches rapides ricochent, il saute par-dessus les murs.',
+      NAIA: 'Axolotl guerrière. Son trident repousse puis revient ; elle nage et se soigne dans l\'eau.', PYRO: 'Bébé dragon. Sa boule de feu explose en flammes et il laisse une traînée brûlante.' };
+    c.persos.forEach(p => { if (!p.description && DESC[p.nom]) p.description = DESC[p.nom]; }); c.version = 15;
+  }
+  c.persos.forEach(p => { if (p.base === false && !p.armeAuto) armePour(c, p); }); // nouveaux persos : arme créée automatiquement
   if (/wixy\.png$/i.test((c.app || {}).icone || '')) c.app.icone = 'images/icone-maskable-512.png'; // nouvelle icône PWA
   c.modes.forEach(m => {
     if (m.type === '1v1') { m.type = 'multi'; m.joueursMin = m.joueursMin || 2; m.joueursMax = m.joueursMax || 2; }

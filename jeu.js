@@ -1440,6 +1440,7 @@ const ELEM_DEF = { // noms et onomatopées par défaut (nom / charge / recharge 
   terre: { superNom: 'Séisme titan', actionNom: 'Charge', ono: 'DOGOOON!!' }, air: { superNom: 'Tempête de flèches', actionNom: 'Rafale', ono: 'FWOOOSH!!' },
   eau: { superNom: 'Raz-de-marée', actionNom: 'Bulle', ono: 'SPLAAASH!!' }, feu: { superNom: 'Souffle du dragon', actionNom: 'Brasier', ono: 'BRAOOOM!!' } };
 const cleElem = p => (baseDe(p) || {}).element;
+const elementsDe = p => { const b = baseDe(p) || {}; return [b.element, b.element2, b.element3, b.element4].filter((k, i, a) => ELEM_DEF[k] && a.indexOf(k) === i); }; // 1 à 4 éléments par perso
 const infoElem = j => { const k = j && cleElem(j.perso); return ELEM_DEF[k] ? { k, ...ELEM_DEF[k], ...(elemDe(j.perso) || {}) } : null; };
 const chargeSuper = j => +(infoElem(j) || {}).superCharge || Math.max(3000, (j.perso.degats || 1000) * 4);
 function gagnerSuper(j, deg) {
@@ -1454,10 +1455,13 @@ function lancerSuper(j, angle = j.angle, distant) {
   if (!distant) { j.superPret = false; j.superC = 0; envoyer({ t: 'su', de: j.uid, a: +angle.toFixed(3) }); }
   const deg = Math.round(j.perso.degats * bonus(j, 'degats')), A = j.arme;
   j.anim = { n: 'attaque', t: temps }; ono(e.ono, j.x, j.y - 60, 1.7, j.perso.couleur); choc = 1; flash = 0.4;
-  if (e.k === 'terre') exploser({ x: j.x, y: j.y, de: j.uid, deg: Math.round(deg * 1.6), perso: j.perso, arme: { effet: 'impact', rayon: 190, couleur: '#c98a4b', recul: 26 } });
-  else if (e.k === 'air') for (let i = 0; i < 12; i++) tirSpecial(j, { ...A, rebonds: 3 }, angle + i * Math.PI / 6, 1, Math.round(deg * 0.8));
-  else if (e.k === 'eau') { for (let i = -3; i <= 3; i++) tirSpecial(j, { ...A, recul: 30 }, angle + i * 0.18, 1, deg); if (moiOuBot(j)) j.pv = Math.min(j.pvMax, j.pv + j.pvMax * 0.25); effet('eclaboussure', j.x, j.y, '#5ff0ff', 120); }
-  else if (e.k === 'feu') for (let i = -2; i <= 2; i++) tirSpecial(j, { ...A, type: 'lob', nuage: 4, rayonNuage: 80 }, angle + i * 0.22, 0.6 + Math.abs(i) * 0.15, deg);
+  const ks = elementsDe(j.perso), d2 = Math.round(deg * (ks.length > 1 ? 0.8 : 1)); if (ks.length > 1) ono('FUSION!!', j.x, j.y - 100, 1.6, '#ffe14a');
+  ks.forEach(k => {
+    if (k === 'terre') exploser({ x: j.x, y: j.y, de: j.uid, deg: Math.round(d2 * 1.6), perso: j.perso, arme: { effet: 'impact', rayon: 190, couleur: '#c98a4b', recul: 26 } });
+    else if (k === 'air') for (let i = 0; i < 12; i++) tirSpecial(j, { ...A, rebonds: 3 }, angle + i * Math.PI / 6, 1, Math.round(d2 * 0.8));
+    else if (k === 'eau') { for (let i = -3; i <= 3; i++) tirSpecial(j, { ...A, recul: 30 }, angle + i * 0.18, 1, d2); if (moiOuBot(j)) j.pv = Math.min(j.pvMax, j.pv + j.pvMax * 0.25); effet('eclaboussure', j.x, j.y, '#5ff0ff', 120); }
+    else if (k === 'feu') for (let i = -2; i <= 2; i++) tirSpecial(j, { ...A, type: 'lob', nuage: 4, rayonNuage: 80 }, angle + i * 0.22, 0.6 + Math.abs(i) * 0.15, d2);
+  });
 }
 function lancerAction(j, angle = j.angle, distant) {
   const e = infoElem(j); if (!e || j.pv <= 0 || resultat) return;
@@ -1948,20 +1952,21 @@ function bboxImage(im) { // zone réellement dessinée d'un portrait (pour bien 
   if (im._bb) return im._bb; const c = document.createElement('canvas'), w = c.width = im.width, h = c.height = im.height, x = c.getContext('2d'); x.drawImage(im, 0, 0);
   const d = x.getImageData(0, 0, w, h).data; let x0 = w, y0 = h, x1 = 0, y1 = 0;
   for (let y = 0; y < h; y += 2) for (let i = 0; i < w; i += 2) if (d[(y * w + i) * 4 + 3] > 40) { if (i < x0) x0 = i; if (i > x1) x1 = i; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-  return im._bb = x1 > x0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : { x: 0, y: 0, w, h };
+  let sx = 0, n = 0; for (let y = y0; y < y0 + (y1 - y0) * 0.3; y += 2) for (let i = x0; i <= x1; i += 2) if (d[(y * w + i) * 4 + 3] > 40) { sx += i; n++; } // centre de la tête
+  return im._bb = x1 > x0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0, hx: n ? sx / n : (x0 + x1) / 2 } : { x: 0, y: 0, w, h, hx: w / 2 };
 }
 const libAvatars = () => [...CONFIG.persos.map(p => ['p', p]), ...Object.values(CONFIG.bosses).filter(b => !b.cristal).map(b => ['b', b])].flatMap(([t, p]) => [0, 1, 2, 3].map(v => ({ cle: t + ':' + p.nom + ':' + v, p, v })));
 const avatarsDebloques = () => new Set([...CONFIG.persos.filter(estDebloque).map(p => 'p:' + p.nom + ':0'), ...(mesStats.avatars || [])]);
 function avatarPerso(p, v = 0) { // 4 styles : en pied • gros plan • gros plan miroir sur rayons • en pied halo sombre
-  const im = carteDe(p); if (!pret(im)) return null; const k = 'av' + v + (p.nom || '') + im.width; if (cacheGfx[k]) return cacheGfx[k];
+  const im = carteDe(p), bp = baseDe(p); if (!pret(im) || (bp.modele && !visages3D.get(bp))) return null; const k = 'av' + v + (p.nom || '') + im.width; if (cacheGfx[k]) return cacheGfx[k];
   const S = 256, c = document.createElement('canvas'); c.width = c.height = S; const x = c.getContext('2d'), el = elemDe(p), col = /^#[0-9a-f]{6}$/i.test((el && el.couleur) || p.couleur || '') ? (el && el.couleur) || p.couleur : '#5a4dff', bb = bboxImage(im);
   const g = x.createRadialGradient(S / 2, S * 0.4, 10, S / 2, S / 2, S * 0.7);
   if (v === 3) { g.addColorStop(0, ombrer(col, 0.1)); g.addColorStop(1, '#140c3a'); } else { g.addColorStop(0, ombrer(col, 0.45)); g.addColorStop(1, ombrer(col, -0.35)); }
   x.fillStyle = g; x.fillRect(0, 0, S, S);
   if (v === 2) { x.fillStyle = 'rgba(255,255,255,.22)'; for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; x.beginPath(); x.moveTo(S / 2, S / 2); x.lineTo(S / 2 + Math.cos(a) * S, S / 2 + Math.sin(a) * S); x.lineTo(S / 2 + Math.cos(a + 0.26) * S, S / 2 + Math.sin(a + 0.26) * S); x.fill(); } }
-  const gros = v === 1 || v === 2, cw = gros ? bb.w * 0.8 : bb.w, ch = gros ? Math.min(bb.h, cw) : bb.h, sx = bb.x + (bb.w - cw) / 2, sy = bb.y, k2 = (S * (gros ? 1.05 : 0.86)) / Math.max(cw, ch);
+  const gros = v === 1 || v === 2, cw = gros ? Math.min(bb.w, bb.h * 0.58) : bb.w, ch = gros ? cw : bb.h, sx = gros ? Math.max(0, Math.min(im.width - cw, bb.hx - cw / 2)) : bb.x, sy = gros ? Math.max(0, bb.y - cw * 0.05) : bb.y, k2 = (S * (gros ? 0.98 : 0.84)) / Math.max(cw, ch);
   x.save(); if (v === 2) { x.translate(S, 0); x.scale(-1, 1); }
-  x.drawImage(im, sx, sy, cw, ch, S / 2 - cw * k2 / 2, gros ? S * 0.08 : S / 2 - ch * k2 / 2, cw * k2, ch * k2); x.restore();
+  x.drawImage(im, sx, sy, cw, ch, S / 2 - cw * k2 / 2, S / 2 - ch * k2 / 2 + (gros ? S * 0.04 : 0), cw * k2, ch * k2); x.restore();
   return cacheGfx[k] = c;
 }
 function monAvatar() { const a = mesStats.avatar; if (a && a.d) { const i = img(a.d); if (pret(i)) return i; }
@@ -2486,7 +2491,6 @@ function menuAccueil() {
     ctx.imageSmoothingQuality = 'high'; ctx.drawImage(c, cx - D / 2, sol - 4 * u - vh.bas * D, D, D);
   } else if (pret(im)) ctx.drawImage(im, cx - taille / 2, cy - taille / 2 - 14 * u + b, taille, taille);
   heroZone = { x: cx - taille / 2, y: cy - taille / 2, w: taille, h: taille };
-  if (vh) texte('↔ Glisse pour faire tourner', cx, top + 22 * u, 10 * u, 'rgba(255,255,255,.5)');
   const ny = Math.min(H - 64 * u, sol + 34 * u), sp = (mesStats.persos || {})[cleP(p)] || {};
   titre(p.nom, cx, ny, 46 * u, '#fff', 'center', Math.max(160 * u, taille * 1.1));
   const lw = Math.min(taille, 220 * u); rect(cx - lw / 2, ny + 22 * u, lw, 3 * u, 2, p.couleur);
@@ -2545,11 +2549,11 @@ function menuPersos() {
   else { const im = carteDe(p); if (pret(im)) ctx.drawImage(im, cx - taille / 2 + off, sol - taille, taille, taille); }
   ctx.filter = 'none'; if (gris) { titre('🔒 ' + (+p.coutJetons || 3) + ' 🎟️', cx, sol - taille * 0.45, 34 * u, '#ffe14a'); texte('Tu as ' + (mesStats.jetons || 0) + ' 🎟️ jetons perso', cx, sol - taille * 0.45 + 30 * u, 13 * u, '#fff'); }
   titre(p.nom, cx + off * 0.5, sol + 24 * u, 40 * u, '#fff', 'center', zoneW - 120 * u);
-  if (ELEM_DEF[cleElem(p)]) iconeElement(cleElem(p), cx - 70 * u, sol + 56 * u, 20 * u);
+  elementsDe(p).forEach((k, n) => iconeElement(k, cx - 70 * u - n * 24 * u, sol + 56 * u, 20 * u)); // tous ses éléments
+  if (p.description) texte(p.description, cx, sol - taille * 0.95 + 8 * u, 13 * u, '#fff', 'center', zoneW - 140 * u); // 📝 description du perso et de ses attaques
   texte('Niveau ' + niveauDe(p) + (persoVue === persoIndex ? '  •  ✔ Choisi' : ''), cx + 10 * u, sol + 56 * u, 13 * u, persoVue === persoIndex ? '#b6ff4a' : '#ffe14a');
   [[-1, 'retour', x0 + 34 * u], [1, 'suite', x0 + zoneW - 34 * u]].forEach(([d, ic, fx]) => { bouton3D(fx - 26 * u, y0 + zoneH / 2 - 26 * u, 52 * u, 52 * u, '#ffe14a', '#ff8a1f', () => changerPerso(d), 26 * u); icone(ic, fx, y0 + zoneH / 2 - 2 * u, 24 * u); });
   CONFIG.persos.forEach((_, k) => { ctx.beginPath(); ctx.arc(cx + (k - (n - 1) / 2) * 16 * u, y0 + 30 * u, (k === persoVue ? 5 : 3.5) * u, 0, 7); ctx.fillStyle = k === persoVue ? '#ffe14a' : 'rgba(255,255,255,.55)'; ctx.fill(); });
-  texte('↔ Glisse pour changer de perso', cx, y0 + 12 * u, 10 * u, 'rgba(255,255,255,.6)');
   }
 
   // fiche du perso
@@ -2905,7 +2909,7 @@ async function detecterModeles() {
       const m = f.name.replace(/\.glb$/i, '').match(/^(terre|air|eau|feu)[-_ ](.+)$/i), element = m ? m[1].toLowerCase() : '', nom = (m ? m[2] : f.name.replace(/\.glb$/i, '')).replace(/[-_]+/g, ' ').toUpperCase().slice(0, 16);
       const el = (CONFIG.elements || {})[element] || {}, a = ARME[element] && CONFIG.armes[ARME[element]] ? ARME[element] : Object.keys(CONFIG.armes)[0];
       CONFIG.persos.push({ base: false, coutJetons: 3,  nom, element, modele: chemin, modeleEchelle: 1, modeleRotation: 0, couleur: el.couleur || '#8b5cf6', image: '', imageCarte: '', arme: a,
-        pvMax: 5500, vitesse: 5, degats: 1400, portee: 400, delaiTir: 28, munitions: 3, recharge: 55 });
+        pvMax: 5500, vitesse: 5, degats: 1400, portee: 400, delaiTir: 28, munitions: 3, recharge: 55 }); armePour(CONFIG, CONFIG.persos[CONFIG.persos.length - 1]);
     }
   } catch (e) { console.warn('Détection des modèles', e); }
 }
