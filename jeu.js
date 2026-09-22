@@ -78,7 +78,7 @@ function zoneSure(f) { // dessine l'interface en évitant l'encoche des téléph
   const w0 = W, h0 = H; ox = sa.l; oy = sa.t; W = w0 - sa.l - sa.r; H = h0 - sa.t - sa.b;
   ecran(); f(); W = w0; H = h0; ox = oy = 0; ecran();
 }
-const mobile = matchMedia('(pointer: coarse)').matches;
+const mobile = matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches; // ordi dès qu'une souris / un trackpad est présent
 function pleinEcran() { // mobile : plein écran + verrouillage en paysage (si le navigateur le permet)
   if (!mobile || document.fullscreenElement || !document.documentElement.requestFullscreen) return;
   document.documentElement.requestFullscreen().then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => {});
@@ -172,7 +172,7 @@ $('bGoogle').onclick = () => {
 auth.onAuthStateChanged(u => {
   user = u;
   $('auth').style.display = u ? 'none' : 'flex';
-  if (u) { if (etat === 'AUTH') etat = 'MENU'; ecouterPoints(); presence(); initAmis(); } else { quitterSalle(); etat = 'AUTH'; }
+  if (u) { if (etat === 'AUTH') etat = 'MENU'; ecouterPoints(); presence(); ecouterAmis(); initAmis(); } else { quitterSalle(); etat = 'AUTH'; }
 });
 
 // ---------- 6. MAP & COLLISIONS ----------
@@ -236,7 +236,7 @@ async function evoluer(p) { // dépense les essences de l'élément pour passer 
 }
 function creerJoueur(pi, x, y, uid, nom, eq, nv) {
   const b = CONFIG.persos[pi] || CONFIG.persos[0], p = statsNiveau(b, nv || 1), el = elemDe(b);
-  return { uid, nom, eq, perso: p, dep: el ? el.capacite : 'sol', arme: CONFIG.armes[p.arme] || Object.values(CONFIG.armes)[0], x, y, tx: x, ty: y, r: Math.round(26 * Math.min(1.8, Math.max(0.6, +b.modeleEchelle || 1))),
+  return { uid, nom, eq, perso: p, dep: el ? el.capacite : 'sol', arme: CONFIG.armes[p.arme] || Object.values(CONFIG.armes)[0], x, y, tx: x, ty: y, r: Math.round(Math.min(60, Math.max(14, +b.taille || 26))),
            pv: p.pvMax, pvMax: p.pvMax, angle: 0, recharge: 0, mun: +p.munitions || 3, flash: 0, marche: 0, kx: 0, ky: 0, cache: false, bonus: {}, bo: [] };
 }
 function creerBoss(id, x, y, i) {
@@ -311,7 +311,13 @@ function verifierFin() {
   } else if (!allies.some(vivant)) finir('DEFAITE', '');
   else if (bosses.length && bosses.every(b => b.pv <= 0)) finir('VICTOIRE', bosses.length > 1 ? 'Tous les boss sont vaincus' : '');
 }
+function noterCombat(r) { // 📓 journal des 30 derniers combats (joueurs affrontés ou alliés, hors bots)
+  try { const l = JSON.parse(localStorage.getItem('bastoryJournal') || '[]');
+    l.unshift({ t: Date.now(), mode: mode.nom, r, j: Object.values(autres).filter(j => !j.bot || j.parti === undefined && !String(j.uid).startsWith('bot')).filter(j => !String(j.uid).startsWith('bot')).map(j => ({ uid: j.uid, nom: j.nom, allie: j.eq === moi.eq })) });
+    localStorage.setItem('bastoryJournal', JSON.stringify(l.slice(0, 30))); } catch (e) {}
+}
 function finir(r, msg) {
+  if (!resultat) noterCombat(r);
   if (resultat) return;
   resultat = r; messageFin = msg || ''; finDans = 70; envoyerEtat(true); moi.revivre = 0;
   const tous = [moi, ...Object.values(autres)], ennemis = tous.filter(j => j.eq !== moi.eq), allies = tous.filter(j => j.eq === moi.eq);
@@ -391,7 +397,7 @@ function lancerSalle(avecBots) {
 }
 function rafraichirAttente() {
   const s = salle; if (!s || !s.hote || s.debut) return;
-  attente.reste = s.depuis ? Math.max(0, 10 - Math.floor((Date.now() - s.depuis) / 1000)) : 0;
+  attente.reste = s.depuis ? Math.max(0, (+modeChoisi().attenteDepart || 10) - Math.floor((Date.now() - s.depuis) / 1000)) : 0;
   if (s.depuis && attente.reste === 0) lancerSalle();
   const m = modeChoisi(), attenteBots = (+m.attenteBots || 15) * 1000;
   attente.bots = m.bots !== false && attente.n < s.min ? Math.max(0, Math.ceil((attenteBots - (Date.now() - s.cree)) / 1000)) : 0;
@@ -429,7 +435,7 @@ function majAutres(js) {
   for (const [uid, j] of Object.entries(autres)) {
     if (j.bot) continue; // les bots sont envoyés par l'hôte
     const d = js[uid];
-    if (!d) { j.parti = true; j.pv = 0; continue; }
+    if (!d) { j.bot = true; j.niv = j.niv || 1; if (j.pv <= 0) j.pv = 1; continue; } // déconnecté : son perso continue en bot (piloté par l'hôte)
     if (d.x !== undefined) { transitionPV(j, d.pv); Object.assign(j, { tx: d.x, ty: d.y, angle: d.a, pv: d.pv, cache: d.c, marche: d.m, bo: d.bo ? d.bo.split(',') : [] }); }
   }
 }
@@ -452,7 +458,8 @@ function recevoir(e) {
   else if (e.t === 'mort' && e.k) kills[e.k] = (kills[e.k] || 0) + 1;
   else if (e.t === 'su' && j) lancerSuper(j, e.a, true);
   else if (e.t === 'ac' && j) lancerAction(j, e.a, true);
-  else if (e.t === 'tr') prendreTresor(e.i, e.eq, true);
+  else if (e.t === 'tr') prendreTresor(e.i, e.eq, true, e.u);
+  else if (e.t === 'lt') lacherTresors(entite(e.u), e.n, true, e.x, e.y, e.id0);
   else if (e.t === 'cr') cristalCasse(e.p, e.eq, true);
   else if (e.t === 'et') etapeSuivante(e.n, e.eq, true);
 }
@@ -482,7 +489,7 @@ function vec(j) { const dx = j.x - j.ox, dy = j.y - j.oy, d = Math.hypot(dx, dy)
 canvas.addEventListener('touchstart', e => {
   e.preventDefault(); pleinEcran();
   for (const t of e.changedTouches) {
-    if (etat === 'MENU' && ecranMenu === 'hud' && prendreBoutonHud(pt(t))) continue;
+    if (etat === 'MENU' && (ecranMenu === 'hud' || ecranMenu === 'commandes') && prendreBoutonHud(pt(t))) continue;
     if (etat === 'MENU') glisse = { x: pt(t).x, id: t.identifier };
     if (etat === 'MENU' && surHero(pt(t))) { heroDrag = { x: pt(t).x, id: t.identifier, bouge: 0 }; continue; }
     if (etat !== 'JEU' || moi.pv <= 0) { clic(pt(t).x, pt(t).y); continue; }
@@ -521,7 +528,7 @@ addEventListener('mousemove', e => { souris = pt(e); if (heroDrag) tournerHero(p
 addEventListener('mouseup', () => { if (heroDrag) lacherHero(); if (hudDrag) { hudDrag = null; sauverHud(); } });
 canvas.addEventListener('mousedown', e => {
   if (etat === 'MENU' && surHero(pt(e))) { heroDrag = { x: pt(e).x, bouge: 0 }; return; }
-  if (etat === 'MENU' && ecranMenu === 'hud' && prendreBoutonHud(pt(e))) return;
+  if (etat === 'MENU' && (ecranMenu === 'hud' || ecranMenu === 'commandes') && prendreBoutonHud(pt(e))) return;
   if (etat !== 'JEU' || moi.pv <= 0) return clic(pt(e).x, pt(e).y);
   const hb = boutonHUD(pt(e)); if (hb) return hb.f();
   const m = versMonde(pt(e).x, pt(e).y), d = Math.hypot(m.x - moi.x, m.y - moi.y);
@@ -547,6 +554,7 @@ function creerProjectile(j, angle, force, x, y, deg) {
   projectiles.push(p);
 }
 function tirer(angle, force = 1) {
+  if (moi.anim && moi.anim.n === 'releve' && temps - moi.anim.t < DUREE_ANIM.releve) return; // pas de tir en se relevant
   if (!moi || moi.recharge > 0 || moi.pv <= 0 || resultat) return;
   const illimite = pouvoirActif(moi, 'munitions');
   if (moi.mun < 1 && !illimite) return;               // plus de munitions
@@ -824,6 +832,7 @@ function liberer() { // éjecte ceux qui se retrouvent coincés dans un bloc
 function maj() {
   temps++;
   let mx = 0, my = 0;
+  const fige = moi.anim && moi.anim.n === 'releve' && temps - moi.anim.t < DUREE_ANIM.releve; // on se relève : pas encore de contrôle
   if (appuye('gauche')) mx--;
   if (appuye('droite')) mx++;
   if (appuye('haut')) my--;
@@ -832,6 +841,7 @@ function maj() {
   if (joyG.actif) { const v = vec(joyG); if (v.d > 5) { mx = Math.cos(v.a) * v.f; my = Math.sin(v.a) * v.f; } }
   if (moi.pv <= 0) mx = my = 0;
   const elm = elemDe(moi.perso) || {}, surEau = tuileA(moi.x, moi.y) === 'W';
+  if (fige) { mx = 0; my = 0; }
   const vit = moi.perso.vitesse * bonus(moi, 'vitesse') * (moi.dep === 'nage' && surEau ? +elm.valeur || 1.3 : 1) * (moi.dep !== 'vol' && tuileA(moi.x, moi.y) === 'S' ? 0.8 : 1); // 🏖️ le sable ralentit
   if (moi.dep === 'nage' && surEau && moi.pv > 0) moi.pv = Math.min(moi.pvMax, moi.pv + moi.pvMax * (+elm.soin || 0) / 100 / 60); // 💧 se soigne dans l'eau
   if (moi.dep === 'brise' && (mx || my)) { const tx = Math.floor((moi.x + mx * moi.r * 1.3) / TUILE), ty = Math.floor((moi.y + my * moi.r * 1.3) / TUILE); if (bloqueTir(tuile(tx, ty))) abimer(tx, ty, +elm.valeur || 60); } // 🌍 brise les blocs en fonçant dedans
@@ -1167,7 +1177,7 @@ function chocManga() { // image "choc" : flash + lignes de concentration
 
 // ---------- 🎬 INTRO DE MATCH : chaque combattant en grand, puis VS, puis 3-2-1 ----------
 let intro = null;
-const SHOW = 110, VS = 130, CD = 170, TIC = 40; // durées (images à 60/s)
+const SHOW = 80, VS = 95, CD = 136, TIC = 32; // durées (images à 60/s)
 function bossPourIntro() {
   const b = bosses.find(b => b.def && !b.def.cristal); if (b) return b.def;
   const id = (mode.typesBoss || []).find(id => CONFIG.bosses[id]); return CONFIG.bosses[id] || Object.values(CONFIG.bosses).find(b => !b.cristal) || { nom: 'BOSS' };
@@ -1569,32 +1579,41 @@ function placerCristaux() { // T = équipe la plus proche • 5-8 = cristal de l
   map.t.forEach(t => { const x = c(t.x), y = c(t.y); ajouter(x, y, pvp ? tous.reduce((a, j) => Math.hypot(pos(j).x - x, pos(j).y - y) < Math.hypot(pos(a).x - x, pos(a).y - y) ? j : a).eq : -1); });
   if (!map.t.length && !map.tc.length && !map.tn.length) { const p = caseLibre(tous); ajouter(p.x, p.y, pvp ? -2 : -1); }
 }
-function placerTresors(g) { // positions identiques chez tous les joueurs (même graine)
-  tresors = []; scoreTresor = {}; const libres = [];
-  if (map.o.length) map.o.forEach(c => libres.push(c)); // 💰 cachettes posées sur la map
-  else map.g.forEach((r, y) => [...r].forEach((c, x) => { if (c === '.' || c === 'B' || c === 'S') libres.push({ x, y }); }));
-  for (let i = 0, n = Math.min(libres.length, +mode.nbTresors || 14); i < n; i++) { const c = libres.splice(Math.floor(alea(g + i * 7.31) * libres.length), 1)[0]; tresors.push({ x: (c.x + 0.5) * TUILE, y: (c.y + 0.5) * TUILE, pris: null }); }
+function placerTresors(g) { // cachettes de la map d'abord, complétées au hasard pour atteindre le nombre voulu (même tirage chez tous)
+  tresors = []; scoreTresor = {}; joueurs().forEach(j => j.tresors = 0);
+  const cach = map.o.map(c => ({ ...c })), libres = [];
+  map.g.forEach((r, y) => [...r].forEach((c, x) => { if ((c === '.' || c === 'B' || c === 'S') && !map.o.some(o => o.x === x && o.y === y)) libres.push({ x, y }); }));
+  for (let i = 0, n = +mode.nbTresors || 14; i < n; i++) { const l = cach.length ? cach : libres; if (!l.length) break;
+    const c = l.splice(Math.floor(alea(g + i * 7.31) * l.length), 1)[0]; tresors.push({ id: 't' + i, x: (c.x + 0.5) * TUILE, y: (c.y + 0.5) * TUILE, pris: null }); }
+}
+function lacherTresors(e, n, distant, x, y, id0) { // 💰 un joueur éliminé lâche ses trésors : les autres peuvent les ramasser
+  n = n || (e && e.tresors) || 0; if (!n || !e) return; x = x ?? e.x; y = y ?? e.y; id0 = id0 || e.uid + '_' + temps;
+  if (!distant) envoyer({ t: 'lt', u: e.uid, n, x: Math.round(x), y: Math.round(y), id0 });
+  e.tresors = 0; scoreTresor[e.eq] = Math.max(0, (scoreTresor[e.eq] || 0) - n);
+  for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, px = x + Math.cos(a) * 45, py = y + Math.sin(a) * 45, ok = !bloqueTir(tuileA(px, py)) && tuileA(px, py) !== 'W';
+    tresors.push({ id: id0 + '_' + i, x: ok ? px : x, y: ok ? py : y, pris: null, lache: true }); }
+  ono('PLOP!', x, y - 30, 1.1, '#ffd23f');
 }
 function preparerObjectif() { // met en place l'objectif en cours (cristaux, zone, trésors)
   zoneProg = {}; zoneControle = null; cristauxCasses = [];
   if (hote) { bosses = bosses.filter(b => !b.def.cristal); if (obj() === 'bloc') placerCristaux(); }
   if (obj() === 'tresor') placerTresors(graine + etape * 101);
 }
-function prendreTresor(i, eq, distant) {
-  const t = tresors[i]; if (!t || t.pris !== null) return;
-  t.pris = eq; scoreTresor[eq] = (scoreTresor[eq] || 0) + 1;
+function prendreTresor(id, eq, distant, uid) {
+  const t = tresors.find(t => t.id === id); if (!t || t.pris !== null) return;
+  t.pris = eq; scoreTresor[eq] = (scoreTresor[eq] || 0) + 1; const pj = entite(uid); if (pj) pj.tresors = (pj.tresors || 0) + 1;
   effet('etoiles', t.x, t.y, '#ffd23f', 70); ono(eq === moi.eq ? 'KACHING!' : 'OH NON!', t.x, t.y - 20, 1.1, eq === moi.eq ? '#ffe14a' : '#ff5a6e');
-  if (!distant) envoyer({ t: 'tr', i, eq });
+  if (!distant) envoyer({ t: 'tr', i: id, eq, u: uid });
 }
 function majTresors() {
   if (obj() !== 'tresor') return;
-  for (const j of joueurs()) if (moiOuBot(j) && j.pv > 0) tresors.forEach((t, i) => { if (t.pris === null && Math.hypot(t.x - j.x, t.y - j.y) < 40) prendreTresor(i, j.eq); });
+  for (const j of joueurs()) if (moiOuBot(j) && j.pv > 0) tresors.forEach(t => { if (t.pris === null && Math.hypot(t.x - j.x, t.y - j.y) < 40) prendreTresor(t.id, j.eq, false, j.uid); });
 }
 function dessinerTresors() { // cachés : on ne les voit qu'en s'approchant (quelques scintillements trahissent leur cachette)
   if (obj() !== 'tresor') return;
   for (const [i, t] of tresors.entries()) {
     if (t.pris !== null) continue;
-    const d = Math.hypot(t.x - moi.x, t.y - moi.y), vis = Math.max(0, Math.min(1, (230 - d) / 80)), f = (temps + i * 37) % 140;
+    const d = Math.hypot(t.x - moi.x, t.y - moi.y), vis = t.lache ? 1 : Math.max(0, Math.min(1, (230 - d) / 80)), f = (temps + i * 37) % 140;
     if (vis <= 0) { if (f < 16) { ctx.save(); ctx.globalAlpha = 1 - f / 16; ctx.fillStyle = '#fff'; ctx.translate(t.x, t.y - 10); ctx.rotate(f * 0.1); ctx.beginPath(); for (let k = 0; k < 8; k++) { const r = k % 2 ? 2 : 8; ctx.lineTo(Math.cos(k * Math.PI / 4) * r, Math.sin(k * Math.PI / 4) * r); } ctx.fill(); ctx.restore(); } continue; }
     const b = Math.sin(temps * 0.1 + i) * 3; ctx.save(); ctx.globalAlpha = vis; ctx.translate(t.x, t.y - 8 + b);
     ellipse(0, 18 - b, 20, 7, 'rgba(0,0,0,.3)'); ctx.lineJoin = 'round'; ctx.lineWidth = 3; ctx.strokeStyle = NOIR;
@@ -1892,6 +1911,31 @@ function dessinerFissuresSol() {
       for (let s = 1; s <= 4; s++) { an += (alea(f.g + i * 7 + s) - 0.5) * 0.9; x += Math.cos(an) * L / 4; y += Math.sin(an) * L / 4 * 0.7; ctx.lineTo(x, y); ctx.lineWidth = 5 - s; } ctx.stroke(); }
     ctx.restore(); }
 }
+
+// ---------- 👫 AMIS : demandes, acceptation, recherche par pseudo, journal de combat ----------
+let mesAmis = {}, demandesAmis = {}, amisOnglet = 'amis', rechercheAmis = null, demandesEnvoyees = {};
+const nomAmi = v => typeof v === 'string' ? v : (v && v.nom) || 'Joueur';
+function ecouterAmis() {
+  if (!rtdb || !user) return;
+  rtdb.ref('amis/' + user.uid).on('value', s => { mesAmis = s.val() || {}; if (!mesAmis._init) initAmis(); });
+  rtdb.ref('demandes/' + user.uid).on('value', s => demandesAmis = s.val() || {});
+}
+async function initAmis() { // les joueurs inscrits avant cette mise à jour sont tous amis entre eux
+  const cree = Date.parse((user.metadata || {}).creationTime || '') || Date.now(), maj = { _init: true };
+  if (cree < Date.parse('2026-09-24T00:00:00Z') && db) { try { (await db.collection('joueurs').get()).forEach(d => { if (d.id !== user.uid) maj[d.id] = d.data().pseudo || 'Joueur'; }); } catch (e) {} }
+  rtdb.ref('amis/' + user.uid).update(maj);
+}
+function demanderAmi(uid, nom) { if (!rtdb || uid === user.uid || mesAmis[uid]) return; rtdb.ref(`demandes/${uid}/${user.uid}`).set({ nom: nomJoueur(), t: firebase.database.ServerValue.TIMESTAMP }); demandesEnvoyees[uid] = true; notif('Demande envoyée à ' + nom); }
+function accepterAmi(uid, nom) { rtdb.ref(`amis/${user.uid}/${uid}`).set(nom); rtdb.ref(`amis/${uid}/${user.uid}`).set(nomJoueur()); rtdb.ref(`demandes/${user.uid}/${uid}`).remove(); notif('🤝 ' + nom + ' est ton ami !'); }
+const refuserAmi = uid => rtdb.ref(`demandes/${user.uid}/${uid}`).remove();
+const retirerAmi = uid => { rtdb.ref(`amis/${user.uid}/${uid}`).remove(); rtdb.ref(`amis/${uid}/${user.uid}`).remove(); };
+async function chercherAmi() {
+  const q = (prompt('Pseudo à rechercher :') || '').trim(); if (!q || !db) return;
+  rechercheAmis = { q, l: null }; amisOnglet = 'recherche';
+  try { const r = await db.collection('joueurs').orderBy('pseudo').startAt(q).endAt(q + '\uf8ff').limit(8).get(); rechercheAmis.l = r.docs.filter(d => d.id !== user.uid).map(d => ({ uid: d.id, nom: d.data().pseudo || 'Joueur' })); }
+  catch (e) { rechercheAmis.l = []; notif('Recherche impossible : ' + e.message); }
+}
+
 // ---------- 12c. GRAPHISMES : textures & sprites pré-calculés (rapides) ----------
 const cacheGfx = {};
 function ombrer(hex, k) { // éclaircit (k>0) ou assombrit (k<0) une couleur #rrggbb
@@ -2124,11 +2168,10 @@ function dessinerHUD() {
   if (mobile) { // emplacements des joysticks (comme arcade)
     const u = U();
     if (!joyG.actif) { ctx.globalAlpha = 0.18; ellipse(95 * u, H - 95 * u, 55 * u, 55 * u, '#fff'); ctx.globalAlpha = 0.35; ellipse(95 * u, H - 95 * u, 24 * u, 24 * u, '#fff'); ctx.globalAlpha = 1; }
-    if (!joyD.actif) { ctx.globalAlpha = 0.2; ellipse(W - 95 * u, H - 95 * u, 55 * u, 55 * u, '#ffb000'); ctx.globalAlpha = 0.45; ellipse(W - 95 * u, H - 95 * u, 24 * u, 24 * u, '#ffb000'); ctx.globalAlpha = 1; emoji('🎯', W - 95 * u, H - 95 * u, 20 * u); }
   }
   dessinerJoystick(joyG, '#ffffff');
   dessinerJoystick(joyD, '#ffb000'); if (joyS.actif) dessinerJoystick(joyS, '#ffe14a'); ecran();
-  if (!('ontouchstart' in window)) texte(`${['haut', 'gauche', 'bas', 'droite'].map(a => libTouche(mesTouches[a])).join('')}/flèches : bouger • Clic : tirer • ${libTouche(mesTouches.auto)} : tir auto • ${libTouche(mesTouches.action)} : action • ${libTouche(mesTouches.super)} : super • Échap : quitter`, W / 2, H - 16, 12, '#fff');
+  if (!mobile) texte(`${['haut', 'gauche', 'bas', 'droite'].map(a => libTouche(mesTouches[a])).join('')}/flèches : bouger • Clic : tirer • ${libTouche(mesTouches.auto)} : tir auto • ${libTouche(mesTouches.action)} : action • ${libTouche(mesTouches.super)} : super • Échap : quitter`, W / 2, H - 16, 12, '#fff');
 }
 function dessinerJoystick(j, c) {
   if (!j.actif) return;
@@ -2255,18 +2298,32 @@ function menuAmis() {
   texte('Le chef lance la partie : tout le groupe', x0 + gw / 2, y0 + h - 92 * u, 11 * u, 'rgba(255,255,255,.6)');
   texte('joue dans la même équipe.', x0 + gw / 2, y0 + h - 76 * u, 11 * u, 'rgba(255,255,255,.6)');
   if (l.length > 1) { bouton3D(x0 + 20 * u, y0 + h - 60 * u, gw - 40 * u, 42 * u, '#ff6b61', '#d93a30', quitterGroupe); texte(chefMoi ? 'Dissoudre le groupe' : 'Quitter le groupe', x0 + gw / 2, y0 + h - 39 * u, 14 * u, '#fff'); }
-  const lx = x0 + gw + 16 * u, lw = W - lx - 20 * u, dispo = enLigneListe.filter(j => j.uid !== user.uid);
-  titre('En ligne', lx + 4 * u, y0 + 20 * u, 22 * u, '#fff', 'left');
-  ctx.beginPath(); ctx.arc(lx + 132 * u, y0 + 20 * u, 5 * u, 0, 7); ctx.fillStyle = '#34d399'; ctx.fill(); texte(String(dispo.length), lx + 144 * u, y0 + 20 * u, 14 * u, '#34d399', 'left');
-  if (!dispo.length) return texte("Personne d'autre n'est en ligne pour l'instant", lx + lw / 2, y0 + 90 * u, 15 * u, 'rgba(255,255,255,.7)');
-  const rh = 56 * u, nb = Math.max(1, Math.floor((h - 46 * u) / (rh + 8 * u)));
-  dispo.slice(0, nb).forEach((j, i) => {
-    const y = y0 + 44 * u + i * (rh + 8 * u); verre(lx, y, lw, rh, 16 * u);
-    avatarLettre(j.nom, lx + 32 * u, y + rh / 2, 18 * u); texte(j.nom, lx + 60 * u, y + rh / 2, 15 * u, '#fff', 'left', lw - 230 * u);
-    const bw = 130 * u, bx = lx + lw - bw - 12 * u;
-    if (groupe.membres[j.uid] || groupe.chef === j.uid) { icone('check', bx + 20 * u, y + rh / 2, 18 * u, '#34d399'); texte('Dans ton groupe', bx + 34 * u, y + rh / 2, 12 * u, '#34d399', 'left'); }
-    else if (invitesEnvoyees[j.uid] && temps - invitesEnvoyees[j.uid] < 1800) texte('Invitation envoyée…', bx + bw, y + rh / 2, 12 * u, 'rgba(255,255,255,.6)', 'right');
-    else { bouton3D(bx, y + 10 * u, bw, rh - 20 * u, '#3a9bff', '#0a6cff', () => inviter(j.uid)); texte('Inviter', bx + bw / 2, y + rh / 2, 14 * u, '#fff'); }
+  const lx = x0 + gw + 16 * u, lw = W - lx - 20 * u, enL = new Set(enLigneListe.map(j => j.uid)), nd = Object.keys(demandesAmis).length, tw = (lw - 30 * u) / 4;
+  [['amis', 'Amis'], ['demandes', 'Demandes' + (nd ? ' (' + nd + ')' : '')], ['journal', 'Journal'], ['recherche', '🔍 Rechercher']].forEach(([k, t], i) => { const x = lx + i * (tw + 10 * u), on = amisOnglet === k;
+    bouton3D(x, y0, tw, 36 * u, on ? '#ffe14a' : '#6a5cff', on ? '#ff8a1f' : '#3a2d9c', () => { amisOnglet = k; if (k === 'recherche') chercherAmi(); }); titre(t, x + tw / 2, y0 + 17 * u, 14 * u, '#fff', 'center', tw - 10 * u); });
+  let la = [];
+  if (amisOnglet === 'amis') la = Object.entries(mesAmis).filter(([k]) => k !== '_init').map(([uid, v]) => ({ uid, nom: nomAmi(v), en: enL.has(uid) })).sort((a, b) => b.en - a.en);
+  else if (amisOnglet === 'demandes') la = Object.entries(demandesAmis).map(([uid, v]) => ({ uid, nom: nomAmi(v), dem: true }));
+  else if (amisOnglet === 'journal') { try { JSON.parse(localStorage.getItem('bastoryJournal') || '[]').forEach(c => c.j.forEach(j => { if (!la.some(x => x.uid === j.uid)) la.push({ ...j, en: enL.has(j.uid), info: (c.r === 'VICTOIRE' ? '🏆 ' : c.r === 'DEFAITE' ? '💀 ' : '🤝 ') + c.mode + (j.allie ? ' • allié' : ' • adversaire') + ' • ' + new Date(c.t).toLocaleDateString() }); })); } catch (e) {} }
+  else la = (rechercheAmis && rechercheAmis.l) || [];
+  const vide = { amis: 'Pas encore d\'amis : recherche un pseudo ou ajoute tes adversaires depuis le Journal', demandes: 'Aucune demande en attente', journal: 'Aucun combat en ligne pour l\'instant', recherche: rechercheAmis && !rechercheAmis.l ? 'Recherche…' : 'Aucun joueur trouvé' };
+  if (!la.length) return texte(vide[amisOnglet], lx + lw / 2, y0 + 90 * u, 14 * u, 'rgba(255,255,255,.75)', 'center', lw - 20 * u);
+  const rh = 54 * u, nb = Math.max(1, Math.floor((h - 50 * u) / (rh + 8 * u)));
+  la.slice(0, nb).forEach((j, i) => {
+    const y = y0 + 48 * u + i * (rh + 8 * u), bw = 120 * u, bx = lx + lw - bw - 12 * u, by = y + 9 * u, bh = rh - 18 * u; verre(lx, y, lw, rh, 16 * u);
+    avatarLettre(j.nom, lx + 32 * u, y + rh / 2, 18 * u); texte(j.nom, lx + 60 * u, y + rh / 2 - (j.info ? 8 * u : 0), 15 * u, '#fff', 'left', lw - 320 * u);
+    if (j.info) texte(j.info, lx + 60 * u, y + rh / 2 + 10 * u, 10 * u, 'rgba(255,255,255,.65)', 'left', lw - 320 * u);
+    if (j.en) { ctx.beginPath(); ctx.arc(lx + 46 * u, y + rh / 2 + 12 * u, 5 * u, 0, 7); ctx.fillStyle = '#34d399'; ctx.fill(); }
+    const B = (x, t, c1, c2, f) => { bouton3D(x, by, bw, bh, c1, c2, f); texte(t, x + bw / 2, y + rh / 2, 13 * u, '#fff', 'center', bw - 8 * u); };
+    if (j.dem) { B(bx - bw - 8 * u, 'Accepter', '#34d399', '#1f9d5a', () => accepterAmi(j.uid, j.nom)); B(bx, 'Refuser', '#ff6b61', '#d93a30', () => refuserAmi(j.uid)); }
+    else if (mesAmis[j.uid]) {
+      if (groupe.membres[j.uid] || groupe.chef === j.uid) texte('✔ Dans ton groupe', bx + bw, y + rh / 2, 12 * u, '#34d399', 'right');
+      else if (j.en && !(invitesEnvoyees[j.uid] && temps - invitesEnvoyees[j.uid] < 1800)) B(bx, 'Inviter', '#3a9bff', '#0a6cff', () => inviter(j.uid));
+      else texte(j.en ? 'Invitation envoyée…' : 'Hors ligne', bx + bw, y + rh / 2, 12 * u, 'rgba(255,255,255,.6)', 'right');
+      if (amisOnglet === 'amis') { bouton3D(bx - 50 * u, by, 40 * u, bh, '#8b8fa8', '#5d6778', () => { if (confirm('Retirer ' + j.nom + ' de tes amis ?')) retirerAmi(j.uid); }); texte('✕', bx - 30 * u, y + rh / 2, 14 * u, '#fff'); }
+    }
+    else if (demandesEnvoyees[j.uid]) texte('Demande envoyée', bx + bw, y + rh / 2, 12 * u, 'rgba(255,255,255,.6)', 'right');
+    else B(bx, '➕ Ajouter', '#ffd23f', '#ff8a1f', () => demanderAmi(j.uid, j.nom));
   });
 }
 
@@ -2354,6 +2411,7 @@ function menuAccueil() {
     const y = top + 14 * u + k * 52 * u, w = 158 * u;
     boutonJeu(14 * u, y, w, 42 * u, a1, a2, () => allerA(e));
     icone(ic, 40 * u, y + 21 * u, 20 * u); titre(t, 58 * u, y + 22 * u, 20 * u, '#fff', 'left', w - 80 * u);
+    if (e === 'amis' && Object.keys(demandesAmis).length) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(Object.keys(demandesAmis).length), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
     if (e === 'recompenses' && nbRecompenses()) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(nbRecompenses()), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
     if (k === 1 && Object.keys(groupe.membres).length) { ctx.beginPath(); ctx.arc(14 * u + w - 22 * u, y + 23 * u, 10 * u, 0, 7); ctx.fillStyle = '#34d399'; ctx.fill(); texte(String(Object.keys(groupe.membres).length + 1), 14 * u + w - 22 * u, y + 24 * u, 11 * u, '#fff'); }
   });
@@ -2506,7 +2564,7 @@ function vignetteMap(i, x, y, w, h, sel) { // aperçu d'une map + son nom
 }
 function menuModes() { // 🖥️ ordi : grille de cases • 📱 mobile : une grande case à la fois (flèches ou glisser)
   const u = U(), top = barreHaut('Modes de jeu', true), liste = modes(), m = modeChoisi(), act = mapsActives(), impose = m.map >= 0 && CONFIG.maps[m.map];
-  if ('ontouchstart' in window || H < 480) {
+  if (mobile || H < 480) {
     const n = liste.length, i = modeIndex % n, cw = Math.min(W - 160 * u, 560 * u), ch = Math.min(H - top - 150 * u, 210 * u), y = top + 6 * u;
     const off = (1 - sortir(Math.min(1, (temps - modeAnim.t) / 12))) * modeAnim.d * 90 * u;
     carteMode(liste[i], W / 2 - cw / 2 + off, y, cw, ch, true, true);
@@ -2657,6 +2715,7 @@ function dessinerFin() { // animation de victoire / défaite avec les gagnants e
 // ---------- 16. ÉVÉNEMENTS DE PARTIE : intro, mort, réapparition, spectateur, poison, fumée ----------
 let introT = 0, debutJeu = 0, kills = {}, nuages = [], dots = [], fantomes = [], suivi = null;
 function animMort(e, im) {
+  if (e.tresors && obj() === 'tresor' && moiOuBot(e)) lacherTresors(e);
   ono('K.O. !!', e.x, e.y - 30, 1.8, '#ff2d55'); choc = 1.3; flash = 0.6; // le perso tourne, rétrécit et s'envole en fondu
   fantomes.push({ im: im || img(e.perso ? e.perso.image : ''), x: e.x, y: e.y, a: e.angle || 0, t: temps, taille: e.r * 2.9 });
   for (let i = 0; i < 20; i++) particule(e.x, e.y, i % 2 ? '#ffffff' : '#9aa0ff', 6, 6, 1.4, 'rond');

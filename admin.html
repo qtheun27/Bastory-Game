@@ -129,11 +129,11 @@ const CH = {
           ['botsObjets','Les bots ramassent les objets rares','check'],
           ['niveauBoss','Niveau des boss (1 = normal, 2 = 2× plus forts)','number'],['niveauBots','Niveau de base des bots (1 = normal)','number'],
           ['botsAdaptatifs','Bots adaptés aux points des joueurs','check'],
-          ['bots','Compléter avec des bots 🤖','check'],['attenteBots','Attente avant les bots (s)','number'],
+          ['attenteDepart','Attente avant le départ quand il y a assez de joueurs (s)','number'],['bots','Compléter avec des bots 🤖','check'],['attenteBots','Attente avant les bots (s)','number'],
           ['boss','Boss activés','check'],['nbBoss','Nombre de boss (max 10)','number'],
           ['typesBoss','Types de boss (aucun coché = au hasard)','multi',() => Object.entries(cfg.bosses).map(([k, b]) => [k, b.nom])],['map','Map','select',optMaps]],
   perso: [['nom','Nom','text'],['couleur','Couleur','color'],['animAccueil','🎬 Animation dans les menus (accueil, persos)','anims'],['pvMax','Points de vie','number'],
-          ['vitesse','Vitesse (2-8)','number'],['arme','Arme','select',optArmes],['degats','Dégâts','number'],['portee','Portée (px)','number'],['delaiTir','Cadence : délai entre 2 tirs (60 = 1 s)','number'],
+          ['taille','Taille (rayon, px)','number'],['vitesse','Vitesse (px par image, 2 à 8)','number'],['arme','Arme','select',optArmes],['degats','Dégâts','number'],['portee','Portée (px)','number'],['delaiTir','Cadence : délai entre 2 tirs (60 = 1 s)','number'],
           ['munitions','Nombre de munitions','number'],['recharge','Recharge d\'1 munition (60 = 1 s)','number'],
           ['element','Élément','select',() => [['', 'Aucun'], ...Object.entries(cfg.elements || {}).map(([k, e]) => [k, e.icone + ' ' + e.nom])]],
           ['modele','Modèle 3D (.glb, ex : modeles/rokh.glb)','text'],['modeleEchelle','Taille du perso (1 = normal, 1.4 = grand)','number'],['modeleRotation','Modèle : rotation (degrés)','number'],
@@ -142,7 +142,7 @@ const CH = {
           ['type','Trajectoire','select',[['lob','Lancer en cloche (passe les murs)'],['retour','Aller-retour'],['droit','Tir droit'],['terrain','🌋 Terrain (fait sortir des cases du sol)']]],
           ['effet','Animation d\'impact','select',[['explosion','💥 Explosion'],['entaille','⚔️ Entaille'],['etincelle','✨ Étincelles'],['impact','🔨 Onde de choc'],
             ['foudre','⚡ Foudre'],['glace','❄️ Glace'],['poison','☠️ Poison'],['fumee','🌫️ Fumée'],['feu','🔥 Feu'],['etoiles','⭐ Étoiles'],['vortex','🌀 Tourbillon'],['eclaboussure','💦 Éclaboussure']]],
-          ['vitesse','Vitesse','number'],['taille','Taille','number'],['rayon','Rayon explosion','number'],['couleur','Couleur effet','color'],
+          ['vitesse','Vitesse (px par image, 2 à 8)','number'],['taille','Taille (rayon, px)','number'],['rayon','Rayon explosion','number'],['couleur','Couleur effet','color'],
           ['retard','Dégâts à retardement (s)','number'],['poisonDuree','Poison : dégâts étalés sur (s)','number'],
           ['nuage','Nuage / fumée au sol : durée (s)','number'],['rayonNuage','Rayon du nuage','number'],['degatsNuage','Dégâts du nuage par seconde','number'],
           ['rebonds','Tir droit : ricochets sur les murs','number'],['bonusRebond','Puissance × à chaque ricochet','number'],
@@ -216,7 +216,7 @@ function formulaire(obj, champs) {
   }
   if (champs === CH.mode) { // ⚙️ n'afficher que les réglages utiles pour le type de jeu et l'objectif choisis
     const ep = o => String(o.etapes || '').split(','), a = (o, k) => o.objectif === k || (o.objectif === 'marathon' && ep(o).includes(k)), multi = o => o.type === 'multi';
-    const C = { joueursMin: multi, joueursMax: multi, equipes: multi, bots: multi, attenteBots: o => multi(o) && o.bots, niveauBots: o => o.bots, botsAdaptatifs: o => o.bots, botsObjets: o => o.bots,
+    const C = { joueursMin: multi, joueursMax: multi, equipes: multi, attenteDepart: multi, bots: multi, attenteBots: o => multi(o) && o.bots, niveauBots: o => o.bots, botsAdaptatifs: o => o.bots, botsObjets: o => o.bots,
       delaiReapparition: o => o.reapparition, etapes: o => o.objectif === 'marathon', nbTresors: o => a(o, 'tresor'), objectifTresors: o => a(o, 'tresor'), tempsZone: o => a(o, 'zone'),
       pvCristal: o => a(o, 'bloc'), degatsCristal: o => a(o, 'bloc'), porteeCristal: o => a(o, 'bloc'), cadenceCristal: o => a(o, 'bloc'), nbBoss: o => o.boss, typesBoss: o => o.boss, niveauBoss: o => o.boss };
     const el2 = [...f.children], maj = () => champs.forEach(([k], i) => { if (C[k] && el2[i]) el2[i].style.display = C[k](obj) ? '' : 'none'; });
