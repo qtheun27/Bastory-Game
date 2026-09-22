@@ -132,7 +132,7 @@ const CH = {
           ['attenteDepart','Attente avant le départ quand il y a assez de joueurs (s)','number'],['bots','Compléter avec des bots 🤖','check'],['attenteBots','Attente avant les bots (s)','number'],
           ['boss','Boss activés','check'],['nbBoss','Nombre de boss (max 10)','number'],
           ['typesBoss','Types de boss (aucun coché = au hasard)','multi',() => Object.entries(cfg.bosses).map(([k, b]) => [k, b.nom])],['map','Map','select',optMaps]],
-  perso: [['nom','Nom','text'],['capacite','Capacité spéciale (vide = celle de l\'élément)','select',[['','Celle de l\'élément'],['sol','Aucune'],['brise','🌍 Brise les blocs'],['vol','💨 Vole'],['saut','💨 Saute par-dessus les murs'],['nage','💧 Marche sur l\'eau'],['feu','🔥 Traînée de feu'],['lave','🌋 Lave (eau + feu)'],['orage','⛈️ Orage (vol + anti-recul)']]],['action','Action du bouton (vide = celle de l\'élément)','select',[['','Celle de l\'élément'],['terre','🌍 Charge'],['air','💨 Saut'],['eau','💧 Bulle'],['feu','🔥 Brasier'],['tourbillon','🌪️ Tornade qui repousse'],['gel','❄️ Souffle glacé']]],['description','📝 Description (perso + attaques, visible dans l\'appli)','text'],['base','🔓 Perso de base (débloqué d\'office)','check'],['coutJetons','🎟️ Coût pour le débloquer (jetons perso)','number'],['couleur','Couleur','color'],['animAccueil','🎬 Animation dans les menus (accueil, persos)','anims'],['pvMax','Points de vie','number'],
+  perso: [['nom','Nom','text'],['capacite','Capacité spéciale (vide = celle de l\'élément)','select',[['','Celle de l\'élément'],['sol','Aucune'],['brise','🌍 Brise les blocs'],['vol','💨 Vole'],['saut','💨 Saute par-dessus les murs'],['nage','💧 Marche sur l\'eau'],['feu','🔥 Traînée de feu'],['lave','🌋 Lave (eau + feu)'],['orage','⛈️ Orage (vol + anti-recul)']]],['action','Action du bouton (vide = celle de l\'élément)','select',[['','Celle de l\'élément'],['terre','🌍 Charge'],['air','💨 Saut'],['eau','💧 Bulle'],['feu','🔥 Brasier'],['tourbillon','🌪️ Tornade qui repousse'],['gel','❄️ Souffle glacé']]],['description','📝 Description (perso + attaques, visible dans l\'appli)','text'],['deBase','🔓 Perso de base (débloqué d\'office)','check'],['coutJetons','🎟️ Coût pour le débloquer (jetons perso)','number'],['couleur','Couleur','color'],['animAccueil','🎬 Animation dans les menus (accueil, persos)','anims'],['pvMax','Points de vie','number'],
           ['taille','Taille (rayon, px)','number'],['vitesse','Vitesse (px par image, 2 à 8)','number'],['arme','Arme','select',optArmes],['degats','Dégâts','number'],['portee','Portée (px)','number'],['delaiTir','Cadence : délai entre 2 tirs (60 = 1 s)','number'],
           ['munitions','Nombre de munitions','number'],['recharge','Recharge d\'1 munition (60 = 1 s)','number'],
           ['element','Élément','select',() => [['', 'Aucun'], ...Object.entries(cfg.elements || {}).map(([k, e]) => [k, e.icone + ' ' + e.nom])]],
@@ -317,17 +317,22 @@ const VUES = {
           el('p', { className: 'aide', textContent: 'Déjà jouables avec des stats par défaut. Ajoute-les ici pour régler leurs stats, puis publie.' }),
           ...nouveaux.map(f => el('div', { className: 'outils' }, el('span', { textContent: f.name }), el('button', { textContent: '➕ Ajouter', onclick: () => {
             const m = f.name.replace(/\.glb$/i, '').match(/^(terre|air|eau|feu)[-_ ](.+)$/i);
-            cfg.persos.push({ base: false, coutJetons: 3, nom: (m ? m[2] : f.name.replace(/\.glb$/i, '')).replace(/[-_]+/g, ' ').toUpperCase().slice(0, 16), element: m ? m[1].toLowerCase() : '', modele: 'modeles/' + f.name, modeleEchelle: 1, modeleRotation: 0,
+            cfg.persos.push({ deBase: false, coutJetons: 3, nom: (m ? m[2] : f.name.replace(/\.glb$/i, '')).replace(/[-_]+/g, ' ').toUpperCase().slice(0, 16), element: m ? m[1].toLowerCase() : '', modele: 'modeles/' + f.name, modeleEchelle: 1, modeleRotation: 0,
               couleur: '#8b5cf6', image: '', imageCarte: '', arme: Object.keys(cfg.armes)[0], pvMax: 5500, vitesse: 5, degats: 1400, portee: 400, delaiTir: 28, munitions: 3, recharge: 55 });
             modifie(); afficher(); } })))));
       } catch (e) {}
     })();
     const g = el('div', { className: 'grille-cartes' });
+    cfg.persos.forEach(p => { // les valeurs automatiques s'affichent pour de vrai (plus de champs vides)
+      const e = (cfg.elements || {})[p.element] || {};
+      if (!p.capacite) p.capacite = e.capacite || 'sol'; if (!p.action && p.element) p.action = p.element;
+      if (!p.taille) p.taille = 26; if (p.deBase === undefined) p.deBase = true; if (p.coutJetons === undefined) p.coutJetons = 3; if (!p.animAccueil) p.animAccueil = '';
+    });
     cfg.persos.forEach((p, i) => g.append(carte(p.nom, apercu3D(p, formulaire(p, CH.perso)), () => {
       if (cfg.persos.length > 1 && confirm('Supprimer ' + p.nom + ' ?')) { cfg.persos.splice(i, 1); modifie(); afficher(); }
     })));
     z.append(el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouveau perso', onclick: () => {
-      cfg.persos.push({ base: false, coutJetons: 3, nom: 'NOUVEAU', image: '', imageCarte: '', munitions: 3, recharge: 60, element: 'terre', modele: '', modeleEchelle: 1, modeleRotation: 0, couleur: '#e67e22', pvMax: 5000, vitesse: 5, arme: Object.keys(cfg.armes)[0], degats: 1000, portee: 350, delaiTir: 30 });
+      cfg.persos.push({ deBase: false, coutJetons: 3, taille: 26, nom: 'NOUVEAU', image: '', imageCarte: '', munitions: 3, recharge: 60, element: 'terre', modele: '', modeleEchelle: 1, modeleRotation: 0, couleur: '#e67e22', pvMax: 5000, vitesse: 5, arme: Object.keys(cfg.armes)[0], degats: 1000, portee: 350, delaiTir: 30 });
       modifie(); afficher();
     } })), g);
   },

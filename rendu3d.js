@@ -40,7 +40,26 @@ const Rendu3D = (() => {
     else for (let r = 0; r < 4; r++) for (let i = -1; i < 3; i++) { const bx = i * 64 + (r % 2) * 32, by = r * 32; x.fillStyle = ombrer(c, (alea(r * 5.3 + i * 2.1) - 0.5) * 0.2); x.beginPath(); x.roundRect(bx + 3, by + 3, 58, 26, 5); x.fill(); clair(bx, by, 64, 32); }
     const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; return texs[k] = t;
   }
-  let eauTex = null, eauMat = null, cristaux = new Map();
+  let eauTex = null, eauMat = null, cristaux = new Map(), geoTir = null; const tirs = new Map();
+  function majTirs() { // 🎯 projectiles en vraie 3D : flèche, rocher, bulle, boule de feu… + éclair de départ
+    if (!geoTir) geoTir = { fleche: new THREE.ConeGeometry(6, 36, 6), rocher: new THREE.DodecahedronGeometry(13, 0), bulle: new THREE.SphereGeometry(14, 16, 12), feu: new THREE.SphereGeometry(13, 14, 10), base: new THREE.SphereGeometry(10, 12, 8), eclat: new THREE.SphereGeometry(1, 10, 8) };
+    const vus = new Set(projectiles);
+    for (const [p, m] of tirs) if (!vus.has(p)) { scene.remove(m); tirs.delete(p); }
+    for (const p of projectiles) {
+      const a = p.arme || {}; if (a.forme === 'onde') continue; // l'onde du marteau reste dessinée au sol
+      const f = geoTir[a.forme] ? a.forme : 'base'; let m = tirs.get(p);
+      if (!m) { const c = p.sombre ? '#6a00a8' : a.couleur || '#ffffff'; m = new THREE.Group();
+        const coeur = new THREE.Mesh(geoTir[f], f === 'bulle' ? toon(c, { transparent: true, opacity: 0.65 }) : toon(c, { emissive: lin(c), emissiveIntensity: f === 'feu' ? 1 : 0.4 })); coeur.castShadow = true; m.add(coeur);
+        const e = new THREE.Mesh(geoTir[f], encre()); e.scale.setScalar(1.2); m.add(e);
+        if (f === 'feu') { const h = new THREE.Mesh(geoTir.feu, new THREE.MeshBasicMaterial({ color: 0xfff3b0 })); h.scale.setScalar(0.55); m.add(h); }
+        const fl = new THREE.Mesh(geoTir.eclat, new THREE.MeshBasicMaterial({ color: lin(c).lerp(new THREE.Color(1, 1, 1), 0.6), transparent: true, opacity: 1, depthWrite: false })); fl.userData.t0 = temps; m.userData.flash = fl; scene.add(fl);
+        fl.position.set(p.x, 30, p.y); m.scale.setScalar(Math.max(0.7, (a.taille || 16) / 16)); scene.add(m); tirs.set(p, m); }
+      const ang = Math.atan2(p.vy || 0, p.vx || 1); m.position.set(p.x, 26 + (p.z || 0), p.y);
+      if (f === 'fleche') m.rotation.set(0, -ang, -Math.PI / 2); else m.rotation.set(temps * 0.2, temps * 0.15, 0);
+      if (f === 'bulle' || f === 'feu') m.children[0].scale.setScalar(1 + Math.sin(temps * 0.4) * 0.08);
+      const fl = m.userData.flash; if (fl) { const k = temps - fl.userData.t0; if (k > 8) { scene.remove(fl); m.userData.flash = null; } else { fl.scale.setScalar(8 + k * 5); fl.material.opacity = 1 - k / 8; } } // 💥 éclair de tir
+    }
+  }
   function construire() { // 🧱 la map en 3D (reconstruite seulement si une case change : bloc cassé, buisson brûlé…)
     const cle = map.g.join(''); if (cle === carteCle) return; carteCle = cle;
     for (const [, m] of cristaux) scene.remove(m); cristaux.clear();
@@ -186,7 +205,7 @@ const Rendu3D = (() => {
     const aff = [(b[0] - a[0]) / 100, (b[1] - a[1]) / 100, (d[0] - a[0]) / 100, (d[1] - a[1]) / 100];
     aff.push(a[0] - c0.x * aff[0] - c0.z * aff[2], a[1] - c0.x * aff[1] - c0.z * aff[3]);
     const t = performance.now(); majPersos(Math.min(0.05, (t - (horloge || t)) / 1000), aff); horloge = t;
-    R.render(scene, camera);
+    majTirs(); R.render(scene, camera);
     return aff;
   }
   function versMonde(sx, sy) { // écran → sol (rayon depuis la caméra)

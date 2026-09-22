@@ -1194,7 +1194,7 @@ function migrerConfig(c) {
     c.version = 13;
   }
   if ((c.version || 0) < 14) { // v14 : persos de base / à débloquer, récompenses jetons et photos de profil
-    c.persos.forEach(p => { if (p.base === undefined) p.base = true; if (p.coutJetons === undefined) p.coutJetons = 3; });
+    c.persos.forEach(p => { if (p.deBase === undefined) p.deBase = true; if (p.coutJetons === undefined) p.coutJetons = 3; });
     (c.recompenses || []).forEach(r => { if (!r.type) r.type = 'essence'; });
     if (!c.recompenses.some(r => r.type !== 'essence')) { c.recompenses.push({ victoires: 10, type: 'avatar', quantite: 2 }, { victoires: 15, type: 'jetons', quantite: 3 }, { victoires: 25, type: 'avatar', quantite: 2 }, { victoires: 35, type: 'jetons', quantite: 3 }, { victoires: 50, type: 'avatar', quantite: 3 }); c.recompenses.sort((a, b) => a.victoires - b.victoires); }
     c.version = 14;
@@ -1204,7 +1204,8 @@ function migrerConfig(c) {
       NAIA: 'Axolotl guerrière. Son trident repousse puis revient ; elle nage et se soigne dans l\'eau.', PYRO: 'Bébé dragon. Sa boule de feu explose en flammes et il laisse une traînée brûlante.' };
     c.persos.forEach(p => { if (!p.description && DESC[p.nom]) p.description = DESC[p.nom]; }); c.version = 15;
   }
-  c.persos.forEach(p => { if (p.base === false && !p.armeAuto) armePour(c, p); }); // nouveaux persos : arme créée automatiquement
+  c.persos.forEach(p => { if (typeof p.base === 'boolean') { p.deBase = p.base; delete p.base; } }); // réparation : ancien nom du champ
+  c.persos.forEach(p => { if (p.deBase === false && !p.armeAuto) armePour(c, p); }); // nouveaux persos : arme créée automatiquement
   if (/wixy\.png$/i.test((c.app || {}).icone || '')) c.app.icone = 'images/icone-maskable-512.png'; // nouvelle icône PWA
   c.modes.forEach(m => {
     if (m.type === '1v1') { m.type = 'multi'; m.joueursMin = m.joueursMin || 2; m.joueursMax = m.joueursMax || 2; }

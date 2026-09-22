@@ -1380,6 +1380,7 @@ function dessinerProjectile(p) {
   }
   const a = p.arme, im = img(a.image), s = (a.taille || 16) * 2.8;
   if (a.forme === 'onde') return ondeMarteau(p);
+  if (aff3) return; // en 3D : le projectile est un vrai objet 3D (trainée et ombre restent au sol)
   const k = 1 - p.z / 220;
   if (p.sombre) { ctx.save(); ctx.shadowColor = '#000'; ctx.shadowBlur = 25; ellipse(p.x, p.y - p.z - 10, s * 0.6, s * 0.6, 'rgba(30,0,45,.65)'); ctx.restore(); }
   ellipse(p.x, p.y + 6, s * 0.4 * k, s * 0.22 * k, 'rgba(0,0,0,.3)');
@@ -1956,7 +1957,7 @@ async function chercherAmi() {
 
 
 // ---------- 🖼️ PHOTOS DE PROFIL (4 par perso / boss, créées automatiquement) & 🔓 PERSOS À DÉBLOQUER ----------
-const estDebloque = p => p.base !== false || (mesStats.persosDebloques || []).includes(cleP(p));
+const estDebloque = p => p.deBase !== false || (mesStats.persosDebloques || []).includes(cleP(p));
 function bboxImage(im) { // zone réellement dessinée d'un portrait (pour bien centrer)
   if (im._bb) return im._bb; const c = document.createElement('canvas'), w = c.width = im.width, h = c.height = im.height, x = c.getContext('2d'); x.drawImage(im, 0, 0);
   const d = x.getImageData(0, 0, w, h).data; let x0 = w, y0 = h, x1 = 0, y1 = 0;
@@ -1967,7 +1968,7 @@ function bboxImage(im) { // zone réellement dessinée d'un portrait (pour bien 
 const libAvatars = () => [...CONFIG.persos.map(p => ['p', p]), ...Object.values(CONFIG.bosses).filter(b => !b.cristal).map(b => ['b', b])].flatMap(([t, p]) => [0, 1, 2, 3].map(v => ({ cle: t + ':' + p.nom + ':' + v, p, v })));
 const avatarsDebloques = () => new Set([...CONFIG.persos.filter(estDebloque).map(p => 'p:' + p.nom + ':0'), ...(mesStats.avatars || [])]);
 function avatarPerso(p, v = 0) { // 4 styles : en pied • gros plan • gros plan miroir sur rayons • en pied halo sombre
-  const im = carteDe(p), bp = baseDe(p); if (!pret(im) || (bp.modele && !visages3D.get(bp))) return null; const k = 'av' + v + (p.nom || '') + im.width; if (cacheGfx[k]) return cacheGfx[k];
+  const im = carteDe(p), bp = baseDe(p); if (!pret(im) || (bp.modele && !visages3D.get(bp))) return null; const cache = im._av || (im._av = {}); if (cache[v]) return cache[v];
   const S = 256, c = document.createElement('canvas'); c.width = c.height = S; const x = c.getContext('2d'), el = elemDe(p), col = /^#[0-9a-f]{6}$/i.test((el && el.couleur) || p.couleur || '') ? (el && el.couleur) || p.couleur : '#5a4dff', bb = bboxImage(im);
   const g = x.createRadialGradient(S / 2, S * 0.4, 10, S / 2, S / 2, S * 0.7);
   if (v === 3) { g.addColorStop(0, ombrer(col, 0.1)); g.addColorStop(1, '#140c3a'); } else { g.addColorStop(0, ombrer(col, 0.45)); g.addColorStop(1, ombrer(col, -0.35)); }
@@ -1976,7 +1977,7 @@ function avatarPerso(p, v = 0) { // 4 styles : en pied • gros plan • gros pl
   const gros = v === 1 || v === 2, cw = gros ? Math.min(bb.w, bb.h * 0.58) : bb.w, ch = gros ? cw : bb.h, sx = gros ? Math.max(0, Math.min(im.width - cw, bb.hx - cw / 2)) : bb.x, sy = gros ? Math.max(0, bb.y - cw * 0.05) : bb.y, k2 = (S * (gros ? 0.98 : 0.84)) / Math.max(cw, ch);
   x.save(); if (v === 2) { x.translate(S, 0); x.scale(-1, 1); }
   x.drawImage(im, sx, sy, cw, ch, S / 2 - cw * k2 / 2, S / 2 - ch * k2 / 2 + (gros ? S * 0.04 : 0), cw * k2, ch * k2); x.restore();
-  return cacheGfx[k] = c;
+  return cache[v] = c;
 }
 function monAvatar() { const a = mesStats.avatar; if (a && a.d) { const i = img(a.d); if (pret(i)) return i; }
   const l = a && a.cle && libAvatars().find(o => o.cle === a.cle); return l ? avatarPerso(l.p, l.v) : avatarPerso(selPerso(), 1); }
@@ -2917,7 +2918,7 @@ async function detecterModeles() {
       const chemin = 'modeles/' + f.name; if (CONFIG.persos.some(p => p.modele === chemin)) continue;
       const m = f.name.replace(/\.glb$/i, '').match(/^(terre|air|eau|feu)[-_ ](.+)$/i), element = m ? m[1].toLowerCase() : '', nom = (m ? m[2] : f.name.replace(/\.glb$/i, '')).replace(/[-_]+/g, ' ').toUpperCase().slice(0, 16);
       const el = (CONFIG.elements || {})[element] || {}, a = ARME[element] && CONFIG.armes[ARME[element]] ? ARME[element] : Object.keys(CONFIG.armes)[0];
-      CONFIG.persos.push({ base: false, coutJetons: 3,  nom, element, modele: chemin, modeleEchelle: 1, modeleRotation: 0, couleur: el.couleur || '#8b5cf6', image: '', imageCarte: '', arme: a,
+      CONFIG.persos.push({ deBase: false, coutJetons: 3,  nom, element, modele: chemin, modeleEchelle: 1, modeleRotation: 0, couleur: el.couleur || '#8b5cf6', image: '', imageCarte: '', arme: a,
         pvMax: 5500, vitesse: 5, degats: 1400, portee: 400, delaiTir: 28, munitions: 3, recharge: 55 }); armePour(CONFIG, CONFIG.persos[CONFIG.persos.length - 1]);
     }
   } catch (e) { console.warn('Détection des modèles', e); }
