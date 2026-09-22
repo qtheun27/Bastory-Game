@@ -94,6 +94,7 @@ const versMonde = (x, y) => { // écran → monde (vue 3D, 2,5D ou 2D)
 
 // ---------- 4. ÉTAT ----------
 let etat = 'AUTH', modeIndex = 0, mapIndex = 0, persoIndex = 0, mode = null, hote = true, salle = null;
+let persoSauve = 0, persoCharge = false; try { persoIndex = persoSauve = Math.max(0, Math.min(CONFIG.persos.length - 1, +localStorage.getItem('bastoryPerso') || 0)); } catch (e) {} // 💾 dernier perso choisi
 let map = null, moi = null, autres = {}, bosses = [], projectiles = [], particules = [], textes = [], ondes = [];
 let objets = [], degatsTuiles = {}, mesPoints = 0, finInfo = null, attente = { n: 1, min: 1, max: 1, reste: 0 };
 let cam = { x: 0, y: 0 }, secousse = 0, temps = 0, finDans = 0, resultat = '', messageFin = '', zones = [];
@@ -319,7 +320,7 @@ function finir(r, msg) {
       persos: { [cleP(baseDe(moi.perso))]: { points: inc(finInfo.points), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0) } } }, { merge: true }).catch(e => console.warn(e));
   }
 }
-function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; mesPoints = v.points || 0; if (v.touches && !toucheAttendue) mesTouches = { ...TOUCHES_DEF, ...v.touches }; mesStats = { points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {}, essences: v.essences || {}, recompenses: v.recompenses || [] }; }, () => {}); }
+function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; if (!persoCharge && v.perso !== undefined) { persoCharge = true; persoIndex = persoSauve = Math.max(0, Math.min(CONFIG.persos.length - 1, +v.perso)); } if (v.hud) Object.assign(hudPerso, v.hud); mesPoints = v.points || 0; if (v.touches && !toucheAttendue) mesTouches = { ...TOUCHES_DEF, ...v.touches }; mesStats = { points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {}, essences: v.essences || {}, recompenses: v.recompenses || [] }; }, () => {}); }
 
 // ---------- 8. MULTIJOUEUR (Realtime Database) ----------
 // Salle d'attente → départ quand le max est atteint (ou 10 s après avoir atteint le minimum).
@@ -474,6 +475,7 @@ function vec(j) { const dx = j.x - j.ox, dy = j.y - j.oy, d = Math.hypot(dx, dy)
 canvas.addEventListener('touchstart', e => {
   e.preventDefault(); pleinEcran();
   for (const t of e.changedTouches) {
+    if (etat === 'MENU' && ecranMenu === 'hud' && prendreBoutonHud(pt(t))) continue;
     if (etat === 'MENU') glisse = { x: pt(t).x, id: t.identifier };
     if (etat === 'MENU' && surHero(pt(t))) { heroDrag = { x: pt(t).x, id: t.identifier, bouge: 0 }; continue; }
     if (etat !== 'JEU' || moi.pv <= 0) { clic(pt(t).x, pt(t).y); continue; }
@@ -486,10 +488,12 @@ canvas.addEventListener('touchstart', e => {
 }, { passive: false });
 canvas.addEventListener('touchmove', e => {
   e.preventDefault();
+  if (hudDrag) deplacerBoutonHud(pt(e.changedTouches[0]));
   for (const t of e.changedTouches) for (const j of [joyG, joyD, joyS]) if (j.actif && j.id === t.identifier) { const q = pt(t); j.x = q.x; j.y = q.y; }
   if (heroDrag) for (const t of e.changedTouches) if (t.identifier === heroDrag.id) tournerHero(pt(t).x);
 }, { passive: false });
 function finTouche(e) {
+  if (hudDrag) { hudDrag = null; sauverHud(); }
   if (glisse) for (const t of e.changedTouches) if (t.identifier === glisse.id) { const dx = pt(t).x - glisse.x; if (Math.abs(dx) > 60 && ecranMenu === 'modes' && etat === 'MENU') changerMode(dx < 0 ? 1 : -1); glisse = null; }
   if (heroDrag) for (const t of e.changedTouches) if (t.identifier === heroDrag.id) lacherHero();
   for (const t of e.changedTouches) {
@@ -506,10 +510,11 @@ canvas.addEventListener('touchcancel', finTouche);
 const surHero = q => ecranMenu === 'accueil' && heroZone && q.x - sa.l > heroZone.x && q.x - sa.l < heroZone.x + heroZone.w && q.y - sa.t > heroZone.y && q.y - sa.t < heroZone.y + heroZone.h;
 function tournerHero(x) { const dx = x - heroDrag.x; heroDrag.x = x; heroDrag.bouge += Math.abs(dx); heroAngle -= dx * 0.013; }
 function lacherHero() { if (heroDrag.bouge < 6) { persoVue = persoIndex; allerA('persos'); } heroDrag = null; }
-addEventListener('mousemove', e => { souris = pt(e); if (heroDrag) tournerHero(pt(e).x); });
-addEventListener('mouseup', () => { if (heroDrag) lacherHero(); });
+addEventListener('mousemove', e => { souris = pt(e); if (heroDrag) tournerHero(pt(e).x); if (hudDrag) deplacerBoutonHud(pt(e)); });
+addEventListener('mouseup', () => { if (heroDrag) lacherHero(); if (hudDrag) { hudDrag = null; sauverHud(); } });
 canvas.addEventListener('mousedown', e => {
   if (etat === 'MENU' && surHero(pt(e))) { heroDrag = { x: pt(e).x, bouge: 0 }; return; }
+  if (etat === 'MENU' && ecranMenu === 'hud' && prendreBoutonHud(pt(e))) return;
   if (etat !== 'JEU' || moi.pv <= 0) return clic(pt(e).x, pt(e).y);
   const hb = boutonHUD(pt(e)); if (hb) return hb.f();
   const m = versMonde(pt(e).x, pt(e).y), d = Math.hypot(m.x - moi.x, m.y - moi.y);
@@ -1045,17 +1050,17 @@ function verre(x, y, w, h, r, teinte) { // case de manga : fond encre, contour n
   rect(x, y, w, h, r, null, NOIR, Math.max(2, 2.8 * u));
   rect(x + 2.5 * u, y + 2.5 * u, w - 5 * u, h - 5 * u, Math.max(0, r - 2.5 * u), null, 'rgba(255,255,255,.22)', 1);
 }
-function boutonBD(x, y, w, h, c1, c2, r, brillant) {
-  const u = U(), p = 5 * u;
-  rect(x, y + p, w, h, r, NOIR);                                           // épaisseur du bouton
-  const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, c1); g.addColorStop(1, c2);
-  rect(x, y, w, h, r, g);
+function boutonBD(x, y, w, h, c1, c2, r, brillant) { // bouton moderne : pilule bombée, ombre douce, reflet vitré
+  const u = U(); r = Math.min(r, h / 2);
+  ctx.save(); ctx.shadowColor = 'rgba(15,0,50,.45)'; ctx.shadowBlur = 14 * u; ctx.shadowOffsetY = 5 * u;
+  const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, c1); g.addColorStop(1, c2); rect(x, y, w, h, r, g); ctx.restore();
   ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.clip();
-  ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fillRect(x, y + h * 0.72, w, h);  // ombre dessinée du bas
-  ctx.fillStyle = 'rgba(255,255,255,.38)'; ctx.beginPath(); ctx.roundRect(x + 6 * u, y + 3 * u, w - 12 * u, h * 0.3, h * 0.15); ctx.fill();
-  if (brillant) { const q = ((temps * 6) % (w * 3)) - w * 0.5; ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.moveTo(x + q, y); ctx.lineTo(x + q + 22 * u, y); ctx.lineTo(x + q - 8 * u, y + h); ctx.lineTo(x + q - 30 * u, y + h); ctx.fill(); }
+  const gl = ctx.createLinearGradient(0, y, 0, y + h * 0.55); gl.addColorStop(0, 'rgba(255,255,255,.5)'); gl.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = gl; ctx.fillRect(x, y, w, h * 0.55);
+  ctx.fillStyle = 'rgba(0,0,0,.14)'; ctx.fillRect(x, y + h - 4 * u, w, 4 * u);
+  if (brillant) { const q = ((temps * 5) % (w * 3)) - w * 0.5; const gs = ctx.createLinearGradient(x + q - 40 * u, 0, x + q + 40 * u, 0); gs.addColorStop(0, 'rgba(255,255,255,0)'); gs.addColorStop(0.5, 'rgba(255,255,255,.35)'); gs.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = gs; ctx.fillRect(x, y, w, h); }
   ctx.restore();
-  rect(x, y, w, h, r, null, NOIR, Math.max(2.5, 3.2 * u));
+  rect(x + 1.5 * u, y + 1.5 * u, w - 3 * u, h - 3 * u, Math.max(0, r - 1.5 * u), null, 'rgba(255,255,255,.45)', 1.5 * u);
+  rect(x, y, w, h, r, null, 'rgba(11,6,32,.7)', 2 * u);
 }
 function bouton3D(x, y, w, h, c1, c2, action, r) { const u = U(); boutonBD(x, y, w, h, c1, c2, r || Math.min(h / 2, 14 * u), false); if (action) zones.push({ x, y, w, h, action }); };
 function boutonJeu(x, y, w, h, c1, c2, action) {
@@ -1244,7 +1249,8 @@ function dessinerIntro() {
   else introDecompte(t - nV - VS);
 }
 function boucle() {
-  if (etat === 'AUTH' || etat === 'MENU') { temps++; if (typeof Rendu3D !== 'undefined') Rendu3D.cacher(); aff3 = null; zoneSure(dessinerMenu); }
+  if (etat === 'AUTH' || etat === 'MENU') { temps++; if (typeof Rendu3D !== 'undefined') Rendu3D.cacher(); aff3 = null; zoneSure(dessinerMenu);
+    if (persoIndex !== persoSauve && user) { persoSauve = persoIndex; try { localStorage.setItem('bastoryPerso', persoIndex); } catch (e) {} if (db) db.collection('joueurs').doc(user.uid).set({ perso: persoIndex }, { merge: true }).catch(() => {}); } }
   else if (etat === 'ATTENTE') { temps++; zoneSure(dessinerAttente); rafraichirAttente(); }
   else if (etat === 'INTRO') {
     temps++; majEffets(); dessinerJeu(); zoneSure(dessinerIntro);
@@ -1449,12 +1455,34 @@ function dash(j) { // avance pendant la charge / la rafale ; la charge de Rokh b
   j.marche += v; tourner(j, j.dash.a, 0.5);
   return true;
 }
-let hudBoutons = [];
+let hudBoutons = [], hudDrag = null, hudPerso = { taille: 1 }; // 📱 place et taille des boutons (onglet Commandes)
+try { Object.assign(hudPerso, JSON.parse(localStorage.getItem('bastoryHud') || '{}')); } catch (e) {}
+function posHUD() {
+  const u = U(), tact = 'ontouchstart' in window, k = hudPerso.taille || 1;
+  return { S: { x: hudPerso.sx != null ? hudPerso.sx * W : W - (tact ? 205 : 150) * u, y: hudPerso.sy != null ? hudPerso.sy * H : H - (tact ? 180 : 100) * u, r: (tact ? 40 : 32) * u * k },
+           A: { x: hudPerso.ax != null ? hudPerso.ax * W : W - (tact ? 222 : 66) * u, y: hudPerso.ay != null ? hudPerso.ay * H : H - (tact ? 60 : 100) * u, r: (tact ? 31 : 26) * u * k } };
+}
+function sauverHud() { try { localStorage.setItem('bastoryHud', JSON.stringify(hudPerso)); } catch (e) {} if (db && user) db.collection('joueurs').doc(user.uid).set({ hud: hudPerso }, { merge: true }).catch(() => {}); }
+function prendreBoutonHud(q) { const { S, A } = posHUD(), x = q.x - sa.l, y = q.y - sa.t; hudDrag = Math.hypot(x - S.x, y - S.y) < S.r * 1.4 ? 'S' : Math.hypot(x - A.x, y - A.y) < A.r * 1.4 ? 'A' : null; return !!hudDrag; }
+function deplacerBoutonHud(q) { const x = Math.max(0.05, Math.min(0.97, (q.x - sa.l) / W)), y = Math.max(0.12, Math.min(0.95, (q.y - sa.t) / H)); if (hudDrag === 'S') { hudPerso.sx = x; hudPerso.sy = y; } else { hudPerso.ax = x; hudPerso.ay = y; } }
+function menuHud() { // 📱 placer et redimensionner les boutons SUPER / ACTION
+  const u = U(), top = barreHaut('BOUTONS', true), { S, A } = posHUD(), e = infoElem({ perso: CONFIG.persos[persoIndex] }) || { k: 'feu', couleur: '#ff6a00', actionNom: 'Action' };
+  titre('Glisse les boutons où tu veux', W / 2, top + 20 * u, 20 * u, '#fff', 'center', W - 40 * u);
+  ctx.save(); ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.arc(120 * u, H - 110 * u, 55 * u, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore(); texte('Joystick', 120 * u, H - 110 * u, 12 * u, '#fff');
+  for (const [b, c1, c2, nom] of [[S, '#fff3a0', '#ff8a1f', 'SUPER'], [A, ombrer(e.couleur || '#ff6a00', 0.4), ombrer(e.couleur || '#ff6a00', -0.35), e.actionNom]]) {
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); const g = ctx.createRadialGradient(b.x - b.r * 0.3, b.y - b.r * 0.4, 1, b.x, b.y, b.r); g.addColorStop(0, c1); g.addColorStop(1, c2); ctx.fillStyle = g; ctx.fill();
+    ctx.lineWidth = 4 * u; ctx.strokeStyle = hudDrag && b === (hudDrag === 'S' ? S : A) ? '#ffe14a' : NOIR; ctx.stroke(); titre(nom, b.x, b.y, 12 * u, '#fff', 'center', b.r * 1.8); }
+  const by = H - 52 * u, bx = W / 2 - 190 * u;
+  bouton3D(bx, by, 60 * u, 40 * u, '#8e7bff', '#5b3fd6', () => { hudPerso.taille = Math.max(0.7, +(hudPerso.taille - 0.1).toFixed(1)); sauverHud(); }); titre('−', bx + 30 * u, by + 19 * u, 24 * u, '#fff');
+  titre('Taille ' + Math.round(hudPerso.taille * 100) + '%', bx + 130 * u, by + 19 * u, 16 * u, '#fff');
+  bouton3D(bx + 200 * u, by, 60 * u, 40 * u, '#8e7bff', '#5b3fd6', () => { hudPerso.taille = Math.min(1.6, +(hudPerso.taille + 0.1).toFixed(1)); sauverHud(); }); titre('+', bx + 230 * u, by + 19 * u, 24 * u, '#fff');
+  bouton3D(bx + 280 * u, by, 110 * u, 40 * u, '#ffd23f', '#ff8a1f', () => { hudPerso = { taille: 1 }; sauverHud(); }); titre('Par défaut', bx + 335 * u, by + 19 * u, 15 * u, '#fff');
+}
 const boutonHUD = q => hudBoutons.find(b => Math.hypot(q.x - sa.l - b.x, q.y - sa.t - b.y) < b.r * 1.3);
 function hudElem() { // 🎮 boutons ronds façon arcade : SUPER (anneau de charge) + ACTION (recharge)
   hudBoutons = []; hudObjectif();
   const e = infoElem(moi); if (!e || moi.pv <= 0 || etat !== 'JEU') return;
-  const u = U(), tact = 'ontouchstart' in window, S = { x: W - (tact ? 205 : 150) * u, y: H - (tact ? 180 : 100) * u, r: (tact ? 40 : 32) * u }, A = { x: W - (tact ? 222 : 66) * u, y: H - (tact ? 60 : 100) * u, r: (tact ? 31 : 26) * u };
+  const u = U(), tact = 'ontouchstart' in window, { S, A } = posHUD();
   const rond = (b, c1, c2, halo) => { // ombre portée, dégradé bombé, contour épais, reflet
     ctx.beginPath(); ctx.arc(b.x, b.y + 5 * u, b.r, 0, 7); ctx.fillStyle = 'rgba(11,6,32,.55)'; ctx.fill();
     if (halo) { ctx.save(); ctx.globalAlpha = 0.45 + 0.3 * Math.sin(temps * 0.2); ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 1.4, 0, 7); ctx.fillStyle = halo; ctx.fill(); ctx.restore(); }
@@ -1742,7 +1770,7 @@ function menuCommandes() {
   bouton3D(x, by, 150 * u, 38 * u, '#8e7bff', '#5b3fd6', () => { mesTouches = { ...TOUCHES_DEF }; toucheAttendue = null; sauverTouches(); }); titre('Par défaut', x + 75 * u, by + 17 * u, 16 * u, '#fff');
   bouton3D(x + 160 * u, by, 170 * u, 38 * u, '#b6ff4a', '#1fc46b', () => { vueMode = ({ '3d': '25', '25': '2d', '2d': '3d' })[vueMode]; vue25 = vueMode === '25'; try { localStorage.setItem('bastoryVue', vueMode); } catch (e) {} });
   titre('Vue : ' + NOM_VUE[vueMode], x + 245 * u, by + 17 * u, 16 * u, '#fff');
-  texte('🖱️ Clic : tirer vers la souris • Échap : quitter • 📱 Glisse le Super pour viser', x + 340 * u + (w - 340 * u) / 2, by + 19 * u, 11 * u, '#fff', 'center', w - 350 * u);
+  bouton3D(x + 340 * u, by, 190 * u, 38 * u, '#5ff0ff', '#1e7bff', () => allerA('hud')); titre('📱 Placer les boutons', x + 435 * u, by + 17 * u, 14 * u, '#fff', 'center', 180 * u);
 }
 const angleSouris = () => { if (!souris || !moi) return moi ? moi.angle : 0; const m = versMonde(souris.x, souris.y); return Math.atan2(m.y - moi.y, m.x - moi.x); };
 function angleAuto() { // ennemi visible le plus proche (sinon devant soi)
@@ -2279,7 +2307,7 @@ function dessinerMenu() {
   ecran(); zones = [];
   fondMenu();
   if (etat === 'AUTH') return;
-  ({ accueil: menuAccueil, persos: menuPersos, modes: menuModes, classement: menuClassement, pouvoirs: menuPouvoirs, amis: menuAmis, recompenses: menuRecompenses, commandes: menuCommandes })[ecranMenu]();
+  ({ accueil: menuAccueil, persos: menuPersos, modes: menuModes, classement: menuClassement, pouvoirs: menuPouvoirs, amis: menuAmis, recompenses: menuRecompenses, commandes: menuCommandes, hud: menuHud })[ecranMenu]();
   const kt = Math.min(1, (temps - transT) / 14); if (kt < 1) { ctx.fillStyle = `rgba(5,7,15,${(1 - kt) * 0.9})`; ctx.fillRect(-100, -100, W + 200, H + 200); } // fondu entre écrans
   dessinerVagues(); dessinerNotif();
   if (invitations.length) modaleInvitation();
@@ -2545,7 +2573,7 @@ function dessinerFin() { // animation de victoire / défaite avec les gagnants e
   ecran();
   const t = Math.max(0, temps - (finInfo ? finInfo.t0 : temps)), vic = etat === 'VICTOIRE', G = finInfo ? finInfo.gagnants : [], P = finInfo ? finInfo.perdants : [];
   zones = [];
-  ctx.fillStyle = 'rgba(0,0,0,.75)'; ctx.fillRect(-100, -100, W + 200, H + 200);
+  ctx.fillStyle = aff3 ? 'rgba(20,0,50,.25)' : 'rgba(0,0,0,.75)'; ctx.fillRect(-100, -100, W + 200, H + 200);
   const cy = H * 0.42;
   ctx.save(); ctx.translate(W / 2, cy); ctx.rotate(t * 0.01); ctx.fillStyle = vic ? 'rgba(255,210,63,.12)' : 'rgba(255,60,60,.08)';
   for (let i = 0; i < 16; i++) { ctx.rotate(Math.PI / 8); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-40, -1500); ctx.lineTo(40, -1500); ctx.fill(); }
@@ -2559,7 +2587,7 @@ function dessinerFin() { // animation de victoire / défaite avec les gagnants e
   ctx.save(); ctx.translate(W / 2, H * 0.1); ctx.scale(sc, sc);
   titre(vic ? 'Victoire' : etat === 'EGALITE' ? 'Égalité' : 'Défaite', 0, 0, Math.min(72, W / 8), vic ? '#ffe14a' : etat === 'EGALITE' ? '#fff' : '#ff5a6e'); ctx.restore();
   const tg = Math.min(H * 0.26, 150, (W - 40) / Math.max(1, G.length) / 1.15);
-  G.forEach((c, i) => { // gagnants : rebondissent avec une couronne
+  if (!aff3) G.forEach((c, i) => { // gagnants : rebondissent avec une couronne
     const x = W / 2 + (i - (G.length - 1) / 2) * tg * 1.15, y = cy + Math.sin(t * 0.12 + i) * 8 - Math.max(0, 25 - t) * 12;
     ctx.save(); ctx.shadowColor = '#ffd23f'; ctx.shadowBlur = 30; ellipse(x, y, tg * 0.45, tg * 0.45, 'rgba(255,210,63,.35)'); ctx.restore();
     if (pret(c.im)) ctx.drawImage(c.im, x - tg / 2, y - tg / 2, tg, tg);
@@ -2567,7 +2595,7 @@ function dessinerFin() { // animation de victoire / défaite avec les gagnants e
     texte(c.nom, x, y + tg * 0.6, 15, '#fff', 'center', tg * 1.1);
   });
   const tp = tg * 0.5, py = H * 0.74 + Math.min(t, 40) * 0.3;
-  P.forEach((c, i) => { // perdants : en gris, penchés
+  if (!aff3) P.forEach((c, i) => { // perdants : en gris, penchés
     const x = W / 2 + (i - (P.length - 1) / 2) * tp * 1.3;
     ctx.save(); ctx.translate(x, py); ctx.rotate((i % 2 ? 1 : -1) * Math.min(0.35, t * 0.01)); ctx.globalAlpha = 0.8;
     ctx.filter = 'grayscale(1) brightness(.6)';
