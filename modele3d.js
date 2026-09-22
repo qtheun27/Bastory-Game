@@ -76,6 +76,7 @@ const Modele3D = (() => {
       attaque: trouver(p.animAttaque, /^(?!.*(react|hit|hurt)).*(attack|swing|smash|punch|slash|thrust|shoot|shot|cast|throw|bow|arch|spell|skill|strike|kick|combat|atk|magic)/i), // jamais une « réaction » au coup
       touche: trouver(p.animTouche, /hit|hurt|react|damage|impact/i),
       mort: trouver(p.animMort, /dead|death|dying|die/i),
+      saut: trouver(p.animSaut, /jump|leap|hop|saut/i),
       releve: trouver(p.animReleve, /stand.?up|get.?up|revive|rise|power.?up/i)
     };
     if (!anims.attaque) anims.attaque = clips.find(c => c !== anims.repos && c !== anims.marche && !/idle|walk|run|dead|death|die|hit|hurt|react|stand|breath|t-?pose|fly|hover/i.test(c.name)); // repli : 1re animation « d'action »

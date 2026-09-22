@@ -40,7 +40,7 @@ const Rendu3D = (() => {
     else for (let r = 0; r < 4; r++) for (let i = -1; i < 3; i++) { const bx = i * 64 + (r % 2) * 32, by = r * 32; x.fillStyle = ombrer(c, (alea(r * 5.3 + i * 2.1) - 0.5) * 0.2); x.beginPath(); x.roundRect(bx + 3, by + 3, 58, 26, 5); x.fill(); clair(bx, by, 64, 32); }
     const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; return texs[k] = t;
   }
-  let eauTex = null, cristaux = new Map();
+  let eauTex = null, eauMat = null, cristaux = new Map();
   function construire() { // 🧱 la map en 3D (reconstruite seulement si une case change : bloc cassé, buisson brûlé…)
     const cle = map.g.join(''); if (cle === carteCle) return; carteCle = cle;
     for (const [, m] of cristaux) scene.remove(m); cristaux.clear();
@@ -70,13 +70,21 @@ const Rendu3D = (() => {
       inst(new THREE.BoxGeometry(T - 6, 7, T - 6), toon(ombrer(c0, 0.35)), l, HM + 3, true);     // dalle du dessus
       inst(new THREE.BoxGeometry(T - 22, 3, T - 22), toon(ombrer(c0, 0.55)), l, HM + 7, false);  // reflet
       inst(new THREE.BoxGeometry(T + 5, HM + 5, T + 5), encre(), l, HM / 2, false); });
-    inst(new THREE.BoxGeometry(T - 10, HM - 12, T - 10), toon(th.coffre), coffres, (HM - 12) / 2, true);
-    inst(new THREE.BoxGeometry(12, HM - 8, T - 6), toon('#ffd23f'), coffres, (HM - 12) / 2, false);
-    inst(new THREE.BoxGeometry(T - 4, HM - 6, T - 4), encre(), coffres, (HM - 12) / 2, false);
-    if (!eauTex) { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const x2 = cv.getContext('2d'); x2.fillStyle = '#fff'; x2.fillRect(0, 0, 64, 64); x2.strokeStyle = 'rgba(40,120,200,.35)'; x2.lineWidth = 3; x2.lineCap = 'round';
-      for (let n = 0; n < 3; n++) { x2.beginPath(); x2.moveTo(6 + n * 20, 14 + n * 18); x2.quadraticCurveTo(14 + n * 20, 8 + n * 18, 22 + n * 20, 14 + n * 18); x2.stroke(); }
-      eauTex = new THREE.CanvasTexture(cv); eauTex.wrapS = eauTex.wrapT = THREE.RepeatWrapping; }
-    inst(new THREE.BoxGeometry(T, 6, T), toon(d.eau || '#3aa6e0', { map: eauTex, transparent: !th.lave, opacity: th.lave ? 1 : 0.9, emissive: th.lave ? lin('#ff4a00') : lin('#000000'), emissiveIntensity: th.lave ? 0.8 : 0 }), eau, 1, false); // 🌊 eau (ou lave) animée
+    const CL = T - 16, CP = T - 26, CH = 30, couv = new THREE.CylinderGeometry(CP / 2, CP / 2, CL, 14, 1, false, 0, Math.PI), rotC = o => { o.rotation.set(0, 0, Math.PI / 2); };
+    inst(new THREE.BoxGeometry(CL, CH, CP), toon(th.coffre), coffres, CH / 2, true);                                   // caisse
+    inst(couv, toon(ombrer(th.coffre, 0.15)), coffres, CH, true, rotC);                                              // couvercle bombé
+    inst(new THREE.BoxGeometry(8, CH + 2, CP + 2), toon('#ffd23f'), coffres, CH / 2, false, o => o.position.x -= CL * 0.3); // ferrures
+    inst(new THREE.BoxGeometry(8, CH + 2, CP + 2), toon('#ffd23f'), coffres, CH / 2, false, o => o.position.x += CL * 0.3);
+    inst(new THREE.BoxGeometry(10, 12, 4), toon('#ffe14a', { emissive: lin('#ffb000'), emissiveIntensity: 0.3 }), coffres, CH - 4, false, o => o.position.z += CP / 2 + 1); // serrure
+    inst(new THREE.BoxGeometry(CL + 5, CH + 5, CP + 5), encre(), coffres, CH / 2, false);
+    inst(new THREE.CylinderGeometry(CP / 2 + 3, CP / 2 + 3, CL + 5, 14, 1, false, 0, Math.PI), encre(), coffres, CH, false, rotC);
+    { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x2 = cv.getContext('2d'), ce = d.eau || '#3aa6e0';
+      x2.fillStyle = ce; x2.fillRect(0, 0, 128, 128); x2.fillStyle = ombrer(ce, th.lave ? 0.25 : -0.08); for (let n = 0; n < 5; n++) { x2.beginPath(); x2.arc(alea(n * 3) * 128, alea(n * 7) * 128, 18 + alea(n) * 16, 0, 7); x2.fill(); }
+      x2.strokeStyle = th.lave ? '#ffe14a' : 'rgba(255,255,255,.9)'; x2.lineWidth = 4; x2.lineCap = 'round';
+      for (let n = 0; n < 5; n++) { const ox = alea(n * 5.3) * 100 + 4, oy = alea(n * 2.1) * 110 + 8; x2.beginPath(); x2.moveTo(ox, oy); x2.quadraticCurveTo(ox + 10, oy - 7, ox + 20, oy); x2.stroke(); }
+      eauTex = new THREE.CanvasTexture(cv); eauTex.encoding = THREE.sRGBEncoding; eauTex.wrapS = eauTex.wrapT = THREE.RepeatWrapping; }
+    eauMat = toon('#ffffff', { map: eauTex, transparent: !th.lave, opacity: th.lave ? 1 : 0.92, emissive: lin(th.lave ? '#ff4a00' : '#000000'), emissiveIntensity: th.lave ? 0.8 : 0 });
+    inst(new THREE.BoxGeometry(T, 6, T), eauMat, eau, 1, false); // 🌊 eau (ou lave) qui ondule
     // 🌿 buissons : touffes arrondies + brins + petites fleurs, qui deviennent transparents quand on s'approche
     buissons = []; const vert = d.buisson || '#2fae4a', GS = new THREE.IcosahedronGeometry(1, 1), GC = new THREE.ConeGeometry(1, 1, 5), GF = new THREE.SphereGeometry(4, 6, 4);
     const GB = new THREE.BoxGeometry(1, 1, 1), GY = new THREE.CylinderGeometry(1, 1, 1, 8);
@@ -115,9 +123,9 @@ const Rendu3D = (() => {
   function majPersos(dt, aff) {
     const la = new Set([...joueurs(), ...bosses]);
     for (const [e, o] of persos) if (!la.has(e)) { if (o.racine) scene.remove(o.racine); persos.delete(e); }
-    const vent = Math.max(0, Math.sin(temps * 0.006)) * 0.06; // 🍃 coups de vent de temps en temps
-    if (eauTex) eauTex.offset.set((temps * 0.0015) % 1, Math.sin(temps * 0.01) * 0.05);
-    for (const b of buissons) { b.g.rotation.z = Math.sin(temps * 0.05 + b.x * 0.01) * vent; b.g.rotation.x = Math.cos(temps * 0.043 + b.y * 0.01) * vent * 0.6; // 👀 transparence des buissons proches
+    const vent = 0.03 + Math.max(0, Math.sin(temps * 0.008)) * 0.13; // 🍃 brise permanente + rafales
+    if (eauTex) { eauTex.offset.set((temps * 0.004) % 1, Math.sin(temps * 0.02) * 0.08); if (eauMat && eauMat.emissiveIntensity) eauMat.emissiveIntensity = 0.7 + Math.sin(temps * 0.06) * 0.3; } // courant + lave qui pulse
+    for (const b of buissons) { b.g.rotation.z = Math.sin(temps * 0.07 + b.x * 0.013) * vent; b.g.rotation.x = Math.cos(temps * 0.06 + b.y * 0.011) * vent * 0.7; const sq = 1 + Math.sin(temps * 0.09 + b.x) * vent * 0.4; b.g.scale.set(1, sq, 1); // 👀 transparence des buissons proches
       const cible = moi && Math.hypot(b.x - moi.x, b.y - moi.y) < 110 ? 0.3 : 1; if (Math.abs(b.op - cible) < 0.01) continue;
       b.op += (cible - b.op) * 0.25; b.mats.forEach(m => { m.opacity = b.op; m.depthWrite = b.op > 0.95; });
     }
@@ -140,10 +148,12 @@ const Rendu3D = (() => {
       const cache = e.pv > 0 && !e.def && tuileA(e.x, e.y) === 'B'; // 🌿 caché dans un buisson : translucide (invisible pour les autres)
       if (cache !== o.cache) { o.cache = cache; o.racine.traverse(x => { if (x.material) { x.material.transparent = cache; x.material.opacity = cache ? 0.45 : 1; } }); }
       const ech = (e.def ? e.r * 3.4 : e.r * 3.3) * 0.6 * (+p.modeleEchelle || 1);
-      o.racine.scale.setScalar(ech); o.racine.position.set(e.x, e.alt || 0, e.y);
+      const saut = e.dash && e.dash.saut && temps < e.dash.fin, alt = saut ? Math.sin((1 - (e.dash.fin - temps) / e.dash.duree) * Math.PI) * 80 : (e.alt || 0);
+      o.racine.scale.setScalar(ech); o.racine.position.set(e.x, alt, e.y);
       o.racine.rotation.y = Math.PI / 2 - (e.angle || 0) + (o.decalage || 0);
       let anim = 'repos';
       if (e.pv <= 0) anim = 'mort';
+      else if (saut) anim = o.anims.saut ? 'saut' : 'marche';
       else if (e.anim && temps - e.anim.t < (DUREE_ANIM[e.anim.n] || 30) && o.anims[e.anim.n]) anim = e.anim.n;
       else if (Math.abs((e.marche || 0) - (o.marcheP || 0)) > 0.05) anim = 'marche';
       o.marcheP = e.marche;
