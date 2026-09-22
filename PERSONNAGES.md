@@ -52,41 +52,41 @@ Fichier de référence à compléter à chaque nouveau perso ou boss.
 
 ---
 
-## 🔓 Persos à débloquer (propositions)
+## 🔓 Persos à débloquer (chacun son arme, sa capacité et son action)
+
+> Le jeu installe automatiquement l'arme, la capacité, l'action et la description dès que le fichier `.glb` est déposé, à condition de garder ces noms exacts.
 
 ### 🌍 BOULDO — Terre
-- **Description** : petit tatou mineur, casqué et cuirassé de cristaux.
-- **Arme** : pioche à cristaux qui fait jaillir des pics de roche du sol.
-- **Prompt** : un petit tatou mineur, carapace de roche avec des cristaux ambre lumineux, casque de mineur avec une lampe, tenant une pioche en cristal, couleurs brun, sable et ambre.
+- **Arme** : *Pioche à cristaux* — tir droit rapide qui fait jaillir des pics de roche à l'impact, avec une petite onde au sol.
+- **Capacité** : brise les blocs en fonçant. • **Action** : Charge.
+- **Prompt** : un petit tatou mineur, carapace de roche avec des cristaux ambre lumineux, casque de mineur avec une lampe, **tenant une grosse pioche dont la pointe est un cristal ambre**, couleurs brun, sable et ambre.
 
 ### 💨 NIMBUS — Air
-- **Description** : renard fait de nuages, joueur et insaisissable.
-- **Arme** : éventail de vent qui envoie des mini-tornades.
-- **Prompt** : un renard duveteux fait de nuages, longue écharpe de vent en spirale, queue de brume, tenant un grand éventail pliant, couleurs blanc, bleu ciel et argent.
+- **Arme** : *Éventail de vent* — souffle une bourrasque large qui repousse fort les ennemis.
+- **Capacité** : vole au-dessus des blocs et de l'eau. • **Action** : 🌪️ Tornade qui repousse tout autour.
+- **Prompt** : un renard duveteux fait de nuages, longue écharpe de vent en spirale, queue de brume, **tenant un grand éventail pliant blanc et argent d'où sortent des spirales de vent**, couleurs blanc, bleu ciel et argent.
 
 ### 💧 GLOUGLOU — Eau
-- **Description** : pingouin pirate rondouillard et farceur.
-- **Arme** : canon à bulles qui ralentit les ennemis.
-- **Prompt** : un pingouin pirate tout rond, petit tricorne, bandeau sur l'œil, marinière rayée, tenant un canon à bulles avec un réservoir d'eau en verre, couleurs bleu marine, blanc et corail.
+- **Arme** : *Canon à bulles* — bulles qui rebondissent une fois et **ralentissent** les ennemis touchés.
+- **Capacité** : marche sur l'eau. • **Action** : ❄️ Souffle glacé qui ralentit les ennemis proches.
+- **Prompt** : un pingouin pirate tout rond, petit tricorne, bandeau sur l'œil, marinière rayée, **tenant un gros canon à bulles en bois avec un réservoir d'eau en verre et des bulles qui s'en échappent**, couleurs bleu marine, blanc et corail.
 
 ### 🔥 BRAISE — Feu
-- **Description** : lutin forgeron, le corps parcouru de fissures de lave.
-- **Arme** : marteau-enclume enflammé qui laisse des braises au sol.
-- **Prompt** : un petit lutin forgeron, tablier de cuir, fissures de lave lumineuses sur la peau, petites cornes enflammées, tenant un marteau-enclume en feu, couleurs rouge, orange et cuir sombre.
+- **Arme** : *Marteau-enclume* — lancé en cloche, il écrase le sol, fait une onde de choc et sème des braises qui brûlent.
+- **Capacité** : traînée de feu. • **Action** : Brasier.
+- **Prompt** : un petit lutin forgeron, tablier de cuir, fissures de lave lumineuses sur la peau, petites cornes enflammées, **tenant un marteau de forge dont la tête est une enclume chauffée à blanc**, couleurs rouge, orange et cuir sombre.
 
-### 🌋 MAGMOR — Terre + Feu *(perso spécial à 2 éléments)*
-- **Description** : enfant golem de lave. Il transforme l'eau en roche sous ses pas.
-- **Arme** : coulée de magma qui brûle et casse les blocs.
-- **Pouvoir fusion** : son super combine le Séisme titan et le Souffle du dragon.
-- **Prompt** : un enfant golem de lave, corps en obsidienne noire avec des fissures de magma, lave qui coule des poings, petit volcan fumant sur la tête, couleurs noir, orange et jaune lumineux.
+### 🌋 MAGMOR — Terre + Feu *(fusion, plus fort)*
+- **Arme** : *Coulée de magma* — jet lent et large qui laisse une grande flaque de lave brûlante.
+- **Capacité** : 🌋 Lave — il marche sur l'eau et brûle les buissons. • **Action** : Charge.
+- **Super** : fusion Séisme titan + Souffle du dragon.
+- **Prompt** : un enfant golem de lave, corps en obsidienne noire avec des fissures de magma, **un poing levé d'où coule une grosse coulée de magma orange**, petit volcan fumant sur la tête, couleurs noir, orange et jaune lumineux.
 
-### ⛈️ STORMY — Air + Eau *(perso spécial à 2 éléments)*
-- **Description** : sirène de tempête flottant sur un petit nuage.
-- **Arme** : éclair qui rebondit d'ennemi en ennemi.
-- **Pouvoir fusion** : son super combine la Tempête de flèches et le Raz-de-marée.
-- **Prompt** : une petite sirène de tempête assise sur un nuage de pluie, cheveux en nuages traversés d'éclairs, tenant un trident crépitant d'électricité, couleurs bleu profond, violet et jaune électrique.
-
----
+### ⛈️ STORMY — Air + Eau *(fusion, plus fort)*
+- **Arme** : *Éclair en chaîne* — très rapide, il rebondit sur 2 ennemis supplémentaires (pas de trident : c'est celui de Naïa).
+- **Capacité** : ⛈️ Orage — elle vole et n'est pas repoussée. • **Action** : 🌪️ Tornade.
+- **Super** : fusion Tempête de flèches + Raz-de-marée.
+- **Prompt** : une petite sirène de tempête assise sur un nuage de pluie, cheveux en nuages traversés d'éclairs, **tenant un petit orbe électrique dans une main d'où jaillit un éclair en zigzag**, couleurs bleu profond, violet et jaune électrique.
 
 ## 👹 Boss
 
@@ -98,9 +98,11 @@ Fichier de référence à compléter à chaque nouveau perso ou boss.
 ### KRAKEN PIRATE (proposition)
 - **Description** : pieuvre géante capitaine pirate.
 - **Attaque** : ses tentacules frappent en zone, et il lance de l'encre qui aveugle.
-- **Prompt** : boss pieuvre chibi géante avec un chapeau et un manteau de capitaine pirate, six énormes tentacules dont un qui tient un sabre, visage en colère et drôle, couleurs violet et rouge, énorme et menaçant mais mignon.
+- **Arme** : sabre d'abordage et jets d'encre. 
+- **Prompt** : boss pieuvre chibi géante avec un chapeau et un manteau de capitaine pirate, six énormes tentacules dont **un qui brandit un grand sabre d'abordage**, visage en colère et drôle, couleurs violet et rouge, énorme et menaçant mais mignon.
 
 ### ROI CHAMPIGNON (proposition)
 - **Description** : champignon géant couronné, grincheux.
 - **Attaque** : nuages de spores empoisonnés, et il invoque des mini-champignons.
+- **Arme** : sceptre champignon et nuages de spores. 
 - **Prompt** : boss roi champignon chibi géant, énorme chapeau rouge à pois blancs, couronne dorée, épaisse barbe de mousse, tenant un sceptre champignon, visage grincheux et drôle, couleurs rouge, blanc, vert et or, énorme et menaçant mais mignon.

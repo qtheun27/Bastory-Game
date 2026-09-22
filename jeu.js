@@ -218,6 +218,7 @@ function caseLibre(loin) {
 }
 
 // ---------- 7. CRÉATION DE PARTIE ----------
+const DEP_BASE = { lave: 'nage', orage: 'vol' }; // 🌋 lave = marche sur l'eau • ⛈️ orage = vol
 const elemDe = p => (CONFIG.elements || {})[baseDe(p || {}).element] || null;
 const niveauDe = p => Math.max(1, (((mesStats.persos || {})[cleP(baseDe(p) || {})] || {}).niveau) || 1);
 const coutNiveau = nv => { const g = CONFIG.progression || {}; return Math.round((+g.coutBase || 50) * Math.pow(+g.coutMult || 1.5, nv - 1)); };
@@ -236,7 +237,7 @@ async function evoluer(p) { // dépense les essences de l'élément pour passer 
 }
 function creerJoueur(pi, x, y, uid, nom, eq, nv) {
   const b = CONFIG.persos[pi] || CONFIG.persos[0], p = statsNiveau(b, nv || 1), el = elemDe(b);
-  return { uid, nom, eq, perso: p, dep: el ? el.capacite : 'sol', arme: CONFIG.armes[p.arme] || Object.values(CONFIG.armes)[0], x, y, tx: x, ty: y, r: Math.round(Math.min(60, Math.max(14, +b.taille || 26))),
+  return { uid, nom, eq, perso: p, dep: DEP_BASE[b.capacite || (el ? el.capacite : 'sol')] || b.capacite || (el ? el.capacite : 'sol'), depSpecial: b.capacite || '', arme: CONFIG.armes[p.arme] || Object.values(CONFIG.armes)[0], x, y, tx: x, ty: y, r: Math.round(Math.min(60, Math.max(14, +b.taille || 26))),
            pv: p.pvMax, pvMax: p.pvMax, angle: 0, recharge: 0, mun: +p.munitions || 3, flash: 0, marche: 0, kx: 0, ky: 0, cache: false, bonus: {}, bo: [] };
 }
 function creerBoss(id, x, y, i) {
@@ -643,9 +644,10 @@ function impact(e, p, x, y, avecEffet) {
   degats(e, p.de, deg, x, y, ang, a);
 }
 function degats(e, de, deg, x, y, ang, a) { // applique les dégâts selon qui a l'autorité
+  if (a && +a.ralenti) { e.ralenti = +a.ralenti; e.ralentiT = temps + 120; } // 🫧 arme qui ralentit
   const pr = entite(de), kb = (a && +a.recul) || (a && a.effet === 'explosion' ? 6 : 3);
   if (pr && pr.perso && (de === moi.uid || (hote && pr.bot))) gagnerSuper(pr, deg); // ⭐ les dégâts chargent le super
-  if (e === moi) { if (a && +a.recul) { moi.kx += Math.cos(ang) * a.recul; moi.ky += Math.sin(ang) * a.recul; } return toucherMoi(deg, x, y, de); }
+  if (e === moi) { if (a && +a.recul && moi.depSpecial !== 'orage') { moi.kx += Math.cos(ang) * a.recul; moi.ky += Math.sin(ang) * a.recul; } return toucherMoi(deg, x, y, de); }
   e.flash = 8;
   texteFlottant('-' + deg, e.x, e.y - e.r * 1.4, (a && a.couleur) || '#fff');
   if (e.bot) { if (hote) { e.dernier = de; blesserBot(e, deg, ang); } return; } // les bots sont gérés par l'hôte
@@ -844,7 +846,7 @@ function maj() {
   if (moi.pv <= 0) mx = my = 0;
   const elm = elemDe(moi.perso) || {}, surEau = tuileA(moi.x, moi.y) === 'W';
   if (fige) { mx = 0; my = 0; }
-  const vit = moi.perso.vitesse * bonus(moi, 'vitesse') * (moi.dep === 'nage' && surEau ? +elm.valeur || 1.3 : 1) * (moi.dep !== 'vol' && tuileA(moi.x, moi.y) === 'S' ? 0.8 : 1); // 🏖️ le sable ralentit
+  const vit = moi.perso.vitesse * bonus(moi, 'vitesse') * (moi.dep === 'nage' && surEau ? +elm.valeur || 1.3 : 1) * (moi.dep !== 'vol' && tuileA(moi.x, moi.y) === 'S' ? 0.8 : 1) * (moi.ralentiT > temps ? moi.ralenti || 0.6 : 1); // 🏖️ le sable ralentit
   if (moi.dep === 'nage' && surEau && moi.pv > 0) moi.pv = Math.min(moi.pvMax, moi.pv + moi.pvMax * (+elm.soin || 0) / 100 / 60); // 💧 se soigne dans l'eau
   if (moi.dep === 'brise' && (mx || my)) { const tx = Math.floor((moi.x + mx * moi.r * 1.3) / TUILE), ty = Math.floor((moi.y + my * moi.r * 1.3) / TUILE); if (bloqueTir(tuile(tx, ty))) abimer(tx, ty, +elm.valeur || 60); } // 🌍 brise les blocs en fonçant dedans
   moi.vx = (moi.vx || 0) + (mx * vit - (moi.vx || 0)) * 0.35; moi.vy = (moi.vy || 0) + (my * vit - (moi.vy || 0)) * 0.35; // départ / arrêt en douceur
@@ -857,7 +859,7 @@ function maj() {
   if (moi.recharge <= 0) moi.mun = Math.min(+moi.perso.munitions || 3, moi.mun + 1 / (+moi.perso.recharge || 60)); // recharge des munitions
   moi.cache = tuileA(moi.x, moi.y) === 'B' || !!pouvoirActif(moi, 'invisible') || nuages.some(n => !n.feu && Math.hypot(n.x - moi.x, n.y - moi.y) < n.r);
   for (const j of joueurs()) if (j.dep === 'feu' && j.pv > 0 && j.marche !== j.mFeu) { j.mFeu = j.marche; if (temps % 10 === 0) { const e = elemDe(j.perso) || {}; nuages.push({ x: j.x, y: j.y + 10, r: 28, fin: temps + (+e.duree || 2) * 60, debut: temps, c: '#ff6a00', deg: +e.valeur || 120, de: j.uid, arme: { effet: 'etincelle', couleur: '#ff8a00' }, feu: true }); } } // 🔥 traînée de feu
-  if (moi.dep === 'feu' && moi.pv > 0 && tuileA(moi.x, moi.y) === 'B' && map.def.casseBuissons !== false) abimer(Math.floor(moi.x / TUILE), Math.floor(moi.y / TUILE), 1e6); // 🔥 Pyro brûle les buissons
+  if ((moi.dep === 'feu' || moi.depSpecial === 'lave') && moi.pv > 0 && tuileA(moi.x, moi.y) === 'B' && map.def.casseBuissons !== false) abimer(Math.floor(moi.x / TUILE), Math.floor(moi.y / TUILE), 1e6); // 🔥 Pyro brûle les buissons
   for (const o of objets) if (moi.pv > 0 && Math.hypot(o.x - moi.x, o.y - moi.y) < 42) {
     objets = objets.filter(x => x !== o); envoyer({ t: 'pr', tx: o.tx, ty: o.ty }); activerPouvoir(o.id); break;
   }
@@ -1466,11 +1468,18 @@ function lancerSuper(j, angle = j.angle, distant) {
 function lancerAction(j, angle = j.angle, distant) {
   const e = infoElem(j); if (!e || j.pv <= 0 || resultat) return;
   if (!distant) { if ((j.actionT || 0) > temps) return; j.actionT = temps + (+e.actionRecharge || 7) * 60; envoyer({ t: 'ac', de: j.uid, a: +angle.toFixed(3) }); }
-  if (e.k === 'terre' || e.k === 'air') { // 🌍 charge qui brise tout • 💨 saut d'esquive par-dessus les murs
-    j.dash = { a: angle, fin: temps + (e.k === 'terre' ? 22 : 26), duree: e.k === 'terre' ? 22 : 26, v: e.k === 'terre' ? 2.6 : 2.2, saut: e.k === 'air', touches: new Set() };
-    if (e.k === 'air') j.invuln = temps + 26; ono(e.k === 'terre' ? 'DODODO!' : 'HOP!', j.x, j.y - 50, 1);
-  } else if (e.k === 'eau') { j.bulle = temps + 180; if (moiOuBot(j)) j.pv = Math.min(j.pvMax, j.pv + j.pvMax * 0.1); ono('POP!', j.x, j.y - 50, 1, '#5ff0ff'); }
-  else if (e.k === 'feu') { // 🔥 cercle de flammes qui brûle aussi les buissons
+  const k = (baseDe(j.perso) || {}).action || e.k; // action propre au perso (sinon celle de son élément)
+  if (k === 'tourbillon') { // 🌪️ tornade qui repousse tout autour
+    effet('vortex', j.x, j.y, '#b6f0ff', 170); ondes.push({ x: j.x, y: j.y, r: 20, max: 190, c: '#b6f0ff', vie: 1, ep: 14 }); ono('FWOOSH!', j.x, j.y - 50, 1.2, '#5ff0ff');
+    if (moiOuBot(j)) for (const c of [...bosses.filter(b => b.pv > 0 && !b.def.cristal), ...joueurs().filter(o => o.eq !== j.eq && o.pv > 0)]) { const d = Math.hypot(c.x - j.x, c.y - j.y); if (d < 190) degats(c, j.uid, Math.round(j.perso.degats * 0.35), j.x, j.y, Math.atan2(c.y - j.y, c.x - j.x), { recul: 40, effet: 'vortex' }); }
+  } else if (k === 'gel') { // ❄️ souffle glacé : les ennemis proches sont ralentis
+    effet('glace', j.x, j.y, '#9fe3ff', 150); ono('FRIIIZ!', j.x, j.y - 50, 1.2, '#5ff0ff');
+    if (moiOuBot(j)) for (const c of joueurs().filter(o => o.eq !== j.eq && o.pv > 0 && Math.hypot(o.x - j.x, o.y - j.y) < 170)) degats(c, j.uid, Math.round(j.perso.degats * 0.25), j.x, j.y, 0, { ralenti: 0.45, effet: 'glace' });
+  } else if (k === 'terre' || k === 'air') { // 🌍 charge qui brise tout • 💨 saut d'esquive par-dessus les murs
+    j.dash = { a: angle, fin: temps + (k === 'terre' ? 22 : 26), duree: k === 'terre' ? 22 : 26, v: k === 'terre' ? 2.6 : 2.2, saut: k === 'air', touches: new Set() };
+    if (k === 'air') j.invuln = temps + 26; ono(k === 'terre' ? 'DODODO!' : 'HOP!', j.x, j.y - 50, 1);
+  } else if (k === 'eau') { j.bulle = temps + 180; if (moiOuBot(j)) j.pv = Math.min(j.pvMax, j.pv + j.pvMax * 0.1); ono('POP!', j.x, j.y - 50, 1, '#5ff0ff'); }
+  else if (k === 'feu') { // 🔥 cercle de flammes qui brûle aussi les buissons
     for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; nuages.push({ x: j.x + Math.cos(a) * 70, y: j.y + Math.sin(a) * 70, r: 34, fin: temps + 180, debut: temps, c: '#ff6a00', deg: (+e.valeur || 120) * 2, de: j.uid, arme: { effet: 'etincelle', couleur: '#ff8a00' }, feu: true }); }
     if (!distant) for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const tx = Math.floor(j.x / TUILE) + dx, ty = Math.floor(j.y / TUILE) + dy; if (tuile(tx, ty) === 'B') abimer(tx, ty, 1e6); }
     ono('BRAAA!', j.x, j.y - 50, 1.1, '#ff8a1f');
@@ -1480,7 +1489,7 @@ function dash(j) { // avance pendant la charge / la rafale ; la charge de Rokh b
   if (!j.dash) return false;
   if (temps >= j.dash.fin) { const s = j.dash.saut; j.dash = null; if (s) liberer(); return false; } // atterrissage : jamais coincé dans un mur
   const v = j.perso.vitesse * j.dash.v, dx = Math.cos(j.dash.a) * v, dy = Math.sin(j.dash.a) * v;
-  if (cleElem(j.perso) === 'terre') {
+  if (((baseDe(j.perso) || {}).action || cleElem(j.perso)) === 'terre') {
     const tx = Math.floor((j.x + Math.cos(j.dash.a) * j.r * 1.3) / TUILE), ty = Math.floor((j.y + Math.sin(j.dash.a) * j.r * 1.3) / TUILE);
     if (moiOuBot(j) && bloqueTir(tuile(tx, ty))) abimer(tx, ty, 900);
     for (const e of [...bosses.filter(b => b.pv > 0 && !b.def.cristal), ...joueurs().filter(o => o.eq !== j.eq && o.pv > 0)])

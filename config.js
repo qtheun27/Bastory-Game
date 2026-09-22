@@ -1126,10 +1126,34 @@ const CONFIG_PAR_DEFAUT = {
   ]
 };
 
+// 🗡️ armes toutes prêtes des persos à débloquer (chacune son effet)
+const ARMES_NEUVES = {
+  pioche:      { nom: 'Pioche à cristaux', type: 'droit', effet: 'etincelle', vitesse: 9, taille: 26, rayon: 70, couleur: '#ffd23f', forme: 'rocher', onde: 90, recul: 8, rebonds: 0, chaine: 0, nuage: 0, retard: 0 },
+  eventail:    { nom: 'Éventail de vent', type: 'droit', effet: 'vortex', vitesse: 12, taille: 34, rayon: 90, couleur: '#b6f0ff', forme: 'onde', recul: 30, rebonds: 0, chaine: 0, nuage: 0, retard: 0 },
+  canonbulles: { nom: 'Canon à bulles', type: 'droit', effet: 'eclaboussure', vitesse: 8, taille: 24, rayon: 60, couleur: '#5ff0ff', forme: 'bulle', ralenti: 0.55, rebonds: 1, recul: 6, chaine: 0, nuage: 0 },
+  marteauforge:{ nom: 'Marteau-enclume', type: 'lob', effet: 'impact', vitesse: 14, taille: 30, rayon: 95, couleur: '#ff8a1f', forme: 'feu', nuage: 3, rayonNuage: 70, degatsNuage: 260, onde: 110, recul: 14 },
+  magma:       { nom: 'Coulée de magma', type: 'droit', effet: 'feu', vitesse: 7, taille: 30, rayon: 80, couleur: '#ff4a00', forme: 'feu', nuage: 4, rayonNuage: 80, degatsNuage: 320, onde: 100, recul: 10 },
+  eclair:      { nom: 'Éclair en chaîne', type: 'droit', effet: 'foudre', vitesse: 16, taille: 22, rayon: 0, couleur: '#ffe14a', forme: 'fleche', chaine: 2, perteChaine: 0.7, porteeChaine: 340, recul: 6, rebonds: 0 }
+};
+// fiche complète des persos à débloquer : arme, capacité et action différentes pour chacun
+const NOUVEAUX = {
+  BOULDO:  { arme: 'pioche', capacite: 'brise', action: 'terre', description: 'Tatou mineur. Sa pioche fait jaillir des pics de roche et il brise les blocs en fonçant.' },
+  NIMBUS:  { arme: 'eventail', capacite: 'vol', action: 'tourbillon', description: 'Renard de nuages. Son éventail souffle des tornades qui repoussent, et il vole au-dessus de tout.' },
+  GLOUGLOU:{ arme: 'canonbulles', capacite: 'nage', action: 'gel', description: 'Pingouin pirate. Ses bulles ralentissent les ennemis et il glace tout autour de lui.' },
+  BRAISE:  { arme: 'marteauforge', capacite: 'feu', action: 'feu', description: 'Lutin forgeron. Son marteau-enclume écrase le sol et sème des braises brûlantes.' },
+  MAGMOR:  { arme: 'magma', capacite: 'lave', action: 'terre', description: 'Golem de lave (Terre + Feu). Sa coulée de magma brûle, et il marche sur l\'eau en la durcissant.' },
+  STORMY:  { arme: 'eclair', capacite: 'orage', action: 'tourbillon', description: 'Sirène de tempête (Air + Eau). Son éclair rebondit d\'ennemi en ennemi et elle vole, insensible au recul.' }
+};
 // 🗡️ arme propre à un nouveau perso : copie de l'arme de son élément (réglable ensuite dans l'admin → Armes)
 function armePour(c, p) {
+  const N = NOUVEAUX[String(p.nom || '').toUpperCase()];
+  if (N) { // perso connu : son arme, sa capacité et son action sont déjà prêtes
+    if (!c.armes[N.arme]) c.armes[N.arme] = { ...JSON.parse(JSON.stringify(c.armes.rocher || {})), ...ARMES_NEUVES[N.arme] };
+    Object.assign(p, { arme: N.arme, capacite: p.capacite || N.capacite, action: p.action || N.action, description: p.description || N.description, armeAuto: true });
+    return;
+  }
   const mod = { terre: 'rocher', air: 'vent', eau: 'trident', feu: 'boulefeu' }[p.element] || Object.keys(c.armes)[0], id = 'arme_' + String(p.nom || 'perso').toLowerCase().replace(/[^a-z0-9]+/g, '_');
-  if (!c.armes[id]) c.armes[id] = { ...JSON.parse(JSON.stringify(c.armes[mod] || {})), nom: 'Arme de ' + (p.nom || 'perso') };
+  if (!c.armes[id]) c.armes[id] = { ...JSON.parse(JSON.stringify(c.armes[mod] || {})), nom: 'Arme de ' + (p.nom || 'perso'), rebonds: 0, chaine: 0 };
   p.arme = id; p.armeAuto = true; if (p.description === undefined) p.description = '';
 }
 // Met à niveau une config existante (ajoute les nouveaux réglages, retire les anciens)
@@ -1189,7 +1213,7 @@ function migrerConfig(c) {
   });
   c.persos.forEach(p => def(p, { imageCarte: '', munitions: 3, recharge: 60, element: '', modele: '', modeleEchelle: 1, modeleRotation: 0, animRepos: '', animMarche: '', animAttaque: '', animTouche: '', animMort: '', animReleve: '' }));
   Object.values(c.bosses).forEach(b => def(b, { imageCarte: '', arme: '', porteeTir: 400, degatsTir: 1500, cadenceTir: 90, modele: '', modeleEchelle: 1, modeleRotation: 0, animRepos: '', animMarche: '', animAttaque: '', animTouche: '', animMort: '' }));
-  Object.values(c.armes).forEach(a => def(a, { rebonds: 0, bonusRebond: 1.2, chaine: 0, perteChaine: 0.7, porteeChaine: 350, onde: 0, recul: 0, forme: '', retard: 0, poisonDuree: 0, nuage: 0, rayonNuage: 90, degatsNuage: 150 }));
+  Object.values(c.armes).forEach(a => def(a, { ralenti: 0, rebonds: 0, bonusRebond: 1.2, chaine: 0, perteChaine: 0.7, porteeChaine: 350, onde: 0, recul: 0, forme: '', retard: 0, poisonDuree: 0, nuage: 0, rayonNuage: 90, degatsNuage: 150 }));
   c.maps.forEach(m => def(m, { casseMurs: true, casseBuissons: true, pvBloc: 3000, chanceObjet: 10, chanceCoffre: 100, sable: '#f4d68e' }));
   return c;
 }
