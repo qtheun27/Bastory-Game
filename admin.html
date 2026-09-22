@@ -132,7 +132,7 @@ const CH = {
           ['bots','Compléter avec des bots 🤖','check'],['attenteBots','Attente avant les bots (s)','number'],
           ['boss','Boss activés','check'],['nbBoss','Nombre de boss (max 10)','number'],
           ['typesBoss','Types de boss (aucun coché = au hasard)','multi',() => Object.entries(cfg.bosses).map(([k, b]) => [k, b.nom])],['map','Map','select',optMaps]],
-  perso: [['nom','Nom','text'],['image','Image jeu (vue du dessus)','image'],['imageCarte','Image carte (menu, fin)','image'],['couleur','Couleur','color'],['pvMax','Points de vie','number'],
+  perso: [['nom','Nom','text'],['couleur','Couleur','color'],['animAccueil','🎬 Animation dans les menus (accueil, persos)','anims'],['pvMax','Points de vie','number'],
           ['vitesse','Vitesse (2-8)','number'],['arme','Arme','select',optArmes],['degats','Dégâts','number'],['portee','Portée (px)','number'],['delaiTir','Cadence : délai entre 2 tirs (60 = 1 s)','number'],
           ['munitions','Nombre de munitions','number'],['recharge','Recharge d\'1 munition (60 = 1 s)','number'],
           ['element','Élément','select',() => [['', 'Aucun'], ...Object.entries(cfg.elements || {}).map(([k, e]) => [k, e.icone + ' ' + e.nom])]],
@@ -168,6 +168,13 @@ const CH = {
 function formulaire(obj, champs) {
   const f = el('div', { className: 'form' });
   for (const [k, lab, type, opts] of champs) {
+    if (type === 'anims') { // 🎬 liste des animations réelles du modèle 3D
+      const sel = el('select', { onchange: () => { obj[k] = sel.value; modifie(); } }), base = [['', '✨ Auto (repos + attaque de temps en temps)'], ['fixe', '🧍 Fixe (sans animation)']];
+      const remplir = l => { sel.innerHTML = ''; [...base, ...l.map(n => [n, '🎬 ' + n])].forEach(([v, t]) => sel.add(new Option(t, v, false, v === (obj[k] || '')))); };
+      remplir(obj[k] && obj[k] !== 'fixe' ? [obj[k]] : []);
+      if (obj.modele && typeof Modele3D !== 'undefined' && Modele3D.listeAnims) Modele3D.listeAnims(obj).then(remplir).catch(() => {});
+      f.append(el('div', { className: 'ligne' }, el('span', { textContent: lab }), sel)); continue;
+    }
     if (type === 'etapes') { // 🏃 épreuves du marathon : cochées et remises dans l'ordre avec ▲
       const TOUS = [['bloc', '💎 Guerre des cristaux'], ['zone', '🎯 Zone de contrôle'], ['tresor', '💰 Chasse au trésor']], box = el('div', { className: 'multi' });
       const dessiner = () => {

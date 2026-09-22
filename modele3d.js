@@ -11,15 +11,7 @@ const Modele3D = (() => {
   const dispo = () => typeof THREE !== 'undefined' && !!THREE.GLTFLoader;
   let GRAD = null; // 3 tons : ombre / mi-ton / lumière (rendu "anime")
   const aplats = new Map();
-  function aplat(t) { // 🎨 texture Meshy « peinte » : couleurs en aplats (postérisées) et plus saturées → rendu dessiné
-    if (!t || !t.image) return t; if (aplats.has(t)) return aplats.get(t);
-    try {
-      const im = t.image, w = Math.min(512, im.width || 512), hh = Math.min(512, im.height || 512), c = document.createElement('canvas'); c.width = w; c.height = hh;
-      const x = c.getContext('2d'); x.filter = 'saturate(1.15)'; x.drawImage(im, 0, 0, w, hh); x.filter = 'none';
-      const n = new THREE.CanvasTexture(c); n.flipY = t.flipY; n.encoding = THREE.sRGBEncoding; n.wrapS = t.wrapS; n.wrapT = t.wrapT;
-      aplats.set(t, n); return n;
-    } catch (e) { return t; }
-  }
+  function aplat(t) { if (t) { t.anisotropy = 8; t.needsUpdate = true; } return t; } // texture Meshy telle quelle (pleine résolution)
   const toon = (m, skin) => new THREE.MeshToonMaterial({ map: aplat(m.map) || null, color: m.color || new THREE.Color(0xffffff), emissive: m.emissive || new THREE.Color(0), emissiveMap: m.emissiveMap || null,
     gradientMap: GRAD, transparent: !!m.transparent, opacity: m.opacity === undefined ? 1 : m.opacity, alphaTest: m.alphaTest || 0, side: m.side === undefined ? THREE.FrontSide : m.side, skinning: skin, morphTargets: !!m.morphTargets });
   function contour(src, ep, cache = {}) { // ✒️ contour noir : silhouette élargie dessinée sous l'image
@@ -36,13 +28,13 @@ const Modele3D = (() => {
     const c = document.createElement('canvas'); c.width = c.height = S;
     rendu = new THREE.WebGLRenderer({ canvas: c, alpha: true, antialias: true, preserveDrawingBuffer: true });
     rendu.setPixelRatio(1); rendu.setClearColor(0x000000, 0); rendu.outputEncoding = THREE.sRGBEncoding;
-    GRAD = new THREE.DataTexture(new Uint8Array([70, 70, 70, 255, 150, 150, 150, 255, 225, 225, 225, 255]), 3, 1, THREE.RGBAFormat);
+    GRAD = new THREE.DataTexture(new Uint8Array([72, 72, 72, 255, 160, 160, 160, 255, 255, 255, 255, 255]), 3, 1, THREE.RGBAFormat);
     GRAD.minFilter = GRAD.magFilter = THREE.NearestFilter; GRAD.generateMipmaps = false; GRAD.needsUpdate = true;
     scene = new THREE.Scene();
     scene.add(new THREE.HemisphereLight(0xffffff, 0x4b4070, 0.42));
     const soleil = new THREE.DirectionalLight(0xfff4e0, 0.78); soleil.position.set(-2, 5, 3); scene.add(soleil);
     const contre = new THREE.DirectionalLight(0x9fe3ff, 0.22); contre.position.set(3, 2, -3); scene.add(contre);
-    camera = new THREE.PerspectiveCamera(30, 1, 0.1, 60); camera.position.set(0, 5.3, 4.9); camera.lookAt(0, 0.9, 0); // vue 3/4 du dessus (avec de la marge pour les grands gestes)
+    camera = new THREE.PerspectiveCamera(30, 1, 0.1, 60); camera.position.set(0, 5.6, 5.4); camera.lookAt(0, 1.15, 0); // vue 3/4 du dessus (avec de la marge pour les grands gestes)
     loader = new THREE.GLTFLoader();
     if (THREE.DRACOLoader) { const dr = new THREE.DRACOLoader(); dr.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.4.1/'); loader.setDRACOLoader(dr); } // modèles compressés (Meshy)
     return true;
@@ -81,11 +73,12 @@ const Modele3D = (() => {
     };
     if (!anims.attaque) anims.attaque = clips.find(c => c !== anims.repos && c !== anims.marche && !/idle|walk|run|dead|death|die|hit|hurt|react|stand|breath|t-?pose|fly|hover/i.test(c.name)); // repli : 1re animation « d'action »
     let hanches = null; obj.traverse(o => { if (!hanches && o.isBone && /hips|pelvis/i.test(o.name)) hanches = o; });
-    return { racine, mixer, anims, hanches, repos: hanches && hanches.position.clone(), decalage: (+p.modeleRotation || 0) * Math.PI / 180, liberer: () => clonable || obj.traverse(o => { if (o.geometry) o.geometry.dispose(); }) };
+    const parNom = Object.fromEntries(clips.map(c => [c.name, c]));
+    return { racine, mixer, anims, parNom, clips: clips.map(c => c.name), hanches, repos: hanches && hanches.position.clone(), decalage: (+p.modeleRotation || 0) * Math.PI / 180, liberer: () => clonable || obj.traverse(o => { if (o.geometry) o.geometry.dispose(); }) };
   }
   function poser(m, anim, t) { // place le modèle à l'instant t d'une animation
     m.mixer.stopAllAction();
-    const clip = m.anims[anim] || m.anims.repos;
+    const clip = m.anims[anim] || (m.parNom || {})[anim] || m.anims.repos; // clé (repos, attaque…) ou nom exact d'animation
     if (clip) { const a = m.mixer.clipAction(clip); a.reset(); a.play(); m.mixer.setTime(Math.min(t, 0.999) * clip.duration);
       if (m.hanches) { m.hanches.position.x = m.repos.x; m.hanches.position.z = m.repos.z; } } // le perso reste sur place (pas de glissade)
     else m.racine.position.y = anim === 'marche' ? Math.abs(Math.sin(t * Math.PI * 2)) * 0.06 : 0; // pas d'animation : petit rebond
@@ -130,7 +123,7 @@ const Modele3D = (() => {
   }
   async function visage(p) { // image de face (cartes, portraits)
     const m = await charger(p); if (!m) return null;
-    const c = document.createElement('canvas'); c.width = c.height = 384; c.getContext('2d').drawImage(contour(photo(m, Math.PI / 2, 'repos', 0, 384, 0.8), 4.5), 0, 0); // portrait HD
+    const c = document.createElement('canvas'); c.width = c.height = 512; c.getContext('2d').drawImage(contour(photo(m, Math.PI / 2, 'repos', 0, 512, 0.9), 5), 0, 0); // portrait HD
     m.liberer(); return c;
   }
   async function vitrine(p) { // rendu en direct (menu) : animation de repos + rotation au doigt
@@ -140,10 +133,10 @@ const Modele3D = (() => {
       rendre(angle, taille, t = 0, anim = 'repos') {
         const now = performance.now(); if (this.fait && now - this.fait < 33 && taille === this.taille && anim === this.anim && Math.abs(angle - this.angle) < 0.005) return c; // 30 images/s suffisent
         Object.assign(this, { fait: now, taille, anim, angle });
-        c.width = c.height = taille; const x = c.getContext('2d'); x.clearRect(0, 0, taille, taille); x.drawImage(contour(photo(m, angle, anim, t % 1, taille, 0.84), Math.max(2, taille / 90), cache), 0, 0);
+        c.width = c.height = taille; const x = c.getContext('2d'); x.clearRect(0, 0, taille, taille); x.drawImage(contour(photo(m, angle, anim, t % 1, taille, 0.92), Math.max(2, taille / 90), cache), 0, 0);
         if (!this.haut) { const cad = cadrage(c); this.haut = cad.haut / taille; this.bas = cad.bas / taille; } return c;
       },
-      a: k => !!m.anims[k], liberer: () => m.liberer()
+      a: k => !!(m.anims[k] || m.parNom[k]), liberer: () => m.liberer()
     };
   }
   async function apercu(p, canvas) { // aperçu admin qu'on fait tourner à la souris / au doigt
@@ -202,5 +195,6 @@ const Modele3D = (() => {
     const res = { murs: PAL.flatMap(c => [1, 2, 3].map(n => bloc(n, false, c))), coffre: bloc(9, true), buissons: [1, 2, 3].map(buisson) };
     return res;
   }
-  return { dispo, generer, visage, vitrine, apercu, decor, instance: charger }; // instance = modèle animé pour la vraie 3D
+  async function listeAnims(p) { const m = await charger(p); if (!m) return []; m.liberer(); return m.clips; } // noms des animations d'un modèle (admin)
+  return { dispo, generer, visage, vitrine, apercu, decor, instance: charger, listeAnims }; // instance = modèle animé pour la vraie 3D
 })();

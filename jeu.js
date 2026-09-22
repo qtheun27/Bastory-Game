@@ -133,6 +133,9 @@ async function preparer3D() { // portraits 3D de tous les persos, puis la planch
   for (const p of [...CONFIG.persos, ...Object.values(CONFIG.bosses)]) if (p.modele) { try { const v = await Modele3D.visage(p); if (v) visages3D.set(p, v); } catch (e) { console.warn('Modèle 3D', p.nom, e.message); } }
   obtenir3D(CONFIG.persos[persoIndex]);
 }
+const animMenu = (vh, p) => { // 🎬 animation du perso dans les menus (réglable dans l'admin)
+  const a = p.animAccueil; if (a === 'fixe') return [0, 'repos']; if (a && vh.a && vh.a(a)) return [(temps / 150) % 1, a];
+  const cyc = temps % 420, att = cyc < 80 && vh.a && vh.a('attaque'); return [att ? cyc / 80 : temps / 150, att ? 'attaque' : 'repos']; };
 let heroVue = null, heroP = null, heroAngle = Math.PI / 2, heroZone = null, heroDrag = null;
 function vitrineHero(p) { // modèle du héros de l'accueil : animation de repos, rotation au doigt
   if (heroP === p) return heroVue;
@@ -2359,7 +2362,7 @@ function menuAccueil() {
   const im = carteDe(p), b = Math.sin(temps * 0.045) * 6 * u;
   const vh = vitrineHero(p);
   if (vh) { // héros 3D haute définition, immobile ; on le fait tourner en glissant le doigt
-    const T = Math.round(Math.min(900, taille * 1.6 * dpr)), cyc = temps % 420, att = cyc < 80 && vh.a && vh.a('attaque'), c = vh.rendre(heroAngle, T, att ? cyc / 80 : temps / 150, att ? 'attaque' : 'repos'), D = taille * 0.82 * Math.min(1.25, +p.modeleEchelle || 1) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
+    const T = Math.round(Math.min(900, taille * 1.6 * dpr)), c = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = taille * 0.82 * Math.min(1.25, +p.modeleEchelle || 1) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
     ctx.imageSmoothingQuality = 'high'; ctx.drawImage(c, cx - D / 2, sol - 4 * u - vh.bas * D, D, D);
   } else if (pret(im)) ctx.drawImage(im, cx - taille / 2, cy - taille / 2 - 14 * u + b, taille, taille);
   heroZone = { x: cx - taille / 2, y: cy - taille / 2, w: taille, h: taille };
@@ -2417,7 +2420,7 @@ function menuPersos() {
   const hg = ctx.createRadialGradient(cx, sol - taille * 0.4, 0, cx, sol - taille * 0.4, taille * 0.6); hg.addColorStop(0, c + '88'); hg.addColorStop(1, c + '00'); ctx.fillStyle = hg; ctx.fillRect(x0, y0, zoneW, zoneH); ctx.restore();
   ctx.save(); ctx.translate(cx, sol); ctx.scale(1, 0.26); const og = ctx.createRadialGradient(0, 0, 0, 0, 0, taille * 0.4); og.addColorStop(0, 'rgba(0,0,0,.5)'); og.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = og; ctx.beginPath(); ctx.arc(0, 0, taille * 0.4, 0, 7); ctx.fill(); ctx.restore();
   const vh = vitrineHero(p);
-  if (vh) { const T = Math.round(Math.min(900, taille * 1.5 * dpr)), cyc = temps % 420, att = cyc < 80 && vh.a && vh.a('attaque'), im3 = vh.rendre(heroAngle, T, att ? cyc / 80 : temps / 150, att ? 'attaque' : 'repos'), D = taille * 0.95 * Math.min(1.25, +p.modeleEchelle || 1) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
+  if (vh) { const T = Math.round(Math.min(900, taille * 1.5 * dpr)), im3 = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = taille * 0.95 * Math.min(1.25, +p.modeleEchelle || 1) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
     ctx.drawImage(im3, cx - D / 2 + off, sol - 4 * u - vh.bas * D, D, D); }
   else { const im = carteDe(p); if (pret(im)) ctx.drawImage(im, cx - taille / 2 + off, sol - taille, taille, taille); }
   titre(p.nom, cx + off * 0.5, sol + 26 * u, 42 * u, '#fff', 'center', zoneW - 120 * u);
