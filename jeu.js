@@ -57,7 +57,7 @@ function redim() {
   dpr = Math.max(1, Math.min(dpr, Math.sqrt(2.6e6 / Math.max(1, W * H)))); // grands écrans : moins de pixels à dessiner = plus fluide
   canvas.width = W * dpr; canvas.height = H * dpr;
   canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
-  zoom = Math.max(0.55, Math.min(1.3, Math.min(W, H * 1.7) / (TUILE * 18)));
+  zoom = Math.max(0.55, Math.min(1.3, Math.min(W, H * 1.7) / (TUILE * 22)));
 }
 addEventListener('resize', redim); redim();
 let ox = 0, oy = 0; const sa = { l: 0, r: 0, t: 0, b: 0 };     // décalage de l'interface (encoche / zone sûre)
@@ -1269,7 +1269,8 @@ function ellipse(x, y, rx, ry, fill) { ctx.beginPath(); ctx.ellipse(x, y, Math.m
 
 let decor3D = null;
 const varDecor = (px, py) => Math.floor(alea(px * 0.37 + py * 0.11) * 3);
-function mur(px, py) { if (decor3D) ctx.drawImage(decor3D.murs[varDecor(px, py)], px - 2.94, py - HAUT_MUR - 5, 69.9, 101.9); else ctx.drawImage(spriteBloc(map.def, false), px - 2, py - HAUT_MUR - 2); }
+const couleurMur = (px, py) => { const v = alea(Math.floor(px / 192) * 7.3 + Math.floor(py / 192) * 13.1); return v < 0.45 ? 0 : 1 + Math.floor((v - 0.45) / 0.55 * 4); }; // même couleur par groupe de 3×3 cases
+function mur(px, py) { if (decor3D) ctx.drawImage(decor3D.murs[(couleurMur(px, py) * 3 + varDecor(px, py)) % decor3D.murs.length], px - 2.94, py - HAUT_MUR - 5, 69.9, 101.9); else ctx.drawImage(spriteBloc(map.def, false), px - 2, py - HAUT_MUR - 2); }
 const DUREE_ANIM = { attaque: 34, touche: 22, mort: 60, releve: 50 }; // durée des animations spéciales (images à 60/s)
 function animSpeciale(e, sp) { // quelle animation spéciale jouer maintenant ?
   if (!sp.spec) return null;
@@ -1280,7 +1281,7 @@ function animSpeciale(e, sp) { // quelle animation spéciale jouer maintenant ?
   return null;
 }
 function dessiner3D(e, sp, anneau, taille) { // perso 3D : on choisit la vignette selon la direction et la pose de marche
-  ombreDouce(e.x, e.y + e.r * 0.45, e.r * 1.15, e.r * 0.62);
+  ombreDouce(e.x + e.r * 0.3, e.y + e.r * 0.5, e.r * 1.5, e.r * 0.72); // ombre portée (soleil en haut à gauche)
   ctx.strokeStyle = anneau; ctx.lineWidth = 3; ctx.globalAlpha = 0.8; ctx.beginPath(); ctx.ellipse(e.x, e.y + e.r * 0.45, e.r * 1.05, e.r * 0.6, 0, 0, 7); ctx.stroke();
   const a = (((e.angle || 0) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2), d = Math.round(a / (Math.PI * 2) * sp.DIRS) % sp.DIRS;
   if (e.marche !== e.mPrec) { e.mPrec = e.marche; e.mT = temps; }
@@ -1305,7 +1306,7 @@ function dessinerEntite(e, im, anneau, taille) {
   const sp3 = e.def ? (bossBase(e.def).modele ? obtenir3D(bossBase(e.def)) : null) : e.perso && obtenir3D(e.perso); // persos ET boss en 3D
   if (sp3) return dessiner3D(e, sp3, anneau, taille);
   if (e.rage) ellipse(e.x, e.y + e.r * 0.45, e.r * 1.5, e.r * 0.9, `rgba(255,0,0,${0.15 + 0.1 * Math.sin(temps * 0.2)})`);
-  ombreDouce(e.x, e.y + e.r * 0.45, e.r * 1.15, e.r * 0.62);
+  ombreDouce(e.x + e.r * 0.3, e.y + e.r * 0.5, e.r * 1.5, e.r * 0.72); // ombre portée (soleil en haut à gauche)
   ctx.strokeStyle = anneau; ctx.lineWidth = 3; ctx.globalAlpha = 0.8; ctx.stroke(); ctx.globalAlpha = 1;
   ctx.save();
   ctx.globalAlpha = e.cache ? 0.5 : 1;
@@ -1772,6 +1773,52 @@ function ondeMarteau(p) { // 🔨 onde de choc du marteau de Rokh qui fend le so
   ctx.restore();
 }
 
+
+// ---------- 🌳 DÉCOR AUTOUR DE LA MAP + OMBRES PORTÉES + LUMIÈRE (volume façon dessin animé) ----------
+function propDecor(type, teinte) { // accessoires dessinés avec volume : arbre, caisse, tonneau (mis en cache)
+  const k = 'prop' + type + teinte; if (cacheGfx[k]) return cacheGfx[k];
+  const c = document.createElement('canvas'); c.width = 110; c.height = 130; const x = c.getContext('2d'); x.lineJoin = 'round'; x.lineWidth = 3.5; x.strokeStyle = NOIR;
+  x.fillStyle = 'rgba(20,10,40,.28)'; x.beginPath(); x.ellipse(62, 118, 40, 12, 0, 0, 7); x.fill(); // ombre au sol
+  if (type === 0) { // arbre
+    x.fillStyle = '#8a5a2b'; x.fillRect(48, 70, 16, 48); x.strokeRect(48, 70, 16, 48);
+    for (const [cx, cy, r, col] of [[40, 62, 28, ombrer(teinte, -0.25)], [72, 60, 28, ombrer(teinte, -0.25)], [55, 38, 34, teinte]]) { x.fillStyle = col; x.beginPath(); x.arc(cx, cy, r, 0, 7); x.fill(); x.stroke(); }
+    x.fillStyle = 'rgba(255,255,255,.35)'; x.beginPath(); x.arc(45, 26, 11, 0, 7); x.fill();
+  } else if (type === 1) { // caisse colorée
+    x.fillStyle = ombrer(teinte, 0.35); x.beginPath(); x.moveTo(20, 50); x.lineTo(84, 50); x.lineTo(94, 38); x.lineTo(30, 38); x.closePath(); x.fill(); x.stroke();
+    x.fillStyle = ombrer(teinte, -0.3); x.beginPath(); x.moveTo(84, 50); x.lineTo(94, 38); x.lineTo(94, 100); x.lineTo(84, 112); x.closePath(); x.fill(); x.stroke();
+    x.fillStyle = teinte; x.fillRect(20, 50, 64, 62); x.strokeRect(20, 50, 64, 62);
+    x.strokeStyle = ombrer(teinte, -0.35); x.lineWidth = 3; x.beginPath(); x.moveTo(24, 54); x.lineTo(80, 108); x.moveTo(80, 54); x.lineTo(24, 108); x.stroke();
+  } else { // tonneau
+    x.fillStyle = teinte; x.fillRect(28, 50, 56, 60); x.strokeRect(28, 50, 56, 60);
+    x.fillStyle = ombrer(teinte, -0.3); x.fillRect(70, 50, 14, 60);
+    x.fillStyle = '#5a3a1a'; x.fillRect(28, 62, 56, 6); x.fillRect(28, 94, 56, 6);
+    x.fillStyle = ombrer(teinte, 0.3); x.beginPath(); x.ellipse(56, 50, 28, 10, 0, 0, 7); x.fill(); x.stroke();
+    x.fillStyle = '#5ff0ff'; x.beginPath(); x.ellipse(56, 50, 18, 6, 0, 0, 7); x.fill();
+  }
+  return cacheGfx[k] = c;
+}
+function decorExterieur(T, vw, vh) { // hors du terrain : herbe sombre + accessoires (on voit que la map est dans un monde)
+  const ux0 = Math.floor((cam.x - vw) / T) - 1, ux1 = Math.ceil((cam.x + vw) / T) + 1, uy0 = Math.floor((cam.y - vh) / T) - 1, uy1 = Math.ceil((cam.y + vh) / T) + 2;
+  const vert = /^#[0-9a-f]{6}$/i.test(map.def.herbe1 || '') ? map.def.herbe1 : '#5fd14a', COUL = ['#ff9a4a', '#5ac8fa', '#8e7bff', '#ffd23f', '#ff5a8a'];
+  ctx.fillStyle = ombrer(vert, -0.28); ctx.fillRect(ux0 * T, uy0 * T, (ux1 - ux0) * T, (uy1 - uy0) * T);
+  for (let y = uy0; y < uy1; y++) for (let x = ux0; x < ux1; x++) {
+    if (x >= 0 && y >= 0 && x < map.l && y < map.h) continue;
+    const a = alea(x * 31.7 + y * 17.3); if (a > 0.42) continue;
+    const t = a < 0.22 ? 0 : a < 0.33 ? 1 : 2, im = propDecor(t, t === 0 ? ombrer(vert, 0.05) : COUL[Math.floor(alea(x + y * 3.1) * COUL.length)]);
+    ctx.drawImage(im, x * T - 23, y * T - 66);
+  }
+}
+function ombresPortees(tuiles, T) { // ombres des blocs et buissons vers le bas-droite (une seule forme = pas de double ombre)
+  ctx.beginPath(); tuiles((c, x, y, px, py) => { if (bloqueTir(c)) ctx.rect(px + 14, py + 8, T, T); }); ctx.fillStyle = 'rgba(25,15,60,.26)'; ctx.fill();
+  ctx.beginPath(); tuiles((c, x, y, px, py) => { if (c === 'B') ctx.rect(px + 10, py + 10, T - 4, T - 6); }); ctx.fillStyle = 'rgba(25,15,60,.14)'; ctx.fill();
+}
+function lumiereSol(T) { // taches de soleil et zones d'ombre douces sur le sol
+  ctx.save(); ctx.globalCompositeOperation = 'soft-light';
+  for (let i = 0; i < 8; i++) { const x = alea(i * 5.1 + 3) * map.l * T, y = alea(i * 2.7 + 9) * map.h * T, r = 260 + alea(i) * 260, cl = i % 3 ? 'rgba(255,245,200,.55)' : 'rgba(20,30,90,.45)';
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, cl); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2); }
+  ctx.restore();
+}
+
 // ---------- 12c. GRAPHISMES : textures & sprites pré-calculés (rapides) ----------
 const cacheGfx = {};
 function ombrer(hex, k) { // éclaircit (k>0) ou assombrit (k<0) une couleur #rrggbb
@@ -1849,7 +1896,9 @@ function dessinerJeu() {
   const y0 = Math.max(0, Math.floor((cam.y - vh) / T)), y1 = Math.min(map.h - 1, Math.ceil((cam.y + vh) / T));
   const tuiles = f => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) f(tuile(x, y), x, y, x * T, y * T); };
 
+  decorExterieur(T, vw, vh);
   ctx.fillStyle = motifHerbe(d); ctx.fillRect(x0 * T, y0 * T, (x1 - x0 + 1) * T, (y1 - y0 + 1) * T); // herbe texturée
+  lumiereSol(T);
   tuiles((c, x, y, px, py) => { if (c === '.' && alea(x * 97 + y * 13) < 0.16) ctx.drawImage(spriteDeco(Math.floor(alea(x + y * 7) * 4)), px + alea(x * 3 + y) * 30, py + alea(y * 5 + x) * 30); }); // fleurs & cailloux
   tuiles((c, x, y, px, py) => { // eau : dégradé, reflets animés et écume sur les bords
     if (c === 'Z') { // 🎯 zone
@@ -1872,6 +1921,7 @@ function dessinerJeu() {
     if (tuile(x + 1, y) !== 'W') ctx.fillRect(px + T - 3, py, 3, T);
   });
   tuiles((c, x, y, px, py) => { if (c === 'S') dessinerSable(x, y, px, py); else if (c === 'W') encreEau(x, y, px, py); }); // 🏖️ sable + bords d'eau encrés
+  ombresPortees(tuiles, T);
   tuiles((c, x, y, px, py) => { if (bloqueTir(c)) ctx.drawImage(spriteOmbre(), px - 6, py - 2); }); // ombres douces
   for (const o of objets) { // objets rares au sol
     const p = CONFIG.pouvoirs[o.id] || {}, b = Math.sin(temps * 0.1 + o.x) * 5;

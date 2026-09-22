@@ -175,16 +175,16 @@ const Modele3D = (() => {
       scene.add(obj); rendu.render(scene, cam); scene.remove(obj);
       const c = document.createElement('canvas'); c.width = W2; c.height = H2; c.getContext('2d').drawImage(rendu.domElement, 0, 0); return c;
     };
-    const bloc = (seed, coffre) => {
+    const bloc = (seed, coffre, teinte) => { // teinte : couleur du bloc (palette de la map)
       const g = new THREE.BoxGeometry(1.306, 0.52, 1, 10, 4, 8), p = g.attributes.position, v = new THREE.Vector3();
       if (!coffre) for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); const k = Math.round(v.x * 97 + v.y * 53 + v.z * 71 + seed * 13);
         const f = 0.025 + h(k) * 0.05; v.x *= 1 + (Math.abs(v.x) > 0.6 ? f * 0.3 : 0); v.y += v.y > 0.2 ? h(k + 3) * 0.05 - 0.02 : 0; v.z *= 1 + (Math.abs(v.z) > 0.45 ? f * 0.4 : 0); p.setXYZ(i, v.x, v.y, v.z); }
       g.computeVertexNormals(); g.translate(0, 0.26, 0);
       const o = new THREE.Group();
-      o.add(new THREE.Mesh(g, new THREE.MeshToonMaterial({ map: tex(coffre ? '#c98a45' : d.mur || '#b3a390', coffre ? 0 : 6, seed * 100), gradientMap: GRAD })));
+      o.add(new THREE.Mesh(g, new THREE.MeshToonMaterial({ map: tex(coffre ? '#c98a45' : teinte || d.mur || '#b3a390', coffre ? 0 : 6, seed * 100), gradientMap: GRAD })));
       if (coffre) { const or = new THREE.MeshToonMaterial({ color: couleur('#ffd23f'), gradientMap: GRAD });
         [[0, 0.26, 0, 1.33, 0.1, 1.02], [0, 0.26, 0, 0.18, 0.54, 1.02]].forEach(([x, y, z, a, b2, c2]) => { const m = new THREE.Mesh(new THREE.BoxGeometry(a, b2, c2), or); m.position.set(x, y, z); o.add(m); }); }
-      if (!coffre) { const dessus = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.05, 0.86), new THREE.MeshToonMaterial({ color: couleur(d.mur || '#b3a390').lerp(new THREE.Color(1, 1, 1), 0.4), gradientMap: GRAD }));
+      if (!coffre) { const dessus = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.05, 0.86), new THREE.MeshToonMaterial({ color: couleur(teinte || d.mur || '#b3a390').lerp(new THREE.Color(1, 1, 1), 0.4), gradientMap: GRAD }));
         dessus.position.y = 0.545; o.add(dessus); } // liseré clair sur le dessus du bloc
       return contour(photo(o, -0.713, 0.713, -0.443, 0.777, 2), 3.5);
     };
@@ -197,7 +197,8 @@ const Modele3D = (() => {
       const socle = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.2, 0.95), mats[0]); socle.position.y = 0.1; o.add(socle);
       return contour(photo(o, -0.85, 0.85, -0.6, 1.0, 2), 3.5);
     };
-    const res = { murs: [1, 2, 3].map(n => bloc(n, false)), coffre: bloc(9, true), buissons: [1, 2, 3].map(buisson) };
+    const PAL = [d.mur || '#b3a390', ...(d.palette || ['#5ac8fa', '#8e7bff', '#ff9a4a', '#6fd46a'])]; // 🎨 blocs colorés : 3 formes × chaque couleur
+    const res = { murs: PAL.flatMap(c => [1, 2, 3].map(n => bloc(n, false, c))), coffre: bloc(9, true), buissons: [1, 2, 3].map(buisson) };
     return res;
   }
   return { dispo, generer, visage, vitrine, apercu, decor };
