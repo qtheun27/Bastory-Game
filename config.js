@@ -1,4 +1,118 @@
 // ⚙️ DONNÉES DU JEU — config de secours (la version en ligne est dans Firebase, éditable via admin.html)
+// 🎨 Ambiances de map : couleurs + styles 3D (murs, buissons, sol, eau, ciel)
+const THEMES = {
+  "campagne": {
+    "nom": "🌾 Campagne",
+    "sol": "#6fcf57",
+    "sable": "#e9d18f",
+    "mur": "#a9a79c",
+    "palette": [
+      "#b9b39f",
+      "#8f9ca3",
+      "#9fb38a"
+    ],
+    "murStyle": "pierre",
+    "buisson": "#3fae4a",
+    "buissonStyle": "touffe",
+    "eau": "#3aa6e0",
+    "ext": "#4f9a45",
+    "ciel": "#9fdcff",
+    "coffre": "#c98a45"
+  },
+  "ville": {
+    "nom": "🏙️ Ville",
+    "sol": "#c3c8d2",
+    "sable": "#e8dcc0",
+    "mur": "#d9644a",
+    "palette": [
+      "#4a8fe0",
+      "#f2b63d",
+      "#8e6ad8",
+      "#e05a8a"
+    ],
+    "murStyle": "brique",
+    "buisson": "#3a9e52",
+    "buissonStyle": "haie",
+    "eau": "#39b6e8",
+    "ext": "#7d8594",
+    "ciel": "#bfe6ff",
+    "coffre": "#5a7bd0",
+    "solStyle": "pave"
+  },
+  "desert": {
+    "nom": "🏜️ Désert",
+    "sol": "#f0c77c",
+    "sable": "#f7dca3",
+    "mur": "#d98b4a",
+    "palette": [
+      "#c9733b",
+      "#e6a55c",
+      "#b85e34"
+    ],
+    "murStyle": "gres",
+    "buisson": "#5fae4a",
+    "buissonStyle": "cactus",
+    "eau": "#29c4c9",
+    "ext": "#d9a45a",
+    "ciel": "#ffe3a8",
+    "coffre": "#b07a3a"
+  },
+  "neige": {
+    "nom": "❄️ Neige",
+    "sol": "#eef6ff",
+    "sable": "#d6e6f5",
+    "mur": "#8fb7d9",
+    "palette": [
+      "#b9d7f0",
+      "#7fa3c8",
+      "#a8c8e8"
+    ],
+    "murStyle": "glace",
+    "buisson": "#2f7d5a",
+    "buissonStyle": "sapin",
+    "eau": "#5ab8e8",
+    "ext": "#dbe9f5",
+    "ciel": "#dff1ff",
+    "coffre": "#8e6a4a"
+  },
+  "plage": {
+    "nom": "🏝️ Plage",
+    "sol": "#7fd65f",
+    "sable": "#f4d68e",
+    "mur": "#b0824f",
+    "palette": [
+      "#8a6038",
+      "#c79a62"
+    ],
+    "murStyle": "bois",
+    "buisson": "#35b54f",
+    "buissonStyle": "touffe",
+    "eau": "#2fc2f0",
+    "ext": "#f4d68e",
+    "ciel": "#9fe6ff",
+    "coffre": "#c98a45"
+  },
+  "volcan": {
+    "nom": "🌋 Volcan",
+    "sol": "#7a6560",
+    "sable": "#9a7a62",
+    "mur": "#4a3f48",
+    "palette": [
+      "#5e4658",
+      "#3a3440"
+    ],
+    "murStyle": "pierre",
+    "buisson": "#d0602a",
+    "buissonStyle": "cactus",
+    "eau": "#ff6a1a",
+    "lave": true,
+    "ext": "#3a2a2a",
+    "ciel": "#ffb07a",
+    "coffre": "#7a5a3a"
+  }
+};
+const themeDe = d => ({ ...THEMES.campagne, ...(THEMES[d && d.theme] || {}) });
+
 const CONFIG_PAR_DEFAUT = {
   "persos": [
     {
@@ -383,7 +497,8 @@ const CONFIG_PAR_DEFAUT = {
       "casseBuissons": true,
       "pvBloc": 3000,
       "chanceObjet": 10,
-      "chanceCoffre": 100
+      "chanceCoffre": 100,
+      "theme": "campagne"
     },
     {
       "nom": "Plage des pirates",
@@ -415,6 +530,135 @@ const CONFIG_PAR_DEFAUT = {
         "#SSSSS....BB.....WWW..B.SSWWW#",
         "#SSSSS...............BB.SWWWW#",
         "#SSSSS..................SWWWW#",
+        "##############################"
+      ],
+      "casseMurs": true,
+      "casseBuissons": true,
+      "pvBloc": 3000,
+      "chanceObjet": 10,
+      "chanceCoffre": 100,
+      "theme": "plage"
+    },
+    {
+      "nom": "Village des Toits",
+      "theme": "ville",
+      "actif": true,
+      "grille": [
+        "##############################",
+        "#............................#",
+        "#........##.WW.E.............#",
+        "#..####O.##...O..............#",
+        "#..####..##.........BB.......#",
+        "#........##............O.....#",
+        "#...........BBBB..C..........#",
+        "#..BB........................#",
+        "#..BB........ZZZZ............#",
+        "#.1.5........ZNZZ...###....2.#",
+        "#.1....###...ZZNZ........6.2.#",
+        "#............ZZZZ........BB..#",
+        "#........................BB..#",
+        "#..........C..BBBB...........#",
+        "#.....O............##........#",
+        "#.......BB.........##..####..#",
+        "#..............O...##.O####..#",
+        "#...............WW.##........#",
+        "#............................#",
+        "##############################"
+      ],
+      "casseMurs": true,
+      "casseBuissons": true,
+      "pvBloc": 3000,
+      "chanceObjet": 10,
+      "chanceCoffre": 100
+    },
+    {
+      "nom": "Oasis Mirage",
+      "theme": "desert",
+      "actif": true,
+      "grille": [
+        "##############################",
+        "#......................SSSSSS#",
+        "#..........O...........SSSSSS#",
+        "#...##.........E...C..OSSSSSS#",
+        "#...#....B.............SSSSSS#",
+        "#...#.O...................B..#",
+        "#...#.........N..............#",
+        "#......B...........###.......#",
+        "#...........BWWWW..........2.#",
+        "#.1.........BWWWW........6...#",
+        "#...5........WWWWB.........2.#",
+        "#.1..........WWWWB...........#",
+        "#.......###...........B......#",
+        "#..............N.........#...#",
+        "#..B...................O.#...#",
+        "#SSSSSS.............B....#...#",
+        "#SSSSSSO..C.............##...#",
+        "#SSSSSS...........O..........#",
+        "#SSSSSS......................#",
+        "##############################"
+      ],
+      "casseMurs": true,
+      "casseBuissons": true,
+      "pvBloc": 3000,
+      "chanceObjet": 10,
+      "chanceCoffre": 100
+    },
+    {
+      "nom": "Pic Gelé",
+      "theme": "neige",
+      "actif": true,
+      "grille": [
+        "##############################",
+        "#............................#",
+        "#...........WWW..............#",
+        "#.....#..BB.WWW..............#",
+        "#..O..#.....WWW..E...C.......#",
+        "#.....#......O...........BB..#",
+        "#.....#..................BB..#",
+        "#.....#..B.O.................#",
+        "#............ZZZZ###.........#",
+        "#.1..........ZZZZ........6.2.#",
+        "#.1.5........ZZZZ..........2.#",
+        "#.........###ZZZZ............#",
+        "#.................O.B..#.....#",
+        "#..BB..................#.....#",
+        "#..BB...........O......#.....#",
+        "#.......C......WWW.....#..O..#",
+        "#..............WWW.BB..#.....#",
+        "#..............WWW...........#",
+        "#............................#",
+        "##############################"
+      ],
+      "casseMurs": true,
+      "casseBuissons": true,
+      "pvBloc": 3000,
+      "chanceObjet": 10,
+      "chanceCoffre": 100
+    },
+    {
+      "nom": "Cratère Brûlant",
+      "theme": "volcan",
+      "actif": true,
+      "grille": [
+        "##############################",
+        "#............................#",
+        "#.............E..............#",
+        "#........B...O.........O.....#",
+        "#...###..............##......#",
+        "#....................##......#",
+        "#..........WWW.WWWW..##......#",
+        "#..........W......W..........#",
+        "#...BB.....W......W..........#",
+        "#.1.5.........NN..W.C......2.#",
+        "#.1......C.W..NN.........6.2.#",
+        "#..........W......W.....BB...#",
+        "#..........W......W..........#",
+        "#......##..WWWW.WWW..........#",
+        "#......##....................#",
+        "#......##..............###...#",
+        "#.....O.........O...B........#",
+        "#............................#",
+        "#............................#",
         "##############################"
       ],
       "casseMurs": true,
@@ -756,7 +1000,7 @@ const CONFIG_PAR_DEFAUT = {
       "rarete": 1
     }
   },
-  "version": 12,
+  "version": 13,
   "app": {
     "nom": "Bastory",
     "nomCourt": "Bastory",
@@ -912,6 +1156,11 @@ function migrerConfig(c) {
     if (c.armes.rocher) Object.assign(c.armes.rocher, { forme: 'onde', vitesse: 11, taille: 22, rayon: 95, onde: 150, effet: 'impact' });
     c.persos.forEach(p => { if (p.nom === 'ROKH') p.portee = 240; });
     c.version = 11;
+  }
+  if ((c.version || 0) < 13) { // v13 : ambiances de map (thèmes 3D) + 4 maps thématiques
+    c.maps.forEach(m => { if (!m.theme) m.theme = m.sable ? 'plage' : 'campagne'; });
+    D.maps.filter(m => ['ville', 'desert', 'neige', 'volcan'].includes(m.theme)).forEach(m => { if (!c.maps.some(x => x.nom === m.nom)) c.maps.push(copie(m)); });
+    c.version = 13;
   }
   if ((c.version || 0) < 12) { if (c.armes.rocher) c.armes.rocher.vitesse = 26; c.version = 12; } // v12 : le marteau frappe le sol tout de suite
   if (/wixy\.png$/i.test((c.app || {}).icone || '')) c.app.icone = 'images/icone-maskable-512.png'; // nouvelle icône PWA

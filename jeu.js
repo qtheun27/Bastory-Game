@@ -175,7 +175,10 @@ auth.onAuthStateChanged(u => {
 // ---------- 6. MAP & COLLISIONS ----------
 // 1-4 départs d'équipe  5-8 cristaux d'équipe  N cristal neutre  O cachette de trésor
 // '.' herbe  'S' sable  '#' mur  'B' buisson  'W' eau  'P' départ joueur (2 pour le 1V1)  'E' départ boss  'C' coffre mystère
+const styliser = d => { if (!d || !d.theme) return d; const t = themeDe(d); // 🎨 couleurs de l'ambiance choisie (campagne, ville, désert…)
+  return { ...d, herbe1: t.sol, herbe2: t.sol, mur: t.mur, murFace: ombrer(t.mur, -0.3), buisson: t.buisson, buissonFonce: ombrer(t.buisson, -0.25), eau: t.eau, sable: t.sable, palette: t.palette }; };
 function chargerMap(def) {
+  def = styliser(def);
   const l = Math.max(...def.grille.map(r => r.length));
   const g = def.grille.map(r => r.padEnd(l, '.'));
   const m = { def, g, l, h: g.length, j: [], b: [], t: [], z: 0, eqj: [[], [], [], []], tc: [], tn: [], o: [] };
@@ -272,12 +275,12 @@ function demarrer(mapIdx, liste) {
   projectiles = []; particules = []; textes = []; ondes = []; objets = []; degatsTuiles = {}; retours = []; levees = {};
   cam.x = moi.x; cam.y = moi.y; finDans = 0; resultat = ''; messageFin = ''; finInfo = null;
   joyG.actif = joyD.actif = false;
-  joueurs().forEach(j => obtenir3D(j.perso)); // prépare les persos 3D de la partie pendant l'intro
+  if (vueMode !== '3d') joueurs().forEach(j => obtenir3D(j.perso)); // en 2D : prépare les planches de sprites pendant l'intro
   etat = 'INTRO'; introT = temps; kills = {}; nuages = []; dots = []; fantomes = []; suivi = null;
   moi.spawn = { x: moi.x, y: moi.y }; Object.values(autres).forEach(j => j.spawn = { x: j.x, y: j.y });
   graine = liste.reduce((s, d) => s + [...String(d.uid)].reduce((a, c) => a + c.charCodeAt(0), 0), mapIdx * 13); // même graine chez tous les joueurs
   etape = 0; scoreEtapes = {}; bandeauEtape = null; tresors = []; scoreTresor = {}; preparerObjectif();
-  if (mode.boss) Object.values(CONFIG.bosses).forEach(b => b.modele && obtenir3D(b)); // boss en 3D
+  if (mode.boss && vueMode !== '3d') Object.values(CONFIG.bosses).forEach(b => b.modele && obtenir3D(b)); // boss en 3D
 }
 const cleP = p => String(p.nom || 'perso').replace(/[.~*/\[\]`]/g, '_'); // clé des points par perso
 function verifierFin() {
@@ -482,8 +485,8 @@ canvas.addEventListener('touchstart', e => {
     const hb = boutonHUD(pt(t)); // boutons SUPER (glisser pour viser) / ACTION
     if (hb && hb.vise && moi.superPret) { const q = pt(t); Object.assign(joyS, { actif: true, id: t.identifier, ox: q.x, oy: q.y, x: q.x, y: q.y }); continue; }
     if (hb) { hb.f(); continue; }
-    const q = pt(t), j = q.x < W / 2 ? joyG : joyD;
-    if (!j.actif) Object.assign(j, { actif: true, id: t.identifier, ox: q.x, oy: q.y, x: q.x, y: q.y });
+    const q = pt(t), j = q.x < W / 2 ? joyG : joyD, { T } = posHUD(), tx = T.x + sa.l, ty = T.y + sa.t, ancre = j === joyD && Math.hypot(q.x - tx, q.y - ty) < T.r * 1.6;
+    if (!j.actif) Object.assign(j, { actif: true, id: t.identifier, ox: ancre ? tx : q.x, oy: ancre ? ty : q.y, x: q.x, y: q.y }); // l'attaque part du centre de son bouton
   }
 }, { passive: false });
 canvas.addEventListener('touchmove', e => {
@@ -1178,7 +1181,7 @@ function introVedette(v, l, i) {
   const cx = W * (gauche ? 0.33 : 0.67) - v.cote * (1 - e) * W * 0.7, sc = 1.35 - 0.35 * k;
   ctx.save(); ctx.translate(cx, H); ctx.scale(sc, sc);
   if (v.vue) {
-    const D = H * 1.02, T = Math.round(Math.min(760, D * Math.min(2, window.devicePixelRatio || 1))), anim = v.vue.a && v.vue.a('attaque') ? 'attaque' : 'repos';
+    const D = H * 1.02, T = Math.round(Math.min(520, D * Math.min(1.5, window.devicePixelRatio || 1))), anim = v.vue.a && v.vue.a('attaque') ? 'attaque' : 'repos';
     const c = v.vue.rendre(Math.PI / 2 + (gauche ? -0.45 : 0.45), T, (l / 90) % 1, anim), taille = D * 0.9 / Math.max(0.3, (v.vue.bas - v.vue.haut) || 0.7);
     ctx.drawImage(c, -taille / 2, -H * 0.02 - (v.vue.bas || 0.95) * taille, taille, taille);
   } else if (pret(v.im)) { const s = H * 0.82; ctx.drawImage(v.im, -s / 2, -s - H * 0.06, s, s); }
@@ -1315,6 +1318,7 @@ function dessinerEntite(e, im, anneau, taille) {
   if (e.dash && e.dash.saut && temps < e.dash.fin) e.alt = Math.sin((1 - (e.dash.fin - temps) / e.dash.duree) * Math.PI) * 70; // hauteur du saut
   auraElem(e);
   if (e.def && !hote) { const d = Math.hypot(e.x - (e.px ?? e.x), e.y - (e.py ?? e.y)); if (d > 0.4) e.marche = (e.marche || 0) + d; e.px = e.x; e.py = e.y; } // boss distants : animation de marche
+  if (aff3 && (e.def ? bossBase(e.def).modele : (baseDe(e.perso) || {}).modele)) return; // modèle 3D en cours de chargement : rien de lourd à générer
   const sp3 = e.def ? (bossBase(e.def).modele ? obtenir3D(bossBase(e.def)) : null) : e.perso && obtenir3D(e.perso); // persos ET boss en 3D
   if (sp3) return dessiner3D(e, sp3, anneau, taille);
   if (e.rage) ellipse(e.x, e.y + e.r * 0.45, e.r * 1.5, e.r * 0.9, `rgba(255,0,0,${0.15 + 0.1 * Math.sin(temps * 0.2)})`);
@@ -1458,31 +1462,33 @@ function dash(j) { // avance pendant la charge / la rafale ; la charge de Rokh b
 let hudBoutons = [], hudDrag = null, hudPerso = { taille: 1 }; // 📱 place et taille des boutons (onglet Commandes)
 try { Object.assign(hudPerso, JSON.parse(localStorage.getItem('bastoryHud') || '{}')); } catch (e) {}
 function posHUD() {
-  const u = U(), tact = 'ontouchstart' in window, k = hudPerso.taille || 1;
-  return { S: { x: hudPerso.sx != null ? hudPerso.sx * W : W - (tact ? 205 : 150) * u, y: hudPerso.sy != null ? hudPerso.sy * H : H - (tact ? 180 : 100) * u, r: (tact ? 40 : 32) * u * k },
+  const u = U(), tact = mobile, k = hudPerso.taille || 1;
+  return { T: { x: hudPerso.tx != null ? hudPerso.tx * W : W - 100 * u, y: hudPerso.ty != null ? hudPerso.ty * H : H - 100 * u, r: 52 * u * k }, S: { x: hudPerso.sx != null ? hudPerso.sx * W : W - (tact ? 205 : 150) * u, y: hudPerso.sy != null ? hudPerso.sy * H : H - (tact ? 180 : 100) * u, r: (tact ? 40 : 32) * u * k },
            A: { x: hudPerso.ax != null ? hudPerso.ax * W : W - (tact ? 222 : 66) * u, y: hudPerso.ay != null ? hudPerso.ay * H : H - (tact ? 60 : 100) * u, r: (tact ? 31 : 26) * u * k } };
 }
 function sauverHud() { try { localStorage.setItem('bastoryHud', JSON.stringify(hudPerso)); } catch (e) {} if (db && user) db.collection('joueurs').doc(user.uid).set({ hud: hudPerso }, { merge: true }).catch(() => {}); }
-function prendreBoutonHud(q) { const { S, A } = posHUD(), x = q.x - sa.l, y = q.y - sa.t; hudDrag = Math.hypot(x - S.x, y - S.y) < S.r * 1.4 ? 'S' : Math.hypot(x - A.x, y - A.y) < A.r * 1.4 ? 'A' : null; return !!hudDrag; }
-function deplacerBoutonHud(q) { const x = Math.max(0.05, Math.min(0.97, (q.x - sa.l) / W)), y = Math.max(0.12, Math.min(0.95, (q.y - sa.t) / H)); if (hudDrag === 'S') { hudPerso.sx = x; hudPerso.sy = y; } else { hudPerso.ax = x; hudPerso.ay = y; } }
+function prendreBoutonHud(q) { const P = posHUD(), x = q.x - sa.l, y = q.y - sa.t; hudDrag = ['S', 'A', 'T'].find(k => Math.hypot(x - P[k].x, y - P[k].y) < P[k].r * 1.3) || null; return !!hudDrag; }
+function deplacerBoutonHud(q) { const x = Math.max(0.05, Math.min(0.97, (q.x - sa.l) / W)), y = Math.max(0.12, Math.min(0.95, (q.y - sa.t) / H)); const k = hudDrag.toLowerCase(); hudPerso[k + 'x'] = x; hudPerso[k + 'y'] = y; }
 function menuHud() { // 📱 placer et redimensionner les boutons SUPER / ACTION
-  const u = U(), top = barreHaut('BOUTONS', true), { S, A } = posHUD(), e = infoElem({ perso: CONFIG.persos[persoIndex] }) || { k: 'feu', couleur: '#ff6a00', actionNom: 'Action' };
+  const u = U(), top = barreHaut(mobile ? 'COMMANDES' : 'BOUTONS', true), { S, A, T } = posHUD(), e = infoElem({ perso: CONFIG.persos[persoIndex] }) || { k: 'feu', couleur: '#ff6a00', actionNom: 'Action' };
   titre('Glisse les boutons où tu veux', W / 2, top + 20 * u, 20 * u, '#fff', 'center', W - 40 * u);
   ctx.save(); ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.arc(120 * u, H - 110 * u, 55 * u, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore(); texte('Joystick', 120 * u, H - 110 * u, 12 * u, '#fff');
-  for (const [b, c1, c2, nom] of [[S, '#fff3a0', '#ff8a1f', 'SUPER'], [A, ombrer(e.couleur || '#ff6a00', 0.4), ombrer(e.couleur || '#ff6a00', -0.35), e.actionNom]]) {
+  for (const [b, c1, c2, nom] of [[T, '#ff8c6e', '#c81e3c', 'ATTAQUE'], [S, '#fff3a0', '#ff8a1f', 'SUPER'], [A, ombrer(e.couleur || '#ff6a00', 0.4), ombrer(e.couleur || '#ff6a00', -0.35), e.actionNom]]) {
     ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); const g = ctx.createRadialGradient(b.x - b.r * 0.3, b.y - b.r * 0.4, 1, b.x, b.y, b.r); g.addColorStop(0, c1); g.addColorStop(1, c2); ctx.fillStyle = g; ctx.fill();
-    ctx.lineWidth = 4 * u; ctx.strokeStyle = hudDrag && b === (hudDrag === 'S' ? S : A) ? '#ffe14a' : NOIR; ctx.stroke(); titre(nom, b.x, b.y, 12 * u, '#fff', 'center', b.r * 1.8); }
+    ctx.lineWidth = 4 * u; ctx.strokeStyle = hudDrag && b === ({ S, A, T })[hudDrag] ? '#ffe14a' : NOIR; ctx.stroke(); titre(nom, b.x, b.y, 12 * u, '#fff', 'center', b.r * 1.8); }
   const by = H - 52 * u, bx = W / 2 - 190 * u;
   bouton3D(bx, by, 60 * u, 40 * u, '#8e7bff', '#5b3fd6', () => { hudPerso.taille = Math.max(0.7, +(hudPerso.taille - 0.1).toFixed(1)); sauverHud(); }); titre('−', bx + 30 * u, by + 19 * u, 24 * u, '#fff');
   titre('Taille ' + Math.round(hudPerso.taille * 100) + '%', bx + 130 * u, by + 19 * u, 16 * u, '#fff');
   bouton3D(bx + 200 * u, by, 60 * u, 40 * u, '#8e7bff', '#5b3fd6', () => { hudPerso.taille = Math.min(1.6, +(hudPerso.taille + 0.1).toFixed(1)); sauverHud(); }); titre('+', bx + 230 * u, by + 19 * u, 24 * u, '#fff');
   bouton3D(bx + 280 * u, by, 110 * u, 40 * u, '#ffd23f', '#ff8a1f', () => { hudPerso = { taille: 1 }; sauverHud(); }); titre('Par défaut', bx + 335 * u, by + 19 * u, 15 * u, '#fff');
+  if (mobile) { bouton3D(bx + 400 * u, by, 110 * u, 40 * u, '#b6ff4a', '#1fc46b', () => { vueMode = ({ '3d': '25', '25': '2d', '2d': '3d' })[vueMode]; vue25 = vueMode === '25'; try { localStorage.setItem('bastoryVue', vueMode); } catch (e) {} }); titre('Vue ' + NOM_VUE[vueMode], bx + 455 * u, by + 19 * u, 15 * u, '#fff'); }
 }
 const boutonHUD = q => hudBoutons.find(b => Math.hypot(q.x - sa.l - b.x, q.y - sa.t - b.y) < b.r * 1.3);
 function hudElem() { // 🎮 boutons ronds façon arcade : SUPER (anneau de charge) + ACTION (recharge)
   hudBoutons = []; hudObjectif();
   const e = infoElem(moi); if (!e || moi.pv <= 0 || etat !== 'JEU') return;
-  const u = U(), tact = 'ontouchstart' in window, { S, A } = posHUD();
+  const u = U(), tact = true, { S, A, T } = posHUD();
+  if (!mobile) { texte(libTouche(mesTouches.action) + ' : ' + e.actionNom + '  •  ' + libTouche(mesTouches.super) + ' : ' + e.superNom, W / 2, H - 36, 12, '#ffe14a'); return; }
   const rond = (b, c1, c2, halo) => { // ombre portée, dégradé bombé, contour épais, reflet
     ctx.beginPath(); ctx.arc(b.x, b.y + 5 * u, b.r, 0, 7); ctx.fillStyle = 'rgba(11,6,32,.55)'; ctx.fill();
     if (halo) { ctx.save(); ctx.globalAlpha = 0.45 + 0.3 * Math.sin(temps * 0.2); ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 1.4, 0, 7); ctx.fillStyle = halo; ctx.fill(); ctx.restore(); }
@@ -1503,7 +1509,13 @@ function hudElem() { // 🎮 boutons ronds façon arcade : SUPER (anneau de char
   icone('eclair', A.x, A.y, A.r * 0.95, '#fff');
   if (reste) { ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.arc(A.x, A.y, A.r - 2 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * reste / tot); ctx.closePath(); ctx.fillStyle = 'rgba(11,6,32,.7)'; ctx.fill(); titre(Math.ceil(reste / 60), A.x, A.y, 20 * u, '#fff'); }
   hudBoutons.push({ ...A, f: () => lancerAction(moi) });
-  if (!tact) texte(libTouche(mesTouches.action) + ' : ' + e.actionNom + '  •  ' + libTouche(mesTouches.super) + ' : ' + e.superNom, W / 2, H - 36, 12, '#ffe14a');
+  if (!joyD.actif) { // 🎯 bouton d'attaque principale (le joystick d'attaque part de son centre)
+    ctx.beginPath(); ctx.arc(T.x, T.y + 5 * u, T.r, 0, 7); ctx.fillStyle = 'rgba(11,6,32,.45)'; ctx.fill();
+    const g = ctx.createRadialGradient(T.x - T.r * 0.3, T.y - T.r * 0.4, 2, T.x, T.y, T.r); g.addColorStop(0, 'rgba(255,140,110,.9)'); g.addColorStop(1, 'rgba(200,30,60,.75)');
+    ctx.beginPath(); ctx.arc(T.x, T.y, T.r, 0, 7); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 4 * u; ctx.strokeStyle = NOIR; ctx.stroke();
+    ctx.beginPath(); ctx.arc(T.x, T.y, T.r - 6 * u, 0, 7); ctx.lineWidth = 2 * u; ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.stroke();
+    icone('cible', T.x, T.y, T.r * 0.9, '#fff');
+  }
 }
 function auraElem(e) { // au sol : super prêt, vol de Zéphyr, traînée de charge
   if (e.superPret) { ctx.save(); ctx.globalAlpha = 0.55 + 0.3 * Math.sin(temps * 0.25); ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(e.x, e.y + e.r * 0.45, e.r * 1.4, e.r * 0.75, 0, 0, 7); ctx.stroke(); ctx.restore(); }
@@ -1681,7 +1693,7 @@ function caseBD(p, x, y, w, h, vue, choisi, k) {
 
 // ---------- 🗺️ APERÇU DES MAPS façon manga ----------
 function miniMap(def) {
-  const cle = 'bd' + def.nom + def.grille.join('|'); if (cacheMini[cle]) return cacheMini[cle];
+  def = styliser(def); const cle = 'bd' + def.nom + def.theme + def.grille.join('|'); if (cacheMini[cle]) return cacheMini[cle];
   const g = def.grille, T = 12, L = Math.max(...g.map(r => r.length)), c = document.createElement('canvas'); c.width = L * T; c.height = g.length * T;
   const x = c.getContext('2d'), hx = h => /^#[0-9a-f]{6}$/i.test(h || ''), h1 = hx(def.herbe1) ? def.herbe1 : '#5cc24a', mur = hx(def.mur) ? def.mur : '#c98a4b', eau = hx(def.eau) ? def.eau : '#3aa6e0', sable = hx(def.sable) ? def.sable : '#f4d68e';
   const t = (i, j) => (g[j] || '')[i] || '#';
@@ -1759,6 +1771,7 @@ function sauverTouches() {
   if (db && user) db.collection('joueurs').doc(user.uid).set({ touches: mesTouches }, { merge: true }).catch(() => {});
 }
 function menuCommandes() {
+  if (mobile) return menuHud(); // 📱 sur mobile : placement des boutons (pas de clavier)
   const u = U(), top = barreHaut('COMMANDES', true), l = Object.keys(TOUCHES_DEF), w = Math.min(580 * u, W - 40 * u), x = (W - w) / 2, lh = Math.min(46 * u, (H - top - 90 * u) / l.length);
   l.forEach((a, i) => {
     const y = top + 10 * u + i * lh, h = lh - 6 * u, att = toucheAttendue === a, kw = Math.min(170 * u, w * 0.4);
@@ -1992,7 +2005,7 @@ function dessinerJeu() {
   if (!v3) dessinerNuages();
   for (const j of joueurs()) if (visible(j) && (j.pv > 0 || ((obtenir3D(j.perso) || {}).spec || { lignes: {} }).lignes.mort))
     objs.push([j.y + j.r * 0.5, () => { aura(j); dessinerEntite(j, img(j.perso.image), j === moi ? '#3aa0ff' : j.eq === moi.eq ? '#2ecc71' : '#ff3b3b', j.r * 3.3); }]);
-  for (const b of bosses) if (b.pv > 0) objs.push([b.y + b.r * 0.5, () => b.def.cristal ? dessinerCristal(b) : dessinerEntite(b, img(b.def.image), '#ff7b1a', b.r * 3.4)]);
+  for (const b of bosses) if (b.pv > 0) objs.push([b.y + b.r * 0.5, () => b.def.cristal ? (aff3 && Rendu3D.gere(b) ? null : dessinerCristal(b)) : dessinerEntite(b, img(b.def.image), '#ff7b1a', b.r * 3.4)]);
   for (const p of projectiles) if (p.type !== 'lob' && p.type !== 'terrain') objs.push([p.y, () => dessinerProjectile(p)]);
   objs.sort((a, b) => a[0] - b[0]).forEach(o => o[1]());
 
@@ -2035,18 +2048,21 @@ function buisson(px, py) {
   if (decor3D) ctx.drawImage(decor3D.buissons[varDecor(px, py)], px + 32 - 41.6 + sw, py + 32 - 83.55, 83.3, 133.7); else ctx.drawImage(spriteBuisson(map.def), px - 14 + sw, py - 22);
   ctx.globalAlpha = 1;
 }
-function dessinerVisee() {
-  if (!joyD.actif) return;
-  const v = vec(joyD); if (v.d < 15) return;
-  const a = moi.arme, portee = moi.perso.portee;
-  ctx.save(); ctx.globalAlpha = 0.35; ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff';
-  if (a.type === 'terrain') { for (const [tx, ty] of casesTerrain(a, moi.x, moi.y, v.a, Math.max(TUILE, portee * v.f))) ctx.fillRect(tx * TUILE + 4, ty * TUILE + 4, TUILE - 8, TUILE - 8); }
-  else if (a.type === 'lob') {
-    const dist = Math.max(80, portee * v.f), tx = moi.x + Math.cos(v.a) * dist, ty = moi.y + Math.sin(v.a) * dist, R = a.rayon || 70;
-    ctx.beginPath(); ctx.ellipse(tx, ty, R, R * 0.8, 0, 0, 7); ctx.fill();
-    ctx.setLineDash([10, 10]); ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(moi.x, moi.y);
-    ctx.quadraticCurveTo((moi.x + tx) / 2, (moi.y + ty) / 2 - dist * 0.35, tx, ty); ctx.stroke();
-  } else { ctx.translate(moi.x, moi.y); ctx.rotate(v.a); ctx.beginPath(); ctx.roundRect(0, -16, portee, 32, 16); ctx.fill(); }
+function dessinerVisee() { // 🎯 visée de l'attaque principale : trajectoire (tir droit) ou zone d'impact (tir en cloche)
+  if (!moi || moi.pv <= 0 || etat !== 'JEU') return;
+  let a, f;
+  if (joyD.actif) { const v = vec(joyD); if (v.d < 12) return; a = v.a; f = Math.min(1, v.d / 60); }
+  else if (!mobile && souris) { const m = versMonde(souris.x, souris.y); a = Math.atan2(m.y - moi.y, m.x - moi.x); f = Math.min(1, Math.hypot(m.x - moi.x, m.y - moi.y) / moi.perso.portee); }
+  else return;
+  const P = moi.perso.portee, A = moi.arme || {}, lob = A.type === 'lob', pul = 0.5 + 0.5 * Math.sin(temps * 0.15);
+  ctx.save(); ctx.translate(moi.x, moi.y); ctx.rotate(a); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  if (lob) { const d = Math.max(60, P * f), R = +A.rayon || 70;
+    ctx.setLineDash([10, 12]); ctx.lineDashOffset = -temps; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(moi.r, 0); ctx.lineTo(d - R, 0); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(d, 0, R, 0, 7); ctx.fillStyle = `rgba(255,225,74,${0.18 + 0.1 * pul})`; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.lineWidth = 1.5; ctx.strokeStyle = NOIR; ctx.stroke();
+    ctx.beginPath(); ctx.arc(d, 0, R * (0.3 + 0.2 * pul), 0, 7); ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 3; ctx.stroke(); }
+  else { const L = P, g = ctx.createLinearGradient(moi.r, 0, L, 0); g.addColorStop(0, 'rgba(255,255,255,.55)'); g.addColorStop(1, 'rgba(255,255,255,.08)');
+    ctx.beginPath(); ctx.moveTo(moi.r, -10); ctx.lineTo(L, -16); ctx.lineTo(L, 16); ctx.lineTo(moi.r, 10); ctx.closePath(); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(11,6,32,.55)'; ctx.stroke();
+    ctx.fillStyle = '#ffe14a'; for (let i = 0; i < 4; i++) { const x = moi.r + 30 + ((temps * 3 + i * (L / 4)) % (L - moi.r - 30)); ctx.beginPath(); ctx.moveTo(x, -8); ctx.lineTo(x + 12, 0); ctx.lineTo(x, 8); ctx.lineTo(x + 5, 0); ctx.closePath(); ctx.fill(); } }
   ctx.restore();
 }
 function barreVie(e, couleur, nom) { // pastille nom + barre de vie + munitions, toujours AU-DESSUS du perso
@@ -2607,8 +2623,9 @@ function dessinerFin() { // animation de victoire / défaite avec les gagnants e
   if (finInfo && t > 20) texte('+' + finInfo.points + ' 🏆' + (finInfo.essence ? '   +' + finInfo.essence : ''), W / 2, H * 0.62 - Math.min(20, (t - 20)), 22, '#9cff57');
   if (t > 40) { // boutons de fin
     const u = U(), bw = 170 * u, bh = 50 * u, y = H - bh - 14 * u;
-    bouton3D(W / 2 - bw - 10 * u, y, bw, bh, '#ffe14a', '#f0a000', () => { quitterSalle(); etat = 'MENU'; lancerPartie(); }); texte('🔁 REJOUER', W / 2 - bw / 2 - 10 * u, y + bh / 2, 17 * u, '#fff');
-    bouton3D(W / 2 + 10 * u, y, bw, bh, '#8e7bff', '#5b3fd6', () => { quitterSalle(); etat = 'MENU'; allerA('accueil'); }); texte('🏠 MENU', W / 2 + bw / 2 + 10 * u, y + bh / 2, 17 * u, '#fff');
+    const ey = y + (1 - elastique(Math.min(1, (t - 40) / 20))) * 90 * u; // les boutons arrivent en rebondissant
+    boutonJeu(W / 2 - bw - 12 * u, ey, bw, bh, '#b6ff4a', '#1fc46b', () => { quitterSalle(); etat = 'MENU'; lancerPartie(); }); icone('retour', W / 2 - bw + 18 * u, ey + bh / 2, 18 * u, '#fff'); titre('Rejouer', W / 2 - bw / 2 - 2 * u, ey + bh / 2, 22 * u, '#fff');
+    bouton3D(W / 2 + 12 * u, ey, bw, bh, '#8e7bff', '#5b3fd6', () => { quitterSalle(); etat = 'MENU'; allerA('accueil'); }); icone('carte', W / 2 + 42 * u, ey + bh / 2, 18 * u, '#fff'); titre('Menu', W / 2 + bw / 2 + 22 * u, ey + bh / 2, 22 * u, '#fff');
   }
   finManga();
 }

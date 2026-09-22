@@ -65,6 +65,7 @@
   .apercu3d { width: 200px; height: 200px; }
   /* textes des boutons toujours lisibles */
   button, nav button, nav button.on { color:#fff !important; text-shadow:0 2px 0 rgba(11,6,32,.9), 0 0 3px rgba(11,6,32,.8) !important; }
+  .palette-groupes { display:flex; flex-direction:column; gap:6px; margin:10px 0; } .palette-groupes b { color:#ffe14a; min-width:110px; align-self:center; }
 </style>
 </head>
 <body>
@@ -156,8 +157,7 @@ const CH = {
           ['porteeTir','Portée de tir','number'],['degatsTir','Dégâts du tir','number'],['cadenceTir','Délai entre 2 tirs (60 = 1 s)','number'],
           ['modele','Modèle 3D (.glb, ex : modeles/troll.glb)','text'],['modeleEchelle','Taille du modèle (1 = normal)','number'],['modeleRotation','Modèle : rotation (degrés)','number'],
           ['animRepos','Animation de repos (vide = auto)','text'],['animMarche','Animation de marche (vide = auto)','text'],['animAttaque','Animation d\'attaque (vide = auto)','text'],['animTouche','Animation coup reçu (vide = auto)','text'],['animMort','Animation de mort (vide = auto)','text']],
-  map:   [['nom','Nom','text'],['actif','Disponible dans le jeu','check'],['herbe1','Herbe 1','color'],['herbe2','Herbe 2','color'],['mur','Mur (dessus)','color'],['murFace','Mur (face)','color'],
-          ['buisson','Buisson','color'],['buissonFonce','Buisson foncé','color'],['eau','Eau','color'],['sable','Sable','color'],
+  map:   [['nom','Nom','text'],['actif','Disponible dans le jeu','check'],['theme','🎨 Ambiance (sol, murs, buissons, eau, ciel en 3D)','select',Object.entries(THEMES).map(([k, t]) => [k, t.nom])],
           ['casseMurs','Murs cassables','check'],['casseBuissons','Buissons cassables','check'],['pvBloc','Solidité d\'un mur (dégâts)','number'],
           ['chanceObjet','% objet rare (mur/buisson)','number'],['chanceCoffre','% objet rare (coffre 🎁)','number']],
   pouvoir: [['nom','Nom','text'],['icone','Icône (emoji)','text'],['couleur','Couleur','color'],
@@ -420,33 +420,38 @@ const VUES = {
       el('button', { className: 'sec', textContent: 'Redimensionner', onclick: () => { redim(m, +larg.value, +haut.value); modifie(); afficher(); } }),
       el('button', { className: 'sec', textContent: '▭ Bordure de murs', onclick: () => { bordure(m); modifie(); afficher(); } })));
 
-    const PAL = [['.', '🟩 Herbe'], ['#', '🟫 Mur'], ['B', '🌳 Buisson'], ['W', '🟦 Eau'], ['S', '🟨 Sable'], ['P', '🧍 Départ joueur'], ['E', '👹 Départ boss'], ['C', '🎁 Coffre (objet rare)'], ['Z', '🎯 Zone à tenir'], ['T', '💎 Cristal à détruire'], ['1', '🔵 Départ équipe 1'], ['2', '🔴 Départ équipe 2'], ['3', '🟢 Départ équipe 3'], ['4', '🟡 Départ équipe 4'], ['5', '💎🔵 Cristal équipe 1'], ['6', '💎🔴 Cristal équipe 2'], ['7', '💎🟢 Cristal équipe 3'], ['8', '💎🟡 Cristal équipe 4'], ['N', '💎⚪ Cristal neutre (1re équipe qui le casse)'], ['O', '💰 Cachette de trésor']];
-    const pal = el('div', { className: 'outils palette' });
-    PAL.forEach(([c, t]) => pal.append(el('button', { textContent: t, className: c === pinceau ? 'on' : '', onclick: () => { pinceau = c; afficher(); } })));
-
+    // 🎨 outils rangés par familles • option miroir pour des maps équitables
+    const GROUPES = [['🌍 Terrain', [['.', '🟩 Sol'], ['#', '🧱 Mur'], ['B', '🌿 Buisson'], ['W', '🌊 Eau / lave'], ['S', '🏖️ Sable']]],
+      ['🎯 Objectifs', [['C', '🎁 Coffre'], ['Z', '🎯 Zone'], ['T', '💎 Cristal (équipe la + proche)'], ['N', '💎 Cristal neutre'], ['5', '💎 Cristal équipe 1'], ['6', '💎 Cristal équipe 2'], ['7', '💎 Cristal équipe 3'], ['8', '💎 Cristal équipe 4'], ['O', '💰 Cachette de trésor']]],
+      ['🧍 Départs', [['P', '🧍 Joueur'], ['1', '🔵 Équipe 1'], ['2', '🔴 Équipe 2'], ['3', '🟢 Équipe 3'], ['4', '🟡 Équipe 4'], ['E', '👹 Boss']]]];
+    const pal = el('div', { className: 'palette-groupes' });
+    GROUPES.forEach(([t, l]) => pal.append(el('div', { className: 'outils palette' }, el('b', { textContent: t }), ...l.map(([c, n]) => el('button', { textContent: n, className: c === pinceau ? 'on' : 'sec', onclick: () => { pinceau = c; afficher(); } })))));
+    pal.append(el('label', { className: 'mc' }, el('input', { type: 'checkbox', checked: miroir, onchange: e => { miroir = e.target.checked; } }), ' 🪞 Miroir (peint aussi la case symétrique : map équitable)'));
     const grid = el('div', { className: 'grid', style: `grid-template-columns:repeat(${m.grille[0].length},22px)` });
-    const couleur = c => ({ '#': m.mur, 'B': m.buissonFonce, 'W': m.eau, 'P': '#3498db', 'E': '#e74c3c', 'C': '#f1c40f', 'Z': '#5ac8fa', 'T': '#b57bff', 'S': m.sable || '#f4d68e', '1': '#1e90ff', '2': '#ff2d55', '3': '#1fc46b', '4': '#ffd23f', '5': '#0b5bd6', '6': '#b3002d', '7': '#0b8a45', '8': '#c9a200', 'N': '#fff3a0', 'O': '#8a5a2b' }[c] || m.herbe1);
+    const th = THEMES[m.theme] || THEMES.campagne;
+    const couleur = c => ({ '#': th.mur, 'B': th.buisson, 'W': th.eau, 'P': '#3498db', 'E': '#e74c3c', 'C': '#f1c40f', 'Z': '#5ac8fa', 'T': '#b57bff', 'S': th.sable, '1': '#1e90ff', '2': '#ff2d55', '3': '#1fc46b', '4': '#ffd23f', '5': '#0b5bd6', '6': '#b3002d', '7': '#0b8a45', '8': '#c9a200', 'N': '#fff3a0', 'O': '#8a5a2b' }[c] || th.sol);
     m.grille.forEach((r, y) => [...r].forEach((c, x) => grid.append(el('div', { className: 'c', textContent: c === 'P' ? 'J' : c === 'E' ? 'B' : '', style: 'background:' + couleur(c), dataset: { x, y } }))));
     const peindre = cible => {
       if (!cible || !cible.dataset || cible.dataset.x === undefined) return;
       const x = +cible.dataset.x, y = +cible.dataset.y;
-      if (m.grille[y][x] === pinceau) return;
-      m.grille[y] = m.grille[y].slice(0, x) + pinceau + m.grille[y].slice(x + 1);
+      const pose = (x, y, c) => { if (m.grille[y][x] === c) return; m.grille[y] = m.grille[y].slice(0, x) + c + m.grille[y].slice(x + 1);
+        const d = grid.children[y * m.grille[0].length + x]; if (d) { d.style.background = couleur(c); d.textContent = c === 'P' ? 'J' : c === 'E' ? 'B' : /[1-8]/.test(c) ? c : ''; } };
+      pose(x, y, pinceau);
+      if (miroir) pose(m.grille[0].length - 1 - x, m.grille.length - 1 - y, ({ '1': '2', '2': '1', '5': '6', '6': '5' })[pinceau] || pinceau); // équipes inversées en face
       modifie();
-      cible.style.background = couleur(pinceau); cible.textContent = pinceau === 'P' ? 'J' : pinceau === 'E' ? 'B' : '';
     };
     grid.onpointerdown = e => { peint = true; peindre(e.target); };
     grid.onpointermove = e => { if (peint) peindre(document.elementFromPoint(e.clientX, e.clientY)); };
     onpointerup = () => peint = false;
 
-    z.append(pal, el('p', { className: 'aide', textContent: 'Choisis un élément puis clique/glisse sur la grille. Départ joueur : le 1er sert en solo, le 2e au 2e joueur en 1V1. Départs boss : autant que tu veux (sinon placés au hasard).' }),
-      el('div', { className: 'editeur' }, grid), el('br'), el('div', { className: 'grille-cartes' }, carte('🎨 Couleurs de la map', formulaire(m, CH.map))));
+    z.append(el('div', { className: 'grille-cartes' }, carte('⚙️ Réglages de la map', formulaire(m, CH.map))), pal, el('p', { className: 'aide', textContent: 'Choisis un outil puis clique ou glisse sur la grille. Coche 🪞 Miroir pour construire une moitié : l\'autre se fait toute seule.' }),
+      el('div', { className: 'editeur' }, grid));
   }
 };
 function nouvelleMap(l, h) {
   const g = Array.from({ length: h }, (_, y) => Array.from({ length: l }, (_, x) => (x === 0 || y === 0 || x === l - 1 || y === h - 1) ? '#' : '.').join(''));
   g[Math.floor(h / 2)] = g[Math.floor(h / 2)].slice(0, 2) + 'P' + g[Math.floor(h / 2)].slice(3, l - 3) + 'E' + g[Math.floor(h / 2)].slice(l - 2);
-  return { nom: 'Nouvelle map', herbe1: '#5cc24a', herbe2: '#52b442', mur: '#c98a4b', murFace: '#8e5a2b', buisson: '#2fae4a', buissonFonce: '#1f7a35', eau: '#3aa6e0', grille: g };
+  return { nom: 'Nouvelle map', theme: 'campagne', actif: true, casseMurs: true, casseBuissons: true, pvBloc: 3000, chanceObjet: 10, chanceCoffre: 100, grille: g };
 }
 function redim(m, l, h) {
   l = Math.max(8, Math.min(80, l)); h = Math.max(6, Math.min(60, h));
@@ -482,7 +487,7 @@ async function sortirImages(o) { // remplace chaque image uploadée par un lien 
     }
   }
 }
-let user = null;
+let user = null, miroir = true;
 function majAuth() {
   if (user && !estAdmin(user)) { // 🔐 joueur non admin : accès refusé, retour au jeu
     auth.signOut(); $('#loginErr').textContent = '⛔ Accès réservé aux administrateurs';
