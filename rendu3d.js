@@ -41,6 +41,27 @@ const Rendu3D = (() => {
     const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; return texs[k] = t;
   }
   let eauTex = null, eauMat = null, cristaux = new Map(), geoTir = null; const tirs = new Map();
+  let viseeG = null;
+  function majVisee() { // 🎯 faisceau lumineux au sol + cercle d'impact animé (vue 3D)
+    if (!viseeG) { viseeG = new THREE.Group(); viseeG.visible = false;
+      const cv = document.createElement('canvas'); cv.width = 64; cv.height = 64; const x = cv.getContext('2d'), g = x.createLinearGradient(0, 64, 0, 0);
+      g.addColorStop(0, 'rgba(255,255,255,.85)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+      const tex = new THREE.CanvasTexture(cv);
+      const fais = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
+      fais.rotation.x = -Math.PI / 2; fais.position.y = 3; viseeG.add(fais);
+      const an = new THREE.Mesh(new THREE.RingGeometry(0.82, 1, 48), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
+      an.rotation.x = -Math.PI / 2; an.position.y = 4; viseeG.add(an);
+      const pl = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending }));
+      pl.rotation.x = -Math.PI / 2; pl.position.y = 3.5; viseeG.add(pl); scene.add(viseeG);
+    }
+    const v = typeof visee3D !== 'undefined' && visee3D; viseeG.visible = !!v && !!moi && moi.pv > 0; if (!viseeG.visible) return;
+    const [fais, an, pl] = viseeG.children, c = lin(v.c), pulse = 0.5 + 0.5 * Math.sin(temps * 0.15), d = v.lob ? Math.max(60, v.P * v.f) : v.P;
+    viseeG.position.set(moi.x, 0, moi.y); viseeG.rotation.y = -v.a;
+    fais.material.color = c; fais.scale.set(v.lob ? Math.max(20, d - v.R) : d, v.lob ? 26 : 74, 1); fais.position.set(v.lob ? (moi.r + d - v.R) / 2 : (moi.r + d) / 2, 3, 0);
+    fais.material.opacity = 0.35 + 0.2 * pulse;
+    const R2 = v.lob ? v.R : 40; an.material.color = c; an.scale.setScalar(R2 * (v.lob ? 1 : 0.6) * (1 + pulse * 0.06)); an.position.set(v.lob ? d : d, 4, 0);
+    pl.material.color = c; pl.scale.setScalar(R2 * (v.lob ? 0.95 : 0.55)); pl.position.copy(an.position); pl.position.y = 3.5;
+  }
   function majTirs() { // 🎯 projectiles en vraie 3D : flèche, rocher, bulle, boule de feu… + éclair de départ
     if (!geoTir) geoTir = { fleche: new THREE.ConeGeometry(6, 36, 6), rocher: new THREE.DodecahedronGeometry(13, 0), bulle: new THREE.SphereGeometry(14, 16, 12), feu: new THREE.SphereGeometry(13, 14, 10), base: new THREE.SphereGeometry(10, 12, 8), eclat: new THREE.SphereGeometry(1, 10, 8) };
     const vus = new Set(projectiles);
@@ -205,7 +226,7 @@ const Rendu3D = (() => {
     const aff = [(b[0] - a[0]) / 100, (b[1] - a[1]) / 100, (d[0] - a[0]) / 100, (d[1] - a[1]) / 100];
     aff.push(a[0] - c0.x * aff[0] - c0.z * aff[2], a[1] - c0.x * aff[1] - c0.z * aff[3]);
     const t = performance.now(); majPersos(Math.min(0.05, (t - (horloge || t)) / 1000), aff); horloge = t;
-    majTirs(); R.render(scene, camera);
+    majTirs(); majVisee(); R.render(scene, camera);
     return aff;
   }
   function versMonde(sx, sy) { // écran → sol (rayon depuis la caméra)

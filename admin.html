@@ -312,7 +312,14 @@ const VUES = {
       try {
         const hote = location.hostname.match(/^([^.]+)\.github\.io$/), depot = (cfg.app && cfg.app.depot) || (hote && hote[1] + '/' + location.pathname.split('/')[1]); if (!depot) return;
         const l = await (await fetch(`https://api.github.com/repos/${depot}/contents/modeles`)).json(); if (!Array.isArray(l)) return;
-        const nouveaux = l.filter(f => /\.glb$/i.test(f.name) && !/^boss[-_ ]/i.test(f.name) && !cfg.persos.some(p => p.modele === 'modeles/' + f.name)); // les « boss-… » ne sont jamais des persos if (!nouveaux.length) return;
+        const nouveaux = l.filter(f => /\.glb$/i.test(f.name) && !/^boss[-_ ]/i.test(f.name) && !cfg.persos.some(p => p.modele === 'modeles/' + f.name)); // les « boss-… » ne sont jamais des persos
+        const nvBoss = l.filter(f => /^boss[-_ ].+\.glb$/i.test(f.name) && !Object.values(cfg.bosses).some(b => b.modele === 'modeles/' + f.name)); // 👹 nouveaux boss
+        if (nvBoss.length && confirm(nvBoss.length + ' nouveau(x) boss trouvé(s) dans modeles/ :\n' + nvBoss.map(f => f.name).join('\n') + '\n\nLes ajouter ?')) {
+          const mod = Object.values(cfg.bosses).find(b => !b.cristal) || {};
+          nvBoss.forEach(f => { const id = f.name.replace(/^boss[-_ ]|\.glb$/gi, '').toLowerCase().replace(/\W/g, '') || ('boss' + Date.now());
+            cfg.bosses[id] = { ...clone(mod), nom: id.toUpperCase().slice(0, 16), image: '', imageCarte: '', modele: 'modeles/' + f.name, modeleEchelle: 1, modeleRotation: 0, animRepos: '', animMarche: '', animAttaque: '', animTouche: '', animMort: '' }; });
+          modifie(); toast(nvBoss.length + ' boss ajouté(s)'); afficher();
+        } if (!nouveaux.length) return;
         z.prepend(el('div', { className: 'carte' }, el('h3', { textContent: '📂 Nouveaux modèles détectés' }),
           el('p', { className: 'aide', textContent: 'Déjà jouables avec des stats par défaut. Ajoute-les ici pour régler leurs stats, puis publie.' }),
           ...nouveaux.map(f => el('div', { className: 'outils' }, el('span', { textContent: f.name }), el('button', { textContent: '➕ Ajouter', onclick: () => {

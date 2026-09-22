@@ -2174,13 +2174,16 @@ function buisson(px, py) {
   if (decor3D) ctx.drawImage(decor3D.buissons[varDecor(px, py)], px + 32 - 41.6 + sw, py + 32 - 83.55, 83.3, 133.7); else ctx.drawImage(spriteBuisson(map.def), px - 14 + sw, py - 22);
   ctx.globalAlpha = 1;
 }
-function dessinerVisee() { // 🎯 visée de l'attaque principale : trajectoire (tir droit) ou zone d'impact (tir en cloche)
+let visee3D = null;
+function dessinerVisee() {
+  visee3D = null; // 🎯 visée de l'attaque principale : trajectoire (tir droit) ou zone d'impact (tir en cloche)
   if (!moi || moi.pv <= 0 || etat !== 'JEU') return;
   let a, f;
   if (joyD.actif) { const v = vec(joyD); if (v.d < 12) return; a = v.a; f = Math.min(1, v.d / 60); }
   else if (!mobile && souris) { const m = versMonde(souris.x, souris.y); a = Math.atan2(m.y - moi.y, m.x - moi.x); f = Math.min(1, Math.hypot(m.x - moi.x, m.y - moi.y) / moi.perso.portee); }
   else return;
   const P = moi.perso.portee, A = moi.arme || {}, lob = A.type === 'lob', pul = 0.5 + 0.5 * Math.sin(temps * 0.15);
+  if (aff3) { visee3D = { a, f, lob, P, R: +A.rayon || 70, c: A.couleur || '#ffe14a' }; return; } // 🎯 visée en 3D
   ctx.save(); ctx.translate(moi.x, moi.y); ctx.rotate(a); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   if (lob) { const d = Math.max(60, P * f), R = +A.rayon || 70;
     ctx.setLineDash([10, 12]); ctx.lineDashOffset = -temps; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(moi.r, 0); ctx.lineTo(d - R, 0); ctx.stroke(); ctx.setLineDash([]);
