@@ -1,7 +1,7 @@
 /* 💥 BASTORY — thème manga comique */
-body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0b0620; position: fixed; inset: 0; overscroll-behavior: none;
+body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0b0620; overscroll-behavior: none;
   touch-action: none; user-select: none; -webkit-user-select: none; font-family: Fredoka, "Baloo 2", system-ui, sans-serif; }
-canvas { display: block; background: #0b0620; }
+canvas { display: block; background: transparent; }
 
 /* 🔐 Connexion */
 #auth { position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center; touch-action: auto; overflow: hidden;

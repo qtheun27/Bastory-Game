@@ -57,7 +57,7 @@ function redim() {
   W = tourne ? LH : LW; H = tourne ? LW : LH;
   dpr = Math.max(1, Math.min(dpr, Math.sqrt(2.6e6 / Math.max(1, W * H)))); // grands écrans : moins de pixels à dessiner = plus fluide
   canvas.width = W * dpr; canvas.height = H * dpr;
-  canvas.style.width = W + 'px'; canvas.style.height = H + 'px'; document.body.style.width = (tourne ? H : W) + 'px'; document.body.style.height = (tourne ? W : H) + 'px'; // plus de bande de fond visible
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px'; document.body.style.width = W + 'px'; document.body.style.height = H + 'px'; // plus de bande de fond visible
   zoom = Math.max(0.55, Math.min(1.3, Math.min(W, H * 1.7) / (TUILE * 22)));
 }
 addEventListener('resize', redim); redim();
