@@ -634,6 +634,7 @@ function exploser(p) {
   if (p.sombre) effetSombre(p.x, p.y);
   if (auteur(p)) abimerZone(p.x, p.y, r, p.deg);
   if (+p.arme.onde) { // 🌍 onde de choc au sol autour de l'impact (marteau de Rokh)
+    if (ondes.length > 14) ondes.shift();
     ondes.push({ x: p.x, y: p.y, r, max: +p.arme.onde, c: '#fff3c4', vie: 1, ep: 12 }); ono('KRAKOOM!', p.x, p.y, 1.3, '#ffe14a');
     fissuresSol.push({ x: p.x, y: p.y, t: temps, g: Math.random() * 100 }); secousse = Math.max(secousse, 12); effet('impact', p.x, p.y, '#c98a4b', 110); // sol fracassé
     for (const c of cibles(p)) { const d = Math.hypot(p.x - c.e.x, p.y - c.e.y); if (d >= r + c.e.r * 0.6 && d < +p.arme.onde) impact(c.e, { ...p, deg: Math.round(p.deg * 0.45) }, p.x, p.y, false); }
@@ -950,6 +951,7 @@ function iaBoss(b) {
 
 // ---------- 12. EFFETS (animations d'impact différentes par arme) ----------
 function particule(x, y, c, vit, taille, vie = 1, forme = 'rond', extra = {}) {
+  if (particules.length > 420) return; // 🚦 gros carnage à 6 joueurs : on plafonne les particules
   const a = Math.random() * Math.PI * 2, v = vit * (0.4 + Math.random() * 0.6);
   particules.push(Object.assign({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, c, t: taille * (0.6 + Math.random() * 0.6), vie, forme }, extra));
 }
@@ -1158,7 +1160,7 @@ const ONO = { explosion: ['DOKAAN!', 'KABOOM!', 'BOOM!!'], entaille: ['ZASH!', '
 const COULEURS = ['#ffe14a', '#ff5ab4', '#5ff0ff', '#ff8a1f', '#b6ff4a'];
 let onos = [], choc = 0, flash = 0;
 function ono(txt, x, y, gros = 1, couleur) {
-  if (onos.length > 7) onos.shift();
+  if (onos.length > 5) onos.shift();
   onos.push({ txt, x: x + (Math.random() - 0.5) * 30, y: y - 20, vie: 1, gros, c: couleur || COULEURS[Math.floor(Math.random() * COULEURS.length)], rot: (Math.random() - 0.5) * 0.6, seed: Math.random() * 6 });
 }
 function onoEffet(type, x, y) { // onomatopée selon l'effet de l'arme
@@ -1949,22 +1951,24 @@ function lumiereSol(T) { // taches de soleil et zones d'ombre douces sur le sol
   ctx.restore();
 }
 
-function dessinerZone() { // 🎯 zone : anneau qui tourne, jauge de capture et étincelles
+function dessinerZone() { // 🎯 zone carrée (celle des cases) : remplissage animé, contour qui défile, jauge et étincelles
   if (obj() !== 'zone' || !map.z) return; const z = centreZone(); if (!z) return;
   const eqC = typeof zoneControle === 'number' ? zoneControle : null, col = eqC === null ? (zoneControle === 'conteste' ? '#ffd23f' : '#ffffff') : eqC === moi.eq ? '#5ac8fa' : '#ff5a6e';
-  const tz = (+mode.tempsZone || 30) * 60, p = Math.min(1, ((zoneProg[eqC === null ? moi.eq : eqC] || 0)) / tz), pul = 0.5 + 0.5 * Math.sin(temps * 0.08);
-  ctx.save(); ctx.translate(z.x, z.y); ctx.scale(1, 0.62);
-  const g = ctx.createRadialGradient(0, 0, z.r * 0.2, 0, 0, z.r); g.addColorStop(0, col + '00'); g.addColorStop(1, col + (eqC === null ? '44' : '66'));
-  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, z.r, 0, 7); ctx.fill();
-  ctx.lineWidth = 6; ctx.strokeStyle = col; ctx.globalAlpha = 0.5 + 0.3 * pul; ctx.beginPath(); ctx.arc(0, 0, z.r, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
-  ctx.setLineDash([26, 18]); ctx.lineDashOffset = -temps * 1.2; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(0, 0, z.r * 0.86, 0, 7); ctx.stroke(); ctx.setLineDash([]);
-  ctx.lineWidth = 12; ctx.strokeStyle = NOIR; ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.arc(0, 0, z.r * 0.7, -Math.PI / 2, -Math.PI / 2 + 7); ctx.stroke();
-  ctx.globalAlpha = 1; ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(0, 0, z.r * 0.7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p); ctx.stroke();
-  for (let i = 0; i < 6; i++) { const a = temps * 0.02 + i * Math.PI / 3, r2 = z.r * (0.35 + ((temps * 2 + i * 40) % 120) / 200); // étincelles qui montent
-    ctx.globalAlpha = 0.8 - r2 / z.r; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(Math.cos(a) * r2, Math.sin(a) * r2, 5, 0, 7); ctx.fill(); }
-  ctx.restore();
-  if (zoneControle === 'conteste') bd('CONTESTÉE!', z.x, z.y - z.r * 0.5, 26, '#ffd23f', Math.sin(temps * 0.2) * 0.05);
-  else if (eqC !== null) bd(eqC === moi.eq ? 'À NOUS!' : 'À EUX!', z.x, z.y - z.r * 0.5, 22, col, 0);
+  const tz = (+mode.tempsZone || 30) * 60, p = Math.min(1, (zoneProg[eqC === null ? moi.eq : eqC] || 0) / tz), pul = 0.5 + 0.5 * Math.sin(temps * 0.08);
+  const b = z.b, x = b.x0 * TUILE, y = b.y0 * TUILE, w = (b.x1 - b.x0 + 1) * TUILE, h = (b.y1 - b.y0 + 1) * TUILE;
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.globalAlpha = 0.18 + 0.1 * pul; ctx.fillStyle = col; ctx.fillRect(x, y, w, h);
+  ctx.globalAlpha = 0.16; ctx.strokeStyle = col; ctx.lineWidth = 16; // rayures qui défilent
+  for (let d = -h; d < w + h; d += 46) { ctx.beginPath(); ctx.moveTo(x + d + (temps % 46), y); ctx.lineTo(x + d + (temps % 46) - h, y + h); ctx.stroke(); }
+  ctx.globalAlpha = 1; ctx.restore();
+  ctx.lineJoin = 'round'; ctx.strokeStyle = NOIR; ctx.lineWidth = 9; ctx.strokeRect(x, y, w, h);
+  ctx.strokeStyle = col; ctx.lineWidth = 6; ctx.setLineDash([30, 20]); ctx.lineDashOffset = -temps * 1.2; ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
+  const per = (w + h) * 2; ctx.lineWidth = 9; ctx.lineCap = 'butt'; ctx.setLineDash([per * p, per]); ctx.lineDashOffset = 0; ctx.globalAlpha = 0.95; ctx.strokeRect(x, y, w, h); ctx.setLineDash([]); ctx.globalAlpha = 1; // jauge de capture
+  for (let i = 0; i < 8; i++) { const t2 = (temps * 2 + i * 55) % 160, sx = x + alea(i * 3.1 + Math.floor((temps + i * 55) / 160)) * w;
+    ctx.globalAlpha = 0.7 * (1 - t2 / 160); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(sx, y + h - t2 * (h / 160), 5, 0, 7); ctx.fill(); } // étincelles qui montent
+  ctx.globalAlpha = 1;
+  if (zoneControle === 'conteste') bd('CONTESTÉE!', z.x, y - 22, 26, '#ffd23f', Math.sin(temps * 0.2) * 0.05);
+  else if (eqC !== null) bd(eqC === moi.eq ? 'À NOUS!' : 'À EUX!', z.x, y - 22, 22, col, 0);
 }
 let fissuresSol = []; // 🔨 craquelures laissées au sol par le marteau
 function dessinerFissuresSol() {
@@ -2063,9 +2067,9 @@ function allerVers(j, tx, ty, v) {
     if ((j.coince = (j.coince || 0) + 1) > 10) { j.detourA = a + (Math.random() < 0.5 ? 1 : -1) * (1.4 + Math.random()); j.detourT = temps + 50; j.coince = 0; }
   } else j.coince = 0;
 }
-const centreZone = () => { if (map.zc === undefined) { let sx = 0, sy = 0, n = 0;
-    map.g.forEach((r, y) => [...r].forEach((c, x) => { if (c === 'Z') { sx += x; sy += y; n++; } }));
-    map.zc = n ? { x: (sx / n + 0.5) * TUILE, y: (sy / n + 0.5) * TUILE, r: Math.sqrt(n) * TUILE * 0.55 } : null; } return map.zc; };
+const centreZone = () => { if (map.zc === undefined) { let sx = 0, sy = 0, n = 0, b = { x0: 1e9, y0: 1e9, x1: -1, y1: -1 };
+    map.g.forEach((r, y) => [...r].forEach((c, x) => { if (c === 'Z') { sx += x; sy += y; n++; b.x0 = Math.min(b.x0, x); b.y0 = Math.min(b.y0, y); b.x1 = Math.max(b.x1, x); b.y1 = Math.max(b.y1, y); } }));
+    map.zc = n ? { x: (sx / n + 0.5) * TUILE, y: (sy / n + 0.5) * TUILE, r: Math.sqrt(n) * TUILE * 0.55, b } : null; } return map.zc; };
 function butObjectif(j) { // 🎯 ce que le bot doit faire selon le mode
   const o = obj();
   if (o === 'zone') return centreZone();
