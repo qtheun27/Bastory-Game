@@ -53,7 +53,9 @@ function redim() {
   tourne = matchMedia('(pointer: coarse)').matches && innerHeight > innerWidth;
   document.documentElement.classList.toggle('tourne', tourne);
   document.body.style.width = tourne ? innerHeight + 'px' : ''; document.body.style.height = tourne ? innerWidth + 'px' : '';
-  const LW = Math.round(innerWidth), LH = Math.round(innerHeight);
+  const SW = screen.width || 0, SH = screen.height || 0;
+  let LW = Math.round(innerWidth), LH = Math.round(innerHeight);
+  if (tourne) { LW = Math.max(LW, Math.min(SW, SH)); LH = Math.max(LH, Math.max(SW, SH)); } // écran pivoté : on remplit tout
   W = tourne ? LH : LW; H = tourne ? LW : LH;
   dpr = Math.max(1, Math.min(dpr, Math.sqrt(2.6e6 / Math.max(1, W * H)))); // grands écrans : moins de pixels à dessiner = plus fluide
   canvas.width = W * dpr; canvas.height = H * dpr;
@@ -697,7 +699,7 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     const d = Math.hypot(e.x - j.x, e.y - j.y);
     if ((!e.cache || d < 170) && d < dm) { dm = d; c = e; }
   }
-  const v = j.perso.vitesse * (0.7 + 0.15 * (j.niv || 1)) * bonus(j, 'vitesse');
+  const v = j.perso.vitesse * KV() * (0.7 + 0.15 * (j.niv || 1)) * bonus(j, 'vitesse');
   if (!j.objet && obj() === 'tresor' && (!c || dm > 260)) { // 🤖 part à la chasse au trésor
     const t = tresors.filter(t => t.pris === null).sort((a, b) => Math.hypot(a.x - j.x, a.y - j.y) - Math.hypot(b.x - j.x, b.y - j.y))[0];
     if (t) { allerVers(j, t.x, t.y, v); return; }
@@ -853,7 +855,7 @@ function maj() {
   if (moi.pv <= 0) mx = my = 0;
   const elm = elemDe(moi.perso) || {}, surEau = tuileA(moi.x, moi.y) === 'W';
   if (fige) { mx = 0; my = 0; }
-  const vit = moi.perso.vitesse * bonus(moi, 'vitesse') * (moi.dep === 'nage' && surEau ? +elm.valeur || 1.3 : 1) * (moi.dep !== 'vol' && tuileA(moi.x, moi.y) === 'S' ? 0.8 : 1) * (moi.ralentiT > temps ? moi.ralenti || 0.6 : 1); // 🏖️ le sable ralentit
+  const vit = moi.perso.vitesse * KV() * bonus(moi, 'vitesse') * (moi.dep === 'nage' && surEau ? +elm.valeur || 1.3 : 1) * (moi.dep !== 'vol' && tuileA(moi.x, moi.y) === 'S' ? 0.8 : 1) * (moi.ralentiT > temps ? moi.ralenti || 0.6 : 1); // 🏖️ le sable ralentit
   if (moi.dep === 'nage' && surEau && moi.pv > 0) moi.pv = Math.min(moi.pvMax, moi.pv + moi.pvMax * (+elm.soin || 0) / 100 / 60); // 💧 se soigne dans l'eau
   if (moi.dep === 'brise' && (mx || my)) { const tx = Math.floor((moi.x + mx * moi.r * 1.3) / TUILE), ty = Math.floor((moi.y + my * moi.r * 1.3) / TUILE); if (bloqueTir(tuile(tx, ty))) abimer(tx, ty, +elm.valeur || 60); } // 🌍 brise les blocs en fonçant dedans
   moi.vx = (moi.vx || 0) + (mx * vit - (moi.vx || 0)) * 0.35; moi.vy = (moi.vy || 0) + (my * vit - (moi.vy || 0)) * 0.35; // départ / arrêt en douceur
@@ -1188,6 +1190,7 @@ function chocManga() { // image "choc" : flash + lignes de concentration
 
 // ---------- 🎬 INTRO DE MATCH : chaque combattant en grand, puis VS, puis 3-2-1 ----------
 let intro = null;
+const KV = () => Math.max(0.3, +((CONFIG.app || {}).vitesseJeu) || 0.85); // vitesse générale des persos (réglage Appli)
 const KI = () => Math.max(0.4, +((CONFIG.app || {}).introVitesse) || 1); // durée de l'intro (réglage Appli)
 const SHOW = 80, VS = 95, CD = 136, TIC = 32; // durées (images à 60/s)
 function bossPourIntro() {
@@ -1198,13 +1201,13 @@ function preparerIntro() {
   if (intro) intro.vedettes.forEach(v => v.vue && v.vue.liberer());
   const tous = [moi, ...Object.values(autres)], amis = tous.filter(j => j.eq === moi.eq), ennemis = tous.filter(j => j.eq !== moi.eq);
   const fiche = (j, cote) => ({ p: baseDe(j.perso), im: carteDe(j.perso), nom: j.nom, sous: (baseDe(j.perso) || {}).nom || '', c: cote < 0 ? (j === moi ? '#1e90ff' : '#1fc46b') : '#ff2d55', cote, vue: null });
-  const liste = [fiche(moi, -1), ...ennemis.map(j => fiche(j, 1))];
+  const liste = [fiche(moi, -1), ...amis.filter(j => j !== moi).map(j => fiche(j, -1)), ...ennemis.map(j => fiche(j, 1))];
   if (mode.boss && mode.nbBoss > 0) { const d = bossBase(bossPourIntro()); liste.push({ p: d.modele ? d : null, im: carteDe(d), nom: d.nom || 'BOSS', sous: 'BOSS', c: '#ff8a00', cote: 1 }); }
-  liste.push(...amis.filter(j => j !== moi).map(j => fiche(j, -1)));
-  const vedettes = liste.slice(0, 4);
+  const G = liste.filter(v => v.cote < 0), D = liste.filter(v => v.cote > 0); // une apparition par équipe (tout le monde côte à côte)
+  const vedettes = [G.length && { ...G[0], membres: G, cote: -1 }, D.length && { ...D[0], membres: D, cote: 1 }].filter(Boolean);
   intro = { cle: introT, vedettes, gauche: [...amis.map(j => fiche(j, -1))], droite: liste.filter(v => v.cote > 0) };
   intro.total = Math.round((vedettes.length * SHOW + VS + CD) * KI()); // même durée chez tous les joueurs (ne dépend que de la partie)
-  vedettes.forEach(v => { if (v.p && v.p.modele && ok3D()) Modele3D.vitrine(v.p).then(x => { if (intro && intro.vedettes.includes(v)) v.vue = x; else if (x) x.liberer(); }).catch(() => {}); });
+  vedettes.forEach(v => { if (v.membres.length === 1 && v.p && v.p.modele && ok3D()) Modele3D.vitrine(v.p).then(x => { if (intro && intro.vedettes.includes(v)) v.vue = x; else if (x) x.liberer(); }).catch(() => {}); });
 }
 const PHRASES = ['DOGOGOGO', 'ZUDOOON!!', 'BAKOOM!!', 'GOGOGO…'];
 function introVedette(v, l, i) {
@@ -1214,9 +1217,15 @@ function introVedette(v, l, i) {
   trame(0.12, '#000'); lignesHoriz(0.35, '#fff', gauche ? 1 : -1);
   // "ゴゴゴ" qui tremblent derrière
   ctx.save(); ctx.globalAlpha = 0.5; for (let n = 0; n < 4; n++) bd(PHRASES[0].slice(0, 2 + n % 3), W * (gauche ? 0.1 : 0.9) + (Math.random() - 0.5) * 4, H * (0.18 + n * 0.2), 40 * u, '#2a0d4a', -0.2, null); ctx.restore();
-  // le personnage en GRAND, avec son animation d'attaque
-  const cx = W * (gauche ? 0.33 : 0.67) - v.cote * (1 - e) * W * 0.7, sc = 1.35 - 0.35 * k;
+  // les persos de l'équipe en GRAND, côte à côte
+  const mb = v.membres || [v], cx = W * (gauche ? 0.33 : 0.67) - v.cote * (1 - e) * W * 0.7, sc = (1.35 - 0.35 * k) * (mb.length > 1 ? 1 / (1 + (mb.length - 1) * 0.28) : 1);
+  if (mb.length > 1) { const pas = Math.min(W * 0.26, W * 0.62 / mb.length);
+    mb.forEach((m, n) => { const mx = cx + (n - (mb.length - 1) / 2) * pas, s2 = Math.min(H * 0.8, pas * 1.5) * (1.25 - 0.25 * k);
+      if (pret(m.im)) ctx.drawImage(m.im, mx - s2 / 2, H * 0.92 - s2, s2, s2);
+      ctx.save(); ctx.translate(mx, H * 0.95); rect(-pas * 0.44, -14 * u, pas * 0.88, 26 * u, 8 * u, NOIR); ctx.restore();
+      texte(m.nom, mx, H * 0.95, 13 * u, '#fff', 'center', pas * 0.8); }); }
   ctx.save(); ctx.translate(cx, H); ctx.scale(sc, sc);
+  if (mb.length > 1) { ctx.restore(); ctx.save(); ctx.translate(0, 0); } else
   if (v.vue) {
     const D = H * 1.02, T = Math.round(Math.min(520, D * Math.min(1.5, window.devicePixelRatio || 1))), anim = v.vue.a && v.vue.a('attaque') ? 'attaque' : 'repos';
     const c = v.vue.rendre(Math.PI / 2 + (gauche ? -0.45 : 0.45), T, (l / 90) % 1, anim), taille = D * 0.9 / Math.max(0.3, (v.vue.bas - v.vue.haut) || 0.7);
@@ -1508,7 +1517,7 @@ function lancerAction(j, angle = j.angle, distant) {
 function dash(j) { // avance pendant la charge / la rafale ; la charge de Rokh blesse ce qu'elle percute
   if (!j.dash) return false;
   if (temps >= j.dash.fin) { const s = j.dash.saut; j.dash = null; if (s) liberer(); return false; } // atterrissage : jamais coincé dans un mur
-  const v = j.perso.vitesse * j.dash.v, dx = Math.cos(j.dash.a) * v, dy = Math.sin(j.dash.a) * v;
+  const v = j.perso.vitesse * KV() * j.dash.v, dx = Math.cos(j.dash.a) * v, dy = Math.sin(j.dash.a) * v;
   if (((baseDe(j.perso) || {}).action || cleElem(j.perso)) === 'terre') {
     const tx = Math.floor((j.x + Math.cos(j.dash.a) * j.r * 1.3) / TUILE), ty = Math.floor((j.y + Math.sin(j.dash.a) * j.r * 1.3) / TUILE);
     if (moiOuBot(j) && bloqueTir(tuile(tx, ty))) abimer(tx, ty, 900);

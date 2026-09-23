@@ -115,7 +115,7 @@ const modifie = () => $('#modif').textContent = '● modifications non enregistr
 // ---------- Champs éditables (ajouter une ligne ici = nouveau champ dans la console) ----------
 const optArmes = () => Object.entries(cfg.armes).map(([k, a]) => [k, a.nom]);
 const optBoss = () => [['aleatoire', '🎲 Aléatoire'], ...Object.entries(cfg.bosses).map(([k, b]) => [k, b.nom])];
-var CH_APP = [['nom','Nom de l\'appli','text'],['introVitesse','⏱ Durée de l\'intro de match (1 = normale, 0.6 = plus courte)','number'],['nomCourt','Nom court (écran d\'accueil)','text'],['icone','Icône de l\'appli (carrée)','icone'],['couleur','Couleur de fond de l\'icône','color']];
+var CH_APP = [['nom','Nom de l\'appli','text'],['vitesseJeu','🏃 Vitesse générale des persos (1 = valeurs des fiches, 0.85 = par défaut)','number'],['introVitesse','⏱ Durée de l\'intro de match (1 = normale, 0.6 = plus courte)','number'],['nomCourt','Nom court (écran d\'accueil)','text'],['icone','Icône de l\'appli (carrée)','icone'],['couleur','Couleur de fond de l\'icône','color']];
 const optMaps = () => [[-1, 'Au choix du joueur'], ...cfg.maps.map((m, i) => [i, m.nom])];
 const CH = {
   mode:  [['nom','Nom','text'],['description','Description','text'],['actif','Visible dans le jeu','check'],
