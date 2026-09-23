@@ -194,10 +194,10 @@ const Rendu3D = (() => {
       let anim = 'repos';
       if (e.pv <= 0) anim = 'mort';
       else if (saut) anim = o.anims.saut ? 'saut' : 'marche';
-      else if (e.anim && temps - e.anim.t < (DUREE_ANIM[e.anim.n] || 30) && o.anims[e.anim.n]) anim = e.anim.n;
+      else if (e.anim && temps - e.anim.t < (DUREE_ANIM[e.anim.n] || 40) && (o.anims[e.anim.n] || (o.parNom || {})[e.anim.n])) anim = e.anim.n;
       else if (Math.abs((e.marche || 0) - (o.marcheP || 0)) > 0.05) anim = 'marche';
       o.marcheP = e.marche;
-      const clip = o.anims[anim] || o.anims.repos;
+      const clip = o.anims[anim] || (o.parNom || {})[anim] || o.anims.repos;
       if (clip && o.clip !== clip) {
         const a = o.mixer.clipAction(clip); a.reset(); a.setLoop(anim === 'repos' || anim === 'marche' ? THREE.LoopRepeat : THREE.LoopOnce); a.clampWhenFinished = true;
         if (o.action && o.action !== a) a.crossFadeFrom(o.action, 0.12, false); a.play(); o.action = a; o.clip = clip;

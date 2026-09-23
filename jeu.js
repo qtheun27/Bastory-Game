@@ -53,10 +53,11 @@ function redim() {
   tourne = matchMedia('(pointer: coarse)').matches && innerHeight > innerWidth;
   document.documentElement.classList.toggle('tourne', tourne);
   document.body.style.width = tourne ? innerHeight + 'px' : ''; document.body.style.height = tourne ? innerWidth + 'px' : '';
-  W = tourne ? innerHeight : innerWidth; H = tourne ? innerWidth : innerHeight;
+  const vv = window.visualViewport, LW = Math.round(vv ? vv.width : innerWidth), LH = Math.round(vv ? vv.height : innerHeight); // taille réelle (barres du navigateur comprises)
+  W = tourne ? LH : LW; H = tourne ? LW : LH;
   dpr = Math.max(1, Math.min(dpr, Math.sqrt(2.6e6 / Math.max(1, W * H)))); // grands écrans : moins de pixels à dessiner = plus fluide
   canvas.width = W * dpr; canvas.height = H * dpr;
-  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px'; document.body.style.width = (tourne ? H : W) + 'px'; document.body.style.height = (tourne ? W : H) + 'px'; // plus de bande de fond visible
   zoom = Math.max(0.55, Math.min(1.3, Math.min(W, H * 1.7) / (TUILE * 22)));
 }
 addEventListener('resize', redim); redim();
@@ -1181,6 +1182,7 @@ function chocManga() { // image "choc" : flash + lignes de concentration
 
 // ---------- 🎬 INTRO DE MATCH : chaque combattant en grand, puis VS, puis 3-2-1 ----------
 let intro = null;
+const KI = () => Math.max(0.4, +((CONFIG.app || {}).introVitesse) || 1); // durée de l'intro (réglage Appli)
 const SHOW = 80, VS = 95, CD = 136, TIC = 32; // durées (images à 60/s)
 function bossPourIntro() {
   const b = bosses.find(b => b.def && !b.def.cristal); if (b) return b.def;
@@ -1195,7 +1197,7 @@ function preparerIntro() {
   liste.push(...amis.filter(j => j !== moi).map(j => fiche(j, -1)));
   const vedettes = liste.slice(0, 4);
   intro = { cle: introT, vedettes, gauche: [...amis.map(j => fiche(j, -1))], droite: liste.filter(v => v.cote > 0) };
-  intro.total = vedettes.length * SHOW + VS + CD; // même durée chez tous les joueurs (ne dépend que de la partie)
+  intro.total = Math.round((vedettes.length * SHOW + VS + CD) * KI()); // même durée chez tous les joueurs (ne dépend que de la partie)
   vedettes.forEach(v => { if (v.p && v.p.modele && ok3D()) Modele3D.vitrine(v.p).then(x => { if (intro && intro.vedettes.includes(v)) v.vue = x; else if (x) x.liberer(); }).catch(() => {}); });
 }
 const PHRASES = ['DOGOGOGO', 'ZUDOOON!!', 'BAKOOM!!', 'GOGOGO…'];
@@ -1243,7 +1245,7 @@ function introVS(l) {
       ctx.save(); ctx.translate(6 * u, 7 * u); chemin(); ctx.fillStyle = NOIR; ctx.fill(); ctx.restore();
       ctx.save(); chemin(); ctx.clip(); const g = ctx.createLinearGradient(0, y, 0, y + ph); g.addColorStop(0, ombrer(coul, 0.35)); g.addColorStop(1, ombrer(coul, -0.4)); ctx.fillStyle = g; ctx.fillRect(x - 5, y - 5, pw + 10, ph + 10);
       rayons(x + pw / 2, y + ph * 0.4, temps * 0.01 * cote, '#fff', 0.2, 12); trame(0.1, '#000');
-      if (pret(c.im)) { const s = Math.max(pw * 1.3, ph * 1.0); ctx.drawImage(c.im, x + pw / 2 - s / 2, y + ph * 0.9 - s * 0.95 + Math.sin(temps * 0.08 + i) * 3 * u, s, s); }
+      if (pret(c.im)) { const s = Math.max(pw * 1.3, ph * 1.0); ctx.drawImage(c.im, x + pw / 2 - s / 2, y + ph * 1.02 - s * 0.95 + Math.sin(temps * 0.08 + i) * 3 * u, s, s); }
       ctx.fillStyle = NOIR; ctx.fillRect(x - 5, y + ph - 34 * u, pw + 10, 34 * u); ctx.fillStyle = coul; ctx.fillRect(x - 5, y + ph - 34 * u, pw + 10, 4 * u); ctx.restore();
       chemin(); ctx.lineJoin = 'round'; ctx.lineWidth = 4 * u; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.lineWidth = 1.5 * u; ctx.strokeStyle = NOIR; ctx.stroke();
       titre(c.nom, x + pw / 2 - 6 * u, y + ph - 16 * u, 16 * u, '#fff', 'center', pw - 24 * u);
@@ -1275,20 +1277,30 @@ function introDecompte(l) {
 }
 function dessinerIntro() {
   if (!intro || intro.cle !== introT) preparerIntro();
-  const t = temps - introT, nV = intro.vedettes.length * SHOW;
+  const t = Math.round((temps - introT) / KI()), nV = intro.vedettes.length * SHOW;
   if (t < nV) introVedette(intro.vedettes[Math.floor(t / SHOW)], t % SHOW, Math.floor(t / SHOW));
   else if (t < nV + VS) introVS(t - nV);
   else introDecompte(t - nV - VS);
 }
-function boucle() {
-  if (etat === 'AUTH' || etat === 'MENU') { temps++; if (typeof Rendu3D !== 'undefined') Rendu3D.cacher(); aff3 = null; zoneSure(dessinerMenu);
+function pasDeJeu() { // ⏱ une étape de jeu = 1/60 s, quel que soit l'écran (60, 120 Hz…)
+  if (etat === 'AUTH' || etat === 'MENU') { temps++;
     if (persoIndex !== persoSauve && user) { persoSauve = persoIndex; try { localStorage.setItem('bastoryPerso', persoIndex); } catch (e) {} if (db) db.collection('joueurs').doc(user.uid).set({ perso: persoIndex }, { merge: true }).catch(() => {}); } }
-  else if (etat === 'ATTENTE') { temps++; zoneSure(dessinerAttente); rafraichirAttente(); }
-  else if (etat === 'INTRO') {
-    temps++; majEffets(); dessinerJeu(); zoneSure(dessinerIntro);
-    if (intro && intro.cle === introT && temps - introT > intro.total) { etat = 'JEU'; debutJeu = temps; intro.vedettes.forEach(v => v.vue && v.vue.liberer()); intro.vedettes.forEach(v => v.vue = null); ono('FIGHT!!', moi.x, moi.y - 60, 1.6, '#ffe14a'); }
-  }
-  else { if (etat === 'JEU') maj(); else temps++; dessinerJeu(); if (etat !== 'JEU') zoneSure(dessinerFin); }
+  else if (etat === 'ATTENTE') { temps++; rafraichirAttente(); }
+  else if (etat === 'INTRO') { temps++; majEffets();
+    if (intro && intro.cle === introT && temps - introT > intro.total) { etat = 'JEU'; debutJeu = temps; intro.vedettes.forEach(v => { if (v.vue) v.vue.liberer(); v.vue = null; }); ono('FIGHT!!', moi.x, moi.y - 60, 1.6, '#ffe14a'); } }
+  else if (etat === 'JEU') maj();
+  else temps++;
+}
+let horlogeJeu = 0, resteJeu = 0;
+function boucle(ts) {
+  const now = ts || performance.now(); if (!horlogeJeu) horlogeJeu = now;
+  resteJeu += Math.min(120, now - horlogeJeu); horlogeJeu = now;
+  let n = Math.floor(resteJeu / (1000 / 60)); resteJeu -= n * (1000 / 60);
+  for (n = Math.min(n, 4); n > 0; n--) pasDeJeu();   // au plus 4 étapes d'un coup (écran lent)
+  if (etat === 'AUTH' || etat === 'MENU') { if (typeof Rendu3D !== 'undefined') Rendu3D.cacher(); aff3 = null; zoneSure(dessinerMenu); }
+  else if (etat === 'ATTENTE') zoneSure(dessinerAttente);
+  else if (etat === 'INTRO') { dessinerJeu(); zoneSure(dessinerIntro); }
+  else { dessinerJeu(); if (etat !== 'JEU') zoneSure(dessinerFin); }
   requestAnimationFrame(boucle);
 }
 
@@ -1457,7 +1469,7 @@ function lancerSuper(j, angle = j.angle, distant) {
   const e = infoElem(j); if (!e || j.pv <= 0 || resultat || (!distant && !j.superPret)) return;
   if (!distant) { j.superPret = false; j.superC = 0; envoyer({ t: 'su', de: j.uid, a: +angle.toFixed(3) }); }
   const deg = Math.round(j.perso.degats * bonus(j, 'degats')), A = j.arme;
-  j.anim = { n: 'attaque', t: temps }; ono(e.ono, j.x, j.y - 60, 1.7, j.perso.couleur); choc = 1; flash = 0.4;
+  j.anim = { n: (baseDe(j.perso) || {}).animSuper || 'attaque', t: temps }; ono(e.ono, j.x, j.y - 60, 1.7, j.perso.couleur); choc = 1; flash = 0.4;
   const ks = elementsDe(j.perso), d2 = Math.round(deg * (ks.length > 1 ? 0.8 : 1)); if (ks.length > 1) ono('FUSION!!', j.x, j.y - 100, 1.6, '#ffe14a');
   ks.forEach(k => {
     if (k === 'terre') exploser({ x: j.x, y: j.y, de: j.uid, deg: Math.round(d2 * 1.6), perso: j.perso, arme: { effet: 'impact', rayon: 190, couleur: '#c98a4b', recul: 26 } });
@@ -1469,6 +1481,7 @@ function lancerSuper(j, angle = j.angle, distant) {
 function lancerAction(j, angle = j.angle, distant) {
   const e = infoElem(j); if (!e || j.pv <= 0 || resultat) return;
   if (!distant) { if ((j.actionT || 0) > temps) return; j.actionT = temps + (+e.actionRecharge || 7) * 60; envoyer({ t: 'ac', de: j.uid, a: +angle.toFixed(3) }); }
+  j.anim = { n: (baseDe(j.perso) || {}).animAction || 'attaque', t: temps };
   const k = (baseDe(j.perso) || {}).action || e.k; // action propre au perso (sinon celle de son élément)
   if (k === 'tourbillon') { // 🌪️ tornade qui repousse tout autour
     effet('vortex', j.x, j.y, '#b6f0ff', 170); ondes.push({ x: j.x, y: j.y, r: 20, max: 190, c: '#b6f0ff', vie: 1, ep: 14 }); ono('FWOOSH!', j.x, j.y - 50, 1.2, '#5ff0ff');
@@ -2901,7 +2914,7 @@ function hudExtra() { // chrono, score et mode spectateur
     }
   }
 }
-boucle();
+if (!window._bastoryBoucle) { window._bastoryBoucle = true; boucle(); } // une seule boucle même si le script est chargé deux fois
 // 📂 Nouveaux persos automatiques : tout fichier .glb déposé dans "modeles/" sur GitHub devient un perso jouable.
 // Nom du fichier = nom du perso ; préfixe facultatif pour l'élément : "feu-dragon.glb", "eau-requin.glb"…
 async function detecterModeles() {
