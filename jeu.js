@@ -53,7 +53,7 @@ function redim() {
   tourne = matchMedia('(pointer: coarse)').matches && innerHeight > innerWidth;
   document.documentElement.classList.toggle('tourne', tourne);
   document.body.style.width = tourne ? innerHeight + 'px' : ''; document.body.style.height = tourne ? innerWidth + 'px' : '';
-  const vv = window.visualViewport, LW = Math.round(vv ? vv.width : innerWidth), LH = Math.round(vv ? vv.height : innerHeight); // taille réelle (barres du navigateur comprises)
+  const LW = Math.round(innerWidth), LH = Math.round(innerHeight);
   W = tourne ? LH : LW; H = tourne ? LW : LH;
   dpr = Math.max(1, Math.min(dpr, Math.sqrt(2.6e6 / Math.max(1, W * H)))); // grands écrans : moins de pixels à dessiner = plus fluide
   canvas.width = W * dpr; canvas.height = H * dpr;
@@ -682,6 +682,7 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
   if (j.flash > 0) j.flash--;
   deplacer(j, j.kx, j.ky); j.kx *= 0.8; j.ky *= 0.8;
   if (j.pv <= 0 || dash(j)) return;
+  if (j.anim && j.anim.n === 'releve' && temps - j.anim.t < DUREE_ANIM.releve) return; // il se relève : immobile comme les joueurs
   if (j.recharge <= 0) j.mun = Math.min(+j.perso.munitions || 3, j.mun + 1 / (+j.perso.recharge || 60));
   if (j.recharge > 0) j.recharge--;
   j.cache = tuileA(j.x, j.y) === 'B' || !!pouvoirActif(j, 'invisible');
@@ -699,14 +700,20 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
   const v = j.perso.vitesse * (0.7 + 0.15 * (j.niv || 1)) * bonus(j, 'vitesse');
   if (!j.objet && obj() === 'tresor' && (!c || dm > 260)) { // 🤖 part à la chasse au trésor
     const t = tresors.filter(t => t.pris === null).sort((a, b) => Math.hypot(a.x - j.x, a.y - j.y) - Math.hypot(b.x - j.x, b.y - j.y))[0];
-    if (t) { const a = Math.atan2(t.y - j.y, t.x - j.x); deplacer(j, Math.cos(a) * v, Math.sin(a) * v); j.marche += v; tourner(j, a, 0.15); return; }
+    if (t) { allerVers(j, t.x, t.y, v); return; }
   }
-  if (j.objet) { const a = Math.atan2(j.objet.y - j.y, j.objet.x - j.x); deplacer(j, Math.cos(a) * v, Math.sin(a) * v); j.marche += v; tourner(j, a, 0.15); if (!c || dm > 250) return; }
+  const butO = butObjectif(j); // 🎯 zone à tenir, cristal à casser ou à défendre
+  if (butO) { const dO = Math.hypot(butO.x - j.x, butO.y - j.y), zone = obj() === 'zone';
+    if ((zone && dO > (butO.r || 90) * 0.7) || (!zone && (!c || dm > 260) && dO > 120)) { allerVers(j, butO.x, butO.y, v); return; }
+    if (zone && !c) { if (dO > 30) allerVers(j, butO.x, butO.y, v * 0.5); return; } // reste dans la zone
+  }
+  if (j.objet) { allerVers(j, j.objet.x, j.objet.y, v); if (!c || dm > 250) return; }
   if (c) {
     const a = Math.atan2(c.y - j.y, c.x - j.x), ideal = j.perso.portee * 0.7, cote = Math.sin(temps / 50 + j.x * 0.01) > 0 ? 1 : -1;
-    const av = dm > ideal ? 1 : dm < ideal * 0.5 ? -1 : 0;
+    const av = dm > ideal ? 1 : dm < ideal * 0.5 ? -1 : 0, ax = j.x, ay = j.y;
     deplacer(j, (Math.cos(a) * av - Math.sin(a) * cote * 0.6) * v, (Math.sin(a) * av + Math.cos(a) * cote * 0.6) * v);
     j.marche += v; tourner(j, a, 0.2);
+    if (av > 0 && Math.hypot(j.x - ax, j.y - ay) < v * 0.35 && (j.coince = (j.coince || 0) + 1) > 8) { allerVers(j, c.x, c.y, v); j.coince = 0; } // bloqué par un mur : il contourne
     if (dm < j.perso.portee && j.recharge <= 0 && j.mun >= 1 && Math.random() < 0.05 * (j.niv || 1)) {
       const ang = a + (Math.random() - 0.5) * 0.35 / (j.niv || 1), f = Math.min(1, dm / j.perso.portee);
       j.mun -= 1; j.recharge = j.perso.delaiTir;
@@ -717,8 +724,7 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     if (j.superPret && dm < 320) lancerSuper(j, a); else if (dm < 220 && (j.actionT || 0) < temps && Math.random() < 0.01) lancerAction(j, a);
   } else { // se promène sur la map
     if (!j.but || Math.hypot(j.but.x - j.x, j.but.y - j.y) < 30 || temps % 240 === 0) j.but = caseLibre([]);
-    const a = Math.atan2(j.but.y - j.y, j.but.x - j.x);
-    deplacer(j, Math.cos(a) * v, Math.sin(a) * v); j.marche += v; tourner(j, a, 0.1);
+    allerVers(j, j.but.x, j.but.y, v);
   }
 }
 function toucherMoi(deg, x, y, de) {
@@ -1934,6 +1940,23 @@ function lumiereSol(T) { // taches de soleil et zones d'ombre douces sur le sol
   ctx.restore();
 }
 
+function dessinerZone() { // 🎯 zone : anneau qui tourne, jauge de capture et étincelles
+  if (obj() !== 'zone' || !map.z) return; const z = centreZone(); if (!z) return;
+  const eqC = typeof zoneControle === 'number' ? zoneControle : null, col = eqC === null ? (zoneControle === 'conteste' ? '#ffd23f' : '#ffffff') : eqC === moi.eq ? '#5ac8fa' : '#ff5a6e';
+  const tz = (+mode.tempsZone || 30) * 60, p = Math.min(1, ((zoneProg[eqC === null ? moi.eq : eqC] || 0)) / tz), pul = 0.5 + 0.5 * Math.sin(temps * 0.08);
+  ctx.save(); ctx.translate(z.x, z.y); ctx.scale(1, 0.62);
+  const g = ctx.createRadialGradient(0, 0, z.r * 0.2, 0, 0, z.r); g.addColorStop(0, col + '00'); g.addColorStop(1, col + (eqC === null ? '44' : '66'));
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, z.r, 0, 7); ctx.fill();
+  ctx.lineWidth = 6; ctx.strokeStyle = col; ctx.globalAlpha = 0.5 + 0.3 * pul; ctx.beginPath(); ctx.arc(0, 0, z.r, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.setLineDash([26, 18]); ctx.lineDashOffset = -temps * 1.2; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(0, 0, z.r * 0.86, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+  ctx.lineWidth = 12; ctx.strokeStyle = NOIR; ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.arc(0, 0, z.r * 0.7, -Math.PI / 2, -Math.PI / 2 + 7); ctx.stroke();
+  ctx.globalAlpha = 1; ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(0, 0, z.r * 0.7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p); ctx.stroke();
+  for (let i = 0; i < 6; i++) { const a = temps * 0.02 + i * Math.PI / 3, r2 = z.r * (0.35 + ((temps * 2 + i * 40) % 120) / 200); // étincelles qui montent
+    ctx.globalAlpha = 0.8 - r2 / z.r; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(Math.cos(a) * r2, Math.sin(a) * r2, 5, 0, 7); ctx.fill(); }
+  ctx.restore();
+  if (zoneControle === 'conteste') bd('CONTESTÉE!', z.x, z.y - z.r * 0.5, 26, '#ffd23f', Math.sin(temps * 0.2) * 0.05);
+  else if (eqC !== null) bd(eqC === moi.eq ? 'À NOUS!' : 'À EUX!', z.x, z.y - z.r * 0.5, 22, col, 0);
+}
 let fissuresSol = []; // 🔨 craquelures laissées au sol par le marteau
 function dessinerFissuresSol() {
   fissuresSol = fissuresSol.filter(f => temps - f.t < 150);
@@ -2015,6 +2038,37 @@ function menuAvatar() { // 🖼️ choisir sa photo de profil
 async function debloquerPerso(p) { const c = +p.coutJetons || 3; if ((mesStats.jetons || 0) < c) return notif('Il te faut ' + c + ' 🎟️ jetons perso (Récompenses)');
   try { await db.collection('joueurs').doc(user.uid).set({ jetons: firebase.firestore.FieldValue.increment(-c), persosDebloques: firebase.firestore.FieldValue.arrayUnion(cleP(p)), avatars: firebase.firestore.FieldValue.arrayUnion('p:' + p.nom + ':0') }, { merge: true }); notif('🔓 ' + p.nom + ' débloqué !'); vagues.push({ x: W / 2, y: H / 2, t: temps }); }
   catch (e) { notif('Impossible : ' + e.message); } }
+
+
+// ---------- 🤖 DÉPLACEMENT MALIN DES BOTS (contourne les murs) & OBJECTIFS ----------
+function allerVers(j, tx, ty, v) {
+  let a = Math.atan2(ty - j.y, tx - j.x);
+  if (j.detourT > temps) a = j.detourA;
+  else { const d = j.r + 30, px = j.x + Math.cos(a) * d, py = j.y + Math.sin(a) * d;
+    if (!libre(px, py, j.r, j.dep)) { // un mur devant : on tente à gauche, sinon à droite
+      const g = libre(j.x + Math.cos(a - 1.1) * d, j.y + Math.sin(a - 1.1) * d, j.r, j.dep);
+      a += g ? -1.1 : 1.1; j.detourA = a; j.detourT = temps + 24; } }
+  const ax = j.x, ay = j.y;
+  deplacer(j, Math.cos(a) * v, Math.sin(a) * v); j.marche += v; tourner(j, a, 0.15);
+  if (Math.hypot(j.x - ax, j.y - ay) < v * 0.35) { // toujours coincé : grand contournement
+    if ((j.coince = (j.coince || 0) + 1) > 10) { j.detourA = a + (Math.random() < 0.5 ? 1 : -1) * (1.4 + Math.random()); j.detourT = temps + 50; j.coince = 0; }
+  } else j.coince = 0;
+}
+const centreZone = () => { if (map.zc === undefined) { let sx = 0, sy = 0, n = 0;
+    map.g.forEach((r, y) => [...r].forEach((c, x) => { if (c === 'Z') { sx += x; sy += y; n++; } }));
+    map.zc = n ? { x: (sx / n + 0.5) * TUILE, y: (sy / n + 0.5) * TUILE, r: Math.sqrt(n) * TUILE * 0.55 } : null; } return map.zc; };
+function butObjectif(j) { // 🎯 ce que le bot doit faire selon le mode
+  const o = obj();
+  if (o === 'zone') return centreZone();
+  if (o === 'bloc') {
+    const cr = bosses.filter(b => b.def.cristal && b.pv > 0), mien = cr.find(b => b.eq === j.eq);
+    const adv = cr.filter(b => b.eq !== j.eq).sort((a, b) => Math.hypot(a.x - j.x, a.y - j.y) - Math.hypot(b.x - j.x, b.y - j.y))[0];
+    if (j.defenseur === undefined) j.defenseur = Math.random() < 0.4; // certains défendent, les autres attaquent
+    if (j.defenseur && mien) { const men = joueurs().find(o2 => o2.eq !== j.eq && o2.pv > 0 && Math.hypot(o2.x - mien.x, o2.y - mien.y) < 420); return men || mien; }
+    if (adv) return adv;
+  }
+  return null;
+}
 
 // ---------- 12c. GRAPHISMES : textures & sprites pré-calculés (rapides) ----------
 const cacheGfx = {};
@@ -2135,7 +2189,7 @@ function dessinerJeu() {
     ellipse(b.fx, b.fy, R, R * 0.8, 'rgba(255,40,40,.2)');
     ellipse(b.fx, b.fy, R * k, R * 0.8 * k, 'rgba(255,40,40,.45)');
   }
-  dessinerFissuresSol(); dessinerTresors();
+  dessinerZone(); dessinerFissuresSol(); dessinerTresors();
   const objs = []; // tri par profondeur = effet 3D
   if (!v3) tuiles((c, x, y, px, py) => { if (c === '#') objs.push([(y + 1) * T - 1, () => { // les murs qui sortent du sol montent
                                    const f = levees[x + ',' + y] !== undefined ? Math.min(1, (temps - levees[x + ',' + y]) / 12) : 1;
