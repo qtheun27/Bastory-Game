@@ -139,7 +139,11 @@ var CH_JEU = [['vitesseJeu','🏃 Vitesse générale de tous les persos (multipl
   ['maintienVisee','👀 Le perso reste tourné vers son tir pendant (images)','number',null,AIDE.images],
   ['reculTir','💥 Recul du perso à chaque tir (0 = aucun)','number'],
   ['tremblementTir','📳 Tremblement de l\'écran au tir (0 = aucun)','number'],
-  ['eclatCanon','✨ Éclat lumineux au bout du canon','check']];
+  ['eclatCanon','✨ Éclat lumineux au bout du canon','check'],
+  ['—','🎬 Animations (vue 3D)','titre'],
+  ['rebondPerso','💢 Rebond du perso quand il tire / est touché (0 = aucun, 1 = normal, 2 = cartoon)','number'],
+  ['pasMarche','🚶 Vitesse de référence des pas (+ grand = pas plus lents ; à ajuster si les pieds glissent)','number'],
+  ['haloTirs','✨ Halo lumineux des projectiles (0 = aucun, 1 = normal, 2 = très brillant)','number']];
 const optMaps = () => [[-1, 'Au choix du joueur'], ...cfg.maps.map((m, i) => [i, m.nom])];
 const CH = {
   mode:  [['nom','Nom','text'],['description','Description','text'],['actif','Visible dans le jeu','check'],

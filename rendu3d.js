@@ -72,6 +72,7 @@ const Rendu3D = (() => {
       if (!m) { const c = p.sombre ? '#6a00a8' : a.couleur || '#ffffff'; m = new THREE.Group();
         const coeur = new THREE.Mesh(geoTir[f], f === 'bulle' ? toon(c, { transparent: true, opacity: 0.65 }) : toon(c, { emissive: lin(c), emissiveIntensity: f === 'feu' ? 1 : 0.4 })); coeur.castShadow = true; m.add(coeur);
         const e = new THREE.Mesh(geoTir[f], encre()); e.scale.setScalar(1.2); m.add(e);
+        if (reglage('haloTirs', 1) > 0) { const g = new THREE.Mesh(geoTir.base, new THREE.MeshBasicMaterial({ color: lin(c).lerp(new THREE.Color(1, 1, 1), 0.3), transparent: true, opacity: 0.35 * reglage('haloTirs', 1), blending: THREE.AdditiveBlending, depthWrite: false })); g.scale.setScalar(2.2); g.userData.halo = true; m.add(g); } // ✨ halo lumineux
         if (f === 'feu') { const h = new THREE.Mesh(geoTir.feu, new THREE.MeshBasicMaterial({ color: 0xfff3b0 })); h.scale.setScalar(0.55); m.add(h); }
         const fl = new THREE.Mesh(geoTir.eclat, new THREE.MeshBasicMaterial({ color: lin(c).lerp(new THREE.Color(1, 1, 1), 0.6), transparent: true, opacity: 1, depthWrite: false })); fl.userData.t0 = temps; m.userData.flash = fl; scene.add(fl);
         fl.position.set(p.x, 30, p.y); m.scale.setScalar(Math.max(0.7, (a.taille || 16) / 16)); scene.add(m); tirs.set(p, m); }
@@ -189,13 +190,16 @@ const Rendu3D = (() => {
       if (cache !== o.cache) { o.cache = cache; o.racine.traverse(x => { if (x.material) { x.material.transparent = cache; x.material.opacity = cache ? 0.45 : 1; } }); }
       const ech = e.r * 1.95 * (+(e.def && e.def.modeleEchelle) || +p.modeleEchelle || 1); // même règle pour tous : taille (rayon) × échelle du modèle
       const saut = e.dash && e.dash.saut && temps < e.dash.fin, alt = saut ? Math.sin((1 - (e.dash.fin - temps) / e.dash.duree) * Math.PI) * 80 : (e.alt || 0);
-      o.racine.scale.setScalar(ech); o.racine.position.set(e.x, alt, e.y);
+      const pas = Math.abs((e.marche || 0) - (o.marcheP || 0)); const dep = Math.min(12, Math.hypot(e.x - (o.px ?? e.x), e.y - (o.py ?? e.y))); o.px = e.x; o.py = e.y; if (pas > 0.05) o.marcheT = temps; o.pas = (o.pas ?? dep) * 0.85 + dep * 0.15; // 🚶 vitesse réelle (lissée)
+      const ta = e.anim && e.anim.n === 'attaque' ? temps - e.anim.t : 99, tt = (e.flash || 0) > 0 ? 8 - e.flash : 99, pu = reglage('rebondPerso', 1);
+      const sq = pu * (ta < 8 ? Math.sin(ta / 8 * Math.PI) * 0.1 : 0), st = pu * (tt < 8 ? Math.sin(tt / 8 * Math.PI) * 0.12 : 0); // 💥 petit écrasement au tir, gonflement au coup reçu
+      o.racine.scale.set(ech * (1 + sq * 0.6 + st * 0.5), ech * (1 - sq + st * 0.3), ech * (1 + sq * 0.6 + st * 0.5)); o.racine.position.set(e.x, alt, e.y);
       o.racine.rotation.y = Math.PI / 2 - (e.angle || 0) + (o.decalage || 0);
       let anim = 'repos';
       if (e.pv <= 0) anim = 'mort';
       else if (saut) anim = o.anims.saut ? 'saut' : 'marche';
       else if (e.anim && temps - e.anim.t < (DUREE_ANIM[e.anim.n] || 40) && (o.anims[e.anim.n] || (o.parNom || {})[e.anim.n])) anim = e.anim.n;
-      else if (Math.abs((e.marche || 0) - (o.marcheP || 0)) > 0.05) anim = 'marche';
+      else if (temps - (o.marcheT || -99) < 12) anim = 'marche'; // garde la marche entre deux positions reçues du réseau (plus de saccades)
       o.marcheP = e.marche;
       const clip = o.anims[anim] || (o.parNom || {})[anim] || o.anims.repos;
       if (clip && o.clip !== clip) {
@@ -203,6 +207,7 @@ const Rendu3D = (() => {
         if (o.action && o.action !== a) a.crossFadeFrom(o.action, 0.12, false); a.play(); o.action = a; o.clip = clip;
       }
       const fl = (e.flash || 0) > 0 || (e.touche && temps - e.touche < 6); if (fl !== o.flash) { o.flash = fl; o.racine.traverse(x => { if (x.material && x.material.emissive) x.material.emissive.setRGB(fl ? 0.6 : 0, fl ? 0.6 : 0, fl ? 0.6 : 0); }); } // éclair blanc du coup reçu
+      if (o.action) o.action.timeScale = anim === 'marche' ? Math.max(0.6, Math.min(1.8, (o.pas || 2.6) / Math.max(0.5, reglage('pasMarche', 2.6)))) : 1; // pas calés sur la vitesse : plus de glissade
       o.mixer.update(dt);
       if (o.hanches && anim === 'marche') { o.hanches.position.x = o.repos.x; o.hanches.position.z = o.repos.z; } // pas de glissade
       const pied = projeter(e.x, e.y, 0), tete = projeter(e.x, e.y, ech * 2.05); // barre de vie juste au-dessus de la tête

@@ -1013,7 +1013,10 @@ const CONFIG_PAR_DEFAUT = {
     "reculTir": 1.6,
     "tremblementTir": 2,
     "eclatCanon": true,
-    "maintienVisee": 18
+    "maintienVisee": 18,
+    "rebondPerso": 1,
+    "pasMarche": 2.6,
+    "haloTirs": 1
   },
   "elements": {
     "terre": {
