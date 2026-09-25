@@ -9,6 +9,7 @@ Le propriétaire (Quentin) parle français et n'est pas développeur : répondre
 - Garder le style manga/comics, mais les effets ne doivent pas cacher les coups (onomatopées modérées).
 - Ne rien casser : travailler par petites étapes, lancer `tests.html`, puis **commit + push à chaque étape** (le jeu est publié sur GitHub Pages).
 - Commentaires et textes de l'interface en français.
+- **Mettre ce fichier CLAUDE.md à jour à chaque demande réalisée** (fonctionnalités, règles, décisions, version de config), et le pousser avec le reste.
 
 ## Fichiers
 - `index.html` : page du jeu ; charge la config en ligne (Firestore `bastory/config`), puis les scripts avec `?v=Date.now()` (évite les anciennes versions en cache sur téléphone).
