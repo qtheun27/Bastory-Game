@@ -12,9 +12,21 @@ const Son = (() => {
     const n = ac.sampleRate; bruit = ac.createBuffer(1, n, n); const d = bruit.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
     return true;
   }
-  function appliquer() { if (!ac) return; busSons.gain.value = pref.sons ? 0.55 * volApp('volumeSons') : 0; busMus.gain.value = pref.musique ? 0.16 * volApp('volumeMusique') : 0; }
-  const debloquer = () => { if (!init()) return; if (ac.state === 'suspended') ac.resume(); if (voulue && !courante) musique(voulue); }; // les navigateurs exigent un 1er geste
-  ['pointerdown', 'touchstart', 'keydown'].forEach(e => addEventListener(e, debloquer, { passive: true }));
+  function appliquer() { if (!ac) return; busSons.gain.value = pref.sons ? 0.55 * volApp('volumeSons') : 0; busMus.gain.value = pref.musique ? 0.22 * volApp('volumeMusique') : 0; }
+  // 📱 iPhone : l'audio ne se débloque que pendant un vrai geste (appui relâché), et le bouton silencieux coupe le son du web
+  // → on se déclare « lecture audio » (comme une appli de musique) et on joue un son muet en boucle pour garder le son actif
+  let muet = null;
+  function modeLecture() {
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    if (!muet) { muet = document.createElement('audio'); muet.setAttribute('playsinline', ''); muet.setAttribute('x-webkit-airplay', 'deny'); muet.loop = true; muet.preload = 'auto';
+      muet.src = 'data:audio/wav;base64,UklGRt0BAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YbkBAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA='; } // 40 ms de silence
+    const p = muet.play(); if (p && p.catch) p.catch(() => {});
+  }
+  const debloquer = () => { if (!init()) return; modeLecture(); if (ac.state !== 'running') { const r = ac.resume(); if (r && r.then) r.then(() => { if (voulue && !courante) musique(voulue); }); }
+    else if (voulue && !courante) musique(voulue);
+    if (ac.state === 'running') ['touchend', 'click', 'pointerup', 'keydown', 'touchstart', 'pointerdown'].forEach(e => removeEventListener(e, debloquer, true)); }; // 1er geste
+  ['touchend', 'click', 'pointerup', 'keydown', 'touchstart', 'pointerdown'].forEach(e => addEventListener(e, debloquer, true));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && ac && ac.state !== 'running') ac.resume(); }); // retour dans l'appli
 
   // briques de base
   function osc(type, f0, f1, t, dur, v, dest = busSons) {
@@ -48,7 +60,7 @@ const Son = (() => {
   };
   const derniers = {};
   function jouer(nom, v = 1) {
-    if (!pref.sons || !ac || ac.state !== 'running' || v <= 0.02) return; const f = SONS[nom]; if (!f) return;
+    if (!pref.sons || !ac || v <= 0.02) return; if (ac.state !== 'running') { ac.resume(); return; } const f = SONS[nom]; if (!f) return;
     const t = ac.currentTime; if (derniers[nom] && t - derniers[nom] < 0.035) return; derniers[nom] = t; // pas 20 fois le même son d'un coup
     try { f(t + 0.005, Math.min(1, v)); } catch (e) {}
   }
@@ -74,5 +86,5 @@ const Son = (() => {
     courante = nom; pas = 0; prochain = ac.currentTime + 0.1; clearInterval(minuteur); if (nom) minuteur = setInterval(planifier, 90);
   }
   function regler(p) { Object.assign(pref, p); try { localStorage.setItem('bastorySon', JSON.stringify(pref)); } catch (e) {} appliquer(); }
-  return { jouer, musique, regler, pref, appliquer };
+  return { jouer, musique, regler, pref, appliquer, etat: () => ({ contexte: ac ? ac.state : 'aucun', musique: courante, sons: busSons ? busSons.gain.value : 0, volMusique: busMus ? busMus.gain.value : 0 }) };
 })();
