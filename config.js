@@ -1278,7 +1278,12 @@ function migrerConfig(c) {
   if ((c.version || 0) < 19) { // v19 : gadgets (3 par partie)
     const G = { tank: 'bouclier', tireur: 'sprint', soutien: 'soin', controle: 'recharge', assassin: 'fantome' };
     c.persos.forEach(p => { if (p.gadget === undefined) p.gadget = G[p.role] || 'soin'; }); if (c.app && c.app.gadgetsParPartie === undefined) c.app.gadgetsParPartie = 3; c.version = 19;
+  }  if ((c.version || 0) < 20) { // v20 : mode Survie (zone de gaz qui se referme, le dernier debout gagne)
+    if (!c.modes.some(m => m.objectif === 'survie')) c.modes.push({ nom: 'Survie', description: 'La zone de gaz se referme : sois le dernier debout !', type: 'multi', actif: true, joueursMin: 2, joueursMax: 6, equipes: 'chacun', objectif: 'survie',
+      reapparition: false, bots: true, attenteBots: 8, niveauBots: 2, boss: false, nbBoss: 0, typesBoss: [], map: -1, pointsVictoire: 40, pointsDefaite: 5, gazDebut: 20, gazDuree: 90, gazDegats: 8, gazRayonMin: 2.5 });
+    c.version = Math.max(c.version || 0, 20);
   }
+
 
   c.persos.forEach(p => { if (typeof p.base === 'boolean') { p.deBase = p.base; delete p.base; } }); // réparation : ancien nom du champ
   c.persos.forEach(p => { if (p.deBase === false && !p.armeAuto) armePour(c, p); }); // nouveaux persos : arme créée automatiquement

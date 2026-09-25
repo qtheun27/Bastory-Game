@@ -800,6 +800,7 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     const t = tresors.filter(t => t.pris === null).sort((a, b) => Math.hypot(a.x - j.x, a.y - j.y) - Math.hypot(b.x - j.x, b.y - j.y))[0];
     if (t) { allerVers(j, t.x, t.y, v); return; }
   }
+  const gz = gaz(); if (gz && gz.actif && Math.hypot(j.x - gz.x, j.y - gz.y) > gz.r * 0.85) { allerVers(j, gz.x, gz.y, v); return; } // ☠️ fuit le gaz
   const butO = butObjectif(j); // 🎯 zone à tenir, cristal à casser ou à défendre
   if (butO) { const dO = Math.hypot(butO.x - j.x, butO.y - j.y), zone = obj() === 'zone';
     if ((zone && dO > (butO.r || 90) * 0.7) || (!zone && (!c || dm > 260) && dO > 120)) { allerVers(j, butO.x, butO.y, v); return; }
@@ -984,6 +985,7 @@ function maj() {
   if (joyD.actif) { const v = vec(joyD); if (v.d > 15) tourner(moi, v.a, 0.4); }
   if (moi.recharge > 0) moi.recharge--;
   if (temps % 30 === 0) soinsSoutien();
+  majGaz();
   if (moi.tirAttente && moi.recharge <= 0) { const q = moi.tirAttente; moi.tirAttente = null; if (temps - q.t < reglage('tamponTir', 15)) tirer(q.a, q.f); } // tir mémorisé (clic un peu trop tôt)
   if (moi.flash > 0) moi.flash--;
   if (moi.recharge <= 0) moi.mun = Math.min(+moi.perso.munitions || 3, moi.mun + 1 / (+moi.perso.recharge || 60)); // recharge des munitions
@@ -1826,8 +1828,32 @@ function etapeSuivante(n, eq, distant) {
     return finir(mien > leur ? 'VICTOIRE' : mien < leur ? 'DEFAITE' : 'EGALITE', `Marathon ${mien} - ${leur}`); }
   preparerObjectif(); bandeauEtape = { t: temps, txt: 'ÉTAPE ' + (etape + 1) + ' : ' + NOM_OBJ[obj()], nous: eq === moi.eq }; choc = 1; flash = 0.5;
 }
+// ---------- ☠️ MODE SURVIE : un gaz toxique referme la carte, le dernier debout gagne ----------
+function gaz() { // → { x, y, r, rMax, actif, dans (s avant fermeture) } ou null
+  if (!mode || obj() !== 'survie' || !map) return null;
+  const T = TUILE, cx = map.l * T / 2, cy = map.h * T / 2, rMax = Math.hypot(cx, cy) + T, rMin = (+mode.gazRayonMin || 2.5) * T;
+  const t = (temps - debutJeu) / 60 - (+mode.gazDebut || 20), k = Math.max(0, Math.min(1, t / (+mode.gazDuree || 90)));
+  return { x: cx, y: cy, r: rMax + (rMin - rMax) * (1 - Math.pow(1 - k, 1.6)), rMax, actif: t > 0, dans: Math.ceil(-t), fini: k >= 1 };
+}
+function majGaz() { // dégâts dans le gaz (chacun gère ses PV : moi, et les bots chez l'hôte)
+  const g = gaz(); if (!g || !g.actif || temps % 30) return;
+  for (const j of joueurs()) if (j.pv > 0 && (j === moi || (hote && j.bot)) && Math.hypot(j.x - g.x, j.y - g.y) > g.r) {
+    const d = Math.round(j.pvMax * (+mode.gazDegats || 8) / 100 / 2); j.pv = Math.max(0, j.pv - d); j.flash = 6;
+    if (j === moi || visible(j)) texteFlottant('-' + d + ' ☠️', j.x, j.y - 40, '#b67aff', 0.9); if (j.pv === 0) mourir(j); }
+}
+function dessinerGaz() { // brume violette hors du cercle + bord lumineux (dessiné au sol, en 2D comme en 3D)
+  const g = gaz(); if (!g) return; const T = TUILE, W2 = map.l * T, H2 = map.h * T, m = 8 * T;
+  ctx.save(); ctx.beginPath(); ctx.rect(-m, -m, W2 + 2 * m, H2 + 2 * m); ctx.arc(g.x, g.y, g.r, 0, Math.PI * 2, true);
+  ctx.fillStyle = g.actif ? 'rgba(120,40,190,.42)' : 'rgba(120,40,190,.12)'; ctx.fill('evenodd');
+  ctx.beginPath(); ctx.arc(g.x, g.y, g.r, 0, 7); ctx.lineWidth = 10; ctx.strokeStyle = 'rgba(11,6,32,.5)'; ctx.stroke();
+  ctx.setLineDash([26, 18]); ctx.lineDashOffset = -temps * 1.2; ctx.lineWidth = 6; ctx.strokeStyle = g.actif ? '#d07aff' : 'rgba(255,255,255,.6)'; ctx.stroke(); ctx.setLineDash([]);
+  if (g.actif) for (let i = 0; i < 14; i++) { const a = i / 14 * 6.28 + temps * 0.004, rr = g.r + 30 + ((temps * 0.6 + i * 37) % 120); ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.arc(g.x + Math.cos(a) * rr, g.y + Math.sin(a) * rr, 18 + (i % 3) * 8, 0, 7); ctx.fillStyle = '#9b4dff'; ctx.fill(); } // volutes
+  ctx.restore();
+}
 function hudObjectif() { // compteurs trésors / étapes + bandeau d'étape animé
   const u = U();
+  if (obj() === 'survie') { const g = gaz(), n = joueurs().filter(j => j.pv > 0).length; if (g) { verre(W / 2 - 150 * u, 50 * u, 300 * u, 30 * u, 15 * u);
+    texte((g.actif ? (g.fini ? '☠️ Zone minimale' : '☠️ Le gaz se referme') : '☠️ Le gaz arrive dans ' + g.dans + ' s') + '  •  🧍 ' + n + ' en vie', W / 2, 65 * u, 13 * u, g.actif ? '#e0b0ff' : '#fff'); } }
   if (obj() === 'tresor') { const eqs = [...new Set(joueurs().map(j => j.eq))], but = +mode.objectifTresors || 7;
     eqs.forEach((eq, i) => { const y = 84 * u + i * 24 * u; verre(W - 190 * u, y, 178 * u, 20 * u, 10 * u);
       rect(W - 188 * u, y + 2 * u, 174 * u * Math.min(1, (scoreTresor[eq] || 0) / but), 16 * u, 8 * u, eq === moi.eq ? '#ffd23f' : '#ff5a6e');
@@ -2395,7 +2421,7 @@ function dessinerJeu() {
     ellipse(b.fx, b.fy, R, R * 0.8, 'rgba(255,40,40,.2)');
     ellipse(b.fx, b.fy, R * k, R * 0.8 * k, 'rgba(255,40,40,.45)');
   }
-  dessinerZone(); dessinerFissuresSol(); dessinerTresors();
+  dessinerZone(); dessinerGaz(); dessinerFissuresSol(); dessinerTresors();
   const objs = []; // tri par profondeur = effet 3D
   if (!v3) tuiles((c, x, y, px, py) => { if (c === '#') objs.push([(y + 1) * T - 1, () => { // les murs qui sortent du sol montent
                                    const f = levees[x + ',' + y] !== undefined ? Math.min(1, (temps - levees[x + ',' + y]) / 12) : 1;
@@ -2820,7 +2846,7 @@ function menuAccueil() {
   texte('MODE DE JEU • ' + lab.toUpperCase(), mx + 20 * u, my + 22 * u, 10 * u, 'rgba(255,255,255,.75)', 'left');
   titre(m.nom, mx + 20 * u, my + 50 * u, 32 * u, '#fff', 'left', colD - 70 * u);
   icone('carte', mx + 28 * u, my + mh - 24 * u, 15 * u); texte(def.nom, mx + 42 * u, my + mh - 24 * u, 12 * u, '#fff', 'left');
-  const obj = { zone: '  •  Zone', bloc: '  •  Tour' }[m.objectif] || '';
+  const obj = { zone: '  •  Zone', bloc: '  •  Tour', survie: '  •  ☠️ Gaz' }[m.objectif] || '';
   texte((multi ? m.joueursMin + '-' + m.joueursMax + ' joueurs' : 'Solo') + (m.boss && m.nbBoss ? '  •  ' + m.nbBoss + ' boss' : '') + obj, mx + 20 * u, my + 76 * u, 12 * u, 'rgba(255,255,255,.9)', 'left');
   icone('suite', mx + colD - 24 * u, my + mh / 2, 22 * u);
   zones.push({ x: mx, y: my, w: colD, h: mh, action: () => allerA('modes') });
