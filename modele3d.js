@@ -86,7 +86,7 @@ const Modele3D = (() => {
     rendu.setSize(taille, taille, false); if (camera.zoom !== zoom) { camera.zoom = zoom; camera.updateProjectionMatrix(); }
     if (face) camera.position.set(0, 0.75, 7.3); else camera.position.set(0, 5.6, 5.4); camera.lookAt(0, face ? 1.05 : 1.15, 0); // face = vue droite, un peu par en dessous (effet de grandeur)
     m.racine.rotation.y = Math.PI / 2 - angle + m.decalage; poser(m, anim, t);
-    scene.add(m.racine); rendu.render(scene, camera); scene.remove(m.racine);
+    tic(); scene.add(m.racine); rendu.render(scene, camera); scene.remove(m.racine);
     return rendu.domElement;
   }
   function bords(c0) { const c = document.createElement('canvas'); c.width = c0.width; c.height = c0.height; c.getContext('2d').drawImage(c0, 0, 0); // copie 2D de l'image WebGL
@@ -141,7 +141,7 @@ const Modele3D = (() => {
         if (!this.haut) { const cad = cadrage(c); this.haut = cad.haut / taille; this.bas = cad.bas / taille; } return c;
       },
       a: k => !!(m.anims[k] || m.parNom[k]), liberer: () => m.liberer(),
-      teinte(skin) { const c = skin ? skin.cle : ''; if (this.skin !== c) { this.skin = c; teinter(m.racine, skin); this.fait = 0; } }
+      teinte(skin) { const c = skin ? skin.cle + (skin.style || '') + (skin.couleur1 || '') + (skin.couleur2 || '') + (skin.lueur || '') + (skin.force ?? '') : ''; if (this.skin !== c) { this.skin = c; appliquerSkin(m.racine, skin); this.fait = 0; } }
     };
   }
   async function apercu(p, canvas) { // aperçu admin qu'on fait tourner à la souris / au doigt
@@ -200,12 +200,45 @@ const Modele3D = (() => {
     const res = { murs: PAL.flatMap(c => [1, 2, 3].map(n => bloc(n, false, c))), coffre: bloc(9, true), buissons: [1, 2, 3].map(buisson) };
     return res;
   }
-  function teinter(racine, skin) { // 🎨 skin : les couleurs du modèle tirent vers une teinte (couleurs d'origine gardées)
-    const t = skin && skin.teinte ? new THREE.Color(skin.teinte).convertSRGBToLinear() : null, f = skin ? Math.max(0, Math.min(1, +skin.force || 0.5)) : 0;
-    racine.traverse(o => { const ms = o.isMesh && o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []; for (const m of ms) { if (!m.color || m.side === THREE.BackSide) continue;
-      if (!m.userData.c0) m.userData.c0 = m.color.clone(); m.color.copy(m.userData.c0); if (t) m.color.lerp(t, f);
-      if (m.emissive) { if (!m.userData.e0) m.userData.e0 = m.emissive.clone(); m.emissive.copy(m.userData.e0); if (t) m.emissive.lerp(t, f * 0.45); } } }); // lueur de la teinte : bien visible même sur un modèle texturé
+  // 🎨 SKINS : transforment vraiment le perso (or, ombre, glace, lave, bonbon, galaxie…) grâce à un petit shader ajouté aux matériaux
+  const UT = { value: 0 }, STYLES = { teinte: 0, dore: 1, ombre: 2, lave: 3, bonbon: 4, galaxie: 5, glace: 6 };
+  const tic = () => { UT.value = performance.now() / 1000; }; // horloge des skins animés (lave qui coule, étoiles…)
+  const coul = c => new THREE.Color(c || '#ffffff').convertSRGBToLinear();
+  const VERT = ['#include <common>', '#include <common>\nvarying vec3 vPS;', '#include <begin_vertex>', '#include <begin_vertex>\nvPS = position;'];
+  const FRAG_TETE = `#include <common>
+    uniform vec3 uC1; uniform vec3 uC2; uniform vec3 uRim; uniform float uStyle; uniform float uForce; uniform float uT; uniform float uEch; varying vec3 vPS;
+    float hsk(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }`;
+  const FRAG_COULEUR = `#include <map_fragment>
+    vec3 skEm = vec3(0.0); float lum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114)); vec3 pp = vPS * uEch; vec3 base = uC1 * (0.35 + 0.9 * lum);
+    if (uStyle > 0.5 && uStyle < 1.5) { base = mix(uC1, uC2, smoothstep(0.05, 0.75, lum)); skEm = uC2 * 0.35 * smoothstep(0.93, 1.0, fract(pp.y * 1.2 - uT * 0.35)); }            // or + reflet qui passe
+    else if (uStyle < 2.5 && uStyle > 1.5) { base = mix(uC1, uC2, lum * 0.6); }                                                                                                          // ombre
+    else if (uStyle < 3.5 && uStyle > 2.5) { float f = 0.5 + 0.5 * sin(pp.x * 17.0 + sin(pp.y * 13.0 + uT * 1.3) * 2.2 + pp.z * 11.0 - uT * 1.8) * (0.75 + 0.25 * sin(pp.y * 23.0 + pp.x * 5.0)); float c = smoothstep(0.72, 0.95, f);
+      base = mix(uC1 * (0.5 + 0.5 * lum), uC2, c); skEm = uC2 * c * 1.3; }                                                                                                                 // lave qui coule
+    else if (uStyle < 4.5 && uStyle > 3.5) { float r = step(0.5, fract((pp.x + pp.y * 0.9 + pp.z * 0.3) * 3.5)); base = mix(uC1, uC2, r) * (0.7 + 0.45 * lum); }                    // sucre d'orge
+    else if (uStyle < 5.5 && uStyle > 4.5) { float n = hsk(floor(pp * 38.0)), st = step(0.982, n) * (0.55 + 0.45 * sin(uT * 3.0 + n * 60.0));
+      base = mix(uC1, uC2, 0.5 + 0.5 * sin(pp.y * 3.0 + pp.x * 2.0 + uT * 0.4)) * (0.6 + 0.5 * lum); skEm = vec3(st) + uC2 * 0.12; }                                              // galaxie
+    else if (uStyle > 5.5) { base = mix(uC1, uC2, smoothstep(0.1, 0.9, lum)); diffuseColor.a *= 0.82; skEm = uC2 * 0.18; }                                                         // glace translucide
+    diffuseColor.rgb = mix(diffuseColor.rgb, base, uForce);`;
+  const FRAG_LUEUR = `#include <emissivemap_fragment>
+    float rim = 1.0 - clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0); totalEmissiveRadiance += (skEm + uRim * pow(rim, 2.2)) * uForce;`;
+  function appliquerSkin(racine, skin) {
+    racine.traverse(o => { const ms = o.isMesh && o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+      for (const m of ms) {
+        if (m.side === THREE.BackSide && m.color) { if (!m.userData.c0) m.userData.c0 = m.color.clone(); m.color.copy(m.userData.c0); if (skin && skin.contour) m.color.copy(coul(skin.contour)); continue; } // trait d'encre
+        if (!m.isMeshToonMaterial && !m.isMeshStandardMaterial) continue;
+        if (m.userData.t0 === undefined) { m.userData.t0 = m.transparent; m.userData.o0 = m.opacity; }
+        const st = skin ? STYLES[skin.style] ?? 0 : -1;
+        if (st < 0) { if (m.userData.sk) { m.onBeforeCompile = () => {}; m.customProgramCacheKey = () => 'base'; m.transparent = m.userData.t0; m.userData.sk = null; m.needsUpdate = true; } continue; }
+        if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+        const U = { uC1: { value: coul(skin.couleur1) }, uC2: { value: coul(skin.couleur2) }, uRim: { value: coul(skin.lueur || '#000000') }, uStyle: { value: st },
+          uForce: { value: Math.max(0, Math.min(1, skin.force === undefined ? 0.9 : +skin.force)) }, uT: UT, uEch: { value: 1 / Math.max(1e-4, o.geometry.boundingSphere.radius) } };
+        const cle = 'skin' + st; m.userData.sk = U; m.transparent = st === 6 ? true : m.userData.t0;
+        m.onBeforeCompile = sh => { Object.assign(sh.uniforms, U); sh.vertexShader = sh.vertexShader.replace(VERT[0], VERT[1]).replace(VERT[2], VERT[3]);
+          sh.fragmentShader = sh.fragmentShader.replace('#include <common>', FRAG_TETE).replace('#include <map_fragment>', FRAG_COULEUR).replace('#include <emissivemap_fragment>', FRAG_LUEUR); };
+        m.customProgramCacheKey = () => cle; m.needsUpdate = true;
+      } });
   }
+  const teinter = appliquerSkin; // (ancien nom)
   async function listeAnims(p) { const m = await charger(p); if (!m) return []; m.liberer(); return m.clips; } // noms des animations d'un modèle (admin)
-  return { dispo, generer, visage, vitrine, apercu, decor, instance: charger, listeAnims, teinter }; // instance = modèle animé pour la vraie 3D
+  return { dispo, generer, visage, vitrine, apercu, decor, instance: charger, listeAnims, teinter, tic }; // instance = modèle animé pour la vraie 3D
 })();

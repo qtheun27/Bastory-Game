@@ -175,6 +175,7 @@ const animMenu = (vh, p) => { // 🎬 animation du perso dans les menus (réglab
   const cyc = temps % 420, att = cyc < 80 && vh.a && vh.a('attaque'); return [att ? cyc / 80 : temps / 150, att ? 'attaque' : 'repos']; };
 let heroVue = null, heroP = null, heroAngle = Math.PI / 2, heroZone = null, heroDrag = null;
 // ---------- 🎨 SKINS : variantes de couleur à débloquer avec des jetons ----------
+let skinVue = { p: null, cle: '' };
 const skinParCle = k => (CONFIG.skins || []).find(s => s.cle === k) || null;
 const skinsAchetes = p => ((mesStats.skins || {})[cleP(baseDe(p) || {})] || []);
 const skinChoisi = p => { const k = (mesStats.skinChoisi || {})[cleP(baseDe(p) || {})]; return k && skinsAchetes(p).includes(k) && skinParCle(k) ? k : ''; };
@@ -1997,11 +1998,13 @@ function avancerQuetes(r) { // progression après une partie
     p[k] = Math.min(q.n, (p[k] || 0) + g); if (g && p[k] >= q.n && (e.p || [])[k] < q.n) notif('📜 Quête terminée : ' + q.txt); });
   return mesStats.quetes = { jour: e.jour, p, pris: e.pris || [] };
 }
+const recQuete = q => ({ type: q.recompense || 'jetons', quantite: q.quantite ?? q.jetons ?? 1, element: q.element || 'tous' }); // récompense choisie dans l'admin
 const nbQuetesPretes = () => { const e = etatQuetes(); return quetesDuJour().filter((q, k) => (e.p || [])[k] >= q.n && !(e.pris || [])[k]).length; };
 async function reclamerQuete(k) {
   const q = quetesDuJour()[k], e = etatQuetes(); if (!q || !db || !((e.p || [])[k] >= q.n) || (e.pris || [])[k]) return;
   const pris = [...(e.pris || [])]; pris[k] = true;
-  try { await db.collection('joueurs').doc(user.uid).set({ jetons: firebase.firestore.FieldValue.increment(+q.jetons || 1), quetes: { jour: e.jour, p: e.p || [], pris } }, { merge: true }); notif('🎟️ +' + (q.jetons || 1) + ' jetons perso !'); vagues.push({ x: W / 2, y: H / 2, t: temps }); }
+  const r = recQuete(q);
+  try { await db.collection('joueurs').doc(user.uid).set(majRecompense(r, { quetes: { jour: e.jour, p: e.p || [], pris } }), { merge: true }); notif('🎁 ' + libRecompense(r) + ' récupéré !'); vagues.push({ x: W / 2, y: H / 2, t: temps }); }
   catch (er) { notif('Impossible : ' + er.message); }
 }
 function menuQuetes() {
@@ -2019,14 +2022,23 @@ function menuQuetes() {
     texte(Math.min(p, q.n).toLocaleString('fr') + ' / ' + q.n.toLocaleString('fr'), x + 20 * u + bw / 2, by, 10 * u, '#1f1300');
     const bx = x + w - 160 * u;
     if (pris) titre('✔ Récupéré', bx + 70 * u, y + h / 2, 16 * u, '#fff');
-    else if (ok) { boutonJeu(bx, y + h / 2 - 20 * u, 140 * u, 40 * u, '#b6ff4a', '#1fc46b', () => reclamerQuete(k)); titre('+' + (q.jetons || 1) + ' 🎟️', bx + 70 * u, y + h / 2, 17 * u, '#fff'); }
-    else titre('+' + (q.jetons || 1) + ' 🎟️', bx + 70 * u, y + h / 2, 17 * u, 'rgba(255,255,255,.8)');
+    else if (ok) { boutonJeu(bx, y + h / 2 - 20 * u, 140 * u, 40 * u, '#b6ff4a', '#1fc46b', () => reclamerQuete(k)); titre(libRecompense(recQuete(q)), bx + 70 * u, y + h / 2, 17 * u, '#fff'); }
+    else titre(libRecompense(recQuete(q)), bx + 70 * u, y + h / 2, 17 * u, 'rgba(255,255,255,.8)');
     ctx.restore();
   });
 }
 // ---------- 🏅 SAISONS : un classement par mois, avec des rangs ----------
 const rangDe = pts => { const l = (CONFIG.rangs || []).slice().sort((a, b) => a.min - b.min); let r = l[0] || { nom: '-', icone: '', couleur: '#fff', min: 0 }; for (const x of l) if (pts >= x.min) r = x; return r; };
 const nomSaison = () => new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+function majRecompense(r, maj = {}) { // 🎁 ce que rapporte une récompense (paliers de victoires ou quêtes)
+  const inc = firebase.firestore.FieldValue.increment, ess = {};
+  if (r.type === 'jetons') maj.jetons = inc(+r.quantite || 1);
+  else if (r.type === 'points') { maj.points = inc(+r.quantite || 1); maj.saisonPts = inc(+r.quantite || 1); }
+  else if (r.type === 'avatar') { const ok = avatarsDebloques(), dispo = libAvatars().filter(a => !ok.has(a.cle)).sort(() => Math.random() - 0.5).slice(0, +r.quantite || 1).map(a => a.cle); if (dispo.length) maj.avatars = firebase.firestore.FieldValue.arrayUnion(...dispo); }
+  else { (r.element === 'tous' ? Object.keys(CONFIG.elements) : [r.element]).filter(Boolean).forEach(k => ess[k] = inc(+r.quantite || 0)); maj.essences = ess; }
+  return maj;
+}
+const libRecompense = r => { const el = (CONFIG.elements || {})[r.element]; return '+' + (+r.quantite || 1) + ' ' + ({ jetons: '🎟️', points: '🏆', avatar: '🖼️' }[r.type] || (r.element === 'tous' ? '🌈' : el ? el.icone : '💎')); };
 async function reclamer(i) {
   const r = (CONFIG.recompenses || [])[i]; if (!r || !db || (mesStats.recompenses || []).includes(i) || (mesStats.victoires || 0) < r.victoires) return;
   const inc = firebase.firestore.FieldValue.increment, ess = {}, maj = { recompenses: firebase.firestore.FieldValue.arrayUnion(i) };
@@ -2927,16 +2939,23 @@ function menuPersos() {
   const hg = ctx.createRadialGradient(cx, sol - hh * 0.45, 0, cx, sol - hh * 0.45, hh * 0.7); hg.addColorStop(0, c + '88'); hg.addColorStop(1, c + '00'); ctx.fillStyle = hg; ctx.fillRect(px, hy, panW, hh); ctx.restore();
   ctx.save(); ctx.translate(cx, sol - 4 * u); ctx.scale(1, 0.26); const og = ctx.createRadialGradient(0, 0, 0, 0, 0, hh * 0.35); og.addColorStop(0, 'rgba(0,0,0,.5)'); og.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = og; ctx.beginPath(); ctx.arc(0, 0, hh * 0.35, 0, 7); ctx.fill(); ctx.restore();
   const off = (1 - sortir(Math.min(1, (temps - persoAnim.t) / 14))) * persoAnim.d * 60 * u, vh = vitrineHero(p), gris = !estDebloque(p); if (gris) ctx.filter = 'grayscale(1) brightness(.55)';
-  if (vh && vh.teinte) vh.teinte(skinParCle(skinChoisi(p)));
-  if (vh) { const T = Math.round(Math.min(640, hh * 1.3 * dpr)), im3 = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = hh * 0.95 * Math.min(1, 0.72 + 0.2 * Math.min(1.4, +p.modeleEchelle || 1)) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
+  if (skinVue.p !== p.nom) skinVue = { p: p.nom, cle: skinChoisi(p) }; // 👀 skin affiché (aperçu gratuit, même non acheté)
+  if (vh && vh.teinte) vh.teinte(skinParCle(skinVue.cle));
+  if (vh) { const T = Math.round(Math.min(640, hh * 1.3 * dpr)), im3 = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = Math.min(panW * 1.1, hh * 0.95 * Math.min(1, 0.72 + 0.2 * Math.min(1.4, +p.modeleEchelle || 1)) / Math.max(0.2, (vh.bas - vh.haut) || 0.7)); // jamais plus large que la fiche
     ctx.drawImage(im3, cx - D / 2 + off, sol - 6 * u - vh.bas * D, D, D); }
   else { const im = carteDe(p); if (pret(im)) ctx.drawImage(im, cx - hh * 0.45 + off, sol - hh * 0.9, hh * 0.9, hh * 0.9); }
   ctx.filter = 'none';
-  const SK = [null, ...(CONFIG.skins || [])], sr = 13 * u, sx0 = cx - (SK.length - 1) * (sr * 2 + 6 * u) / 2, choisiSk = skinChoisi(p); // 🎨 skins
-  if (!gris && SK.length > 1) SK.forEach((s, m) => { const x = sx0 + m * (sr * 2 + 6 * u), yS = hy + hh - sr - 4 * u, a = !s || skinsAchetes(p).includes(s.cle), on = (s ? s.cle : '') === choisiSk;
-    ctx.beginPath(); ctx.arc(x, yS, sr, 0, 7); ctx.fillStyle = s ? s.teinte : c; ctx.globalAlpha = a ? 1 : 0.45; ctx.fill(); ctx.globalAlpha = 1; ctx.lineWidth = on ? 3.5 * u : 2 * u; ctx.strokeStyle = on ? '#ffe14a' : NOIR; ctx.stroke();
-    if (!a) texte('🔒', x, yS, 10 * u, '#fff'); else if (s && s.icone) texte(s.icone, x, yS, 10 * u, '#fff');
-    zones.push({ x: x - sr, y: yS - sr, w: sr * 2, h: sr * 2, action: () => choisirSkin(p, s) }); });
+  const SK = [null, ...(CONFIG.skins || [])], sr = 13 * u, sx0 = cx - (SK.length - 1) * (sr * 2 + 6 * u) / 2, choisiSk = skinChoisi(p), yS = hy + hh - sr - 4 * u; // 🎨 skins
+  if (!gris && SK.length > 1) {
+    SK.forEach((s, m) => { const x = sx0 + m * (sr * 2 + 6 * u), a = !s || skinsAchetes(p).includes(s.cle), vu = (s ? s.cle : '') === skinVue.cle, eq = (s ? s.cle : '') === choisiSk;
+      ctx.beginPath(); ctx.arc(x, yS, sr, 0, 7); const g2 = ctx.createLinearGradient(x - sr, yS - sr, x + sr, yS + sr); g2.addColorStop(0, s ? s.couleur2 || s.teinte || '#fff' : ombrer(c, 0.3)); g2.addColorStop(1, s ? s.couleur1 || s.teinte || '#888' : c);
+      ctx.fillStyle = g2; ctx.fill(); ctx.lineWidth = vu ? 4 * u : 2 * u; ctx.strokeStyle = vu ? '#ffe14a' : eq ? '#b6ff4a' : NOIR; ctx.stroke();
+      texte(!a ? '🔒' : s && s.icone ? s.icone : '', x, yS, 10 * u, '#fff');
+      zones.push({ x: x - sr, y: yS - sr, w: sr * 2, h: sr * 2, action: () => { skinVue = { p: p.nom, cle: s ? s.cle : '' }; if (!s || skinsAchetes(p).includes(s.cle)) choisirSkin(p, s); } }); });
+    const sv = skinParCle(skinVue.cle), achete = !sv || skinsAchetes(p).includes(sv.cle);
+    if (sv && !achete) { const bw2 = 170 * u, bx2 = cx - bw2 / 2, by2 = yS - sr - 40 * u; bouton3D(bx2, by2, bw2, 32 * u, '#ffd23f', '#ff8a1f', () => choisirSkin(p, sv)); titre('Acheter ' + sv.nom + ' • ' + (sv.cout || 0) + ' 🎟️', cx, by2 + 15 * u, 12 * u, '#fff', 'center', bw2 - 10 * u); }
+    else texte((sv ? sv.nom : 'Classique') + (skinVue.cle === choisiSk ? '  •  ✔ Équipé' : ''), cx, yS - sr - 12 * u, 11 * u, '#fff');
+  }
   // arme + super / action
   let y = sol + 16 * u;
   texte((TYPES_ARME[a.type] ? TYPES_ARME[a.type] + ' • ' : '') + (a.nom || p.arme) + (a.rebonds > 0 ? ' • ' + a.rebonds + ' ricochets' : '') + (a.chaine > 0 ? ' • chercheur ×' + a.chaine : ''), cx, y, 12 * u, '#ffe8a3', 'center', panW - 20 * u);

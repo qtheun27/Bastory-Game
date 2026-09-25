@@ -1039,11 +1039,12 @@ const CONFIG_PAR_DEFAUT = {
     { "texte": "Gagne {n} partie(s) avec {perso}", "type": "victoirePerso", "min": 1, "max": 2, "jetons": 3, "actif": true }
   ],
   "skins": [
-    { "cle": "dore", "nom": "Doré", "icone": "✨", "teinte": "#ffd23f", "force": 0.55, "cout": 5 },
-    { "cle": "ombre", "nom": "Ombre", "icone": "🌑", "teinte": "#3a2d6b", "force": 0.6, "cout": 4 },
-    { "cle": "glace", "nom": "Glace", "icone": "❄️", "teinte": "#9fe3ff", "force": 0.5, "cout": 4 },
-    { "cle": "lave", "nom": "Lave", "icone": "🌋", "teinte": "#ff4a1a", "force": 0.5, "cout": 4 },
-    { "cle": "bonbon", "nom": "Bonbon", "icone": "🍬", "teinte": "#ff7ac0", "force": 0.5, "cout": 3 }
+    { "cle": "dore", "nom": "Or massif", "icone": "✨", "style": "dore", "couleur1": "#7a4a08", "couleur2": "#ffe27a", "lueur": "#fff1a8", "contour": "#4a2a00", "force": 0.95, "cout": 6 },
+    { "cle": "ombre", "nom": "Ombre", "icone": "🌑", "style": "ombre", "couleur1": "#0d0620", "couleur2": "#3b1a6b", "lueur": "#b44dff", "contour": "#b44dff", "force": 0.95, "cout": 5 },
+    { "cle": "glace", "nom": "Cristal de glace", "icone": "❄️", "style": "glace", "couleur1": "#3fa9e6", "couleur2": "#e8fbff", "lueur": "#ffffff", "contour": "#1e6fb0", "force": 0.9, "cout": 5 },
+    { "cle": "lave", "nom": "Cœur de lave", "icone": "🌋", "style": "lave", "couleur1": "#1a1010", "couleur2": "#ff6a00", "lueur": "#ff3d00", "contour": "#2a0a00", "force": 0.95, "cout": 6 },
+    { "cle": "bonbon", "nom": "Sucre d'orge", "icone": "🍬", "style": "bonbon", "couleur1": "#ff4f9a", "couleur2": "#fff4fa", "lueur": "#ffc2e0", "contour": "#8a1044", "force": 0.9, "cout": 4 },
+    { "cle": "galaxie", "nom": "Galaxie", "icone": "🌌", "style": "galaxie", "couleur1": "#1a0b4a", "couleur2": "#ff4fd8", "lueur": "#6fd1ff", "contour": "#0a0420", "force": 0.95, "cout": 8 }
   ],
   "rangs": [
     { "nom": "Bronze", "min": 0, "icone": "🥉", "couleur": "#cd7f32" },
@@ -1280,11 +1281,18 @@ function migrerConfig(c) {
   if ((c.version || 0) < 19) { // v19 : gadgets (3 par partie)
     const G = { tank: 'bouclier', tireur: 'sprint', soutien: 'soin', controle: 'recharge', assassin: 'fantome' };
     c.persos.forEach(p => { if (p.gadget === undefined) p.gadget = G[p.role] || 'soin'; }); if (c.app && c.app.gadgetsParPartie === undefined) c.app.gadgetsParPartie = 3; c.version = 19;
-  }  if ((c.version || 0) < 20) { // v20 : mode Survie (zone de gaz qui se referme, le dernier debout gagne)
+  }
+  if ((c.version || 0) < 20) { // v20 : mode Survie (zone de gaz qui se referme, le dernier debout gagne)
     if (!c.modes.some(m => m.objectif === 'survie')) c.modes.push({ nom: 'Survie', description: 'La zone de gaz se referme : sois le dernier debout !', type: 'multi', actif: true, joueursMin: 2, joueursMax: 6, equipes: 'chacun', objectif: 'survie',
       reapparition: false, bots: true, attenteBots: 8, niveauBots: 2, boss: false, nbBoss: 0, typesBoss: [], map: -1, pointsVictoire: 40, pointsDefaite: 5, gazDebut: 20, gazDuree: 90, gazDegats: 8, gazRayonMin: 2.5 });
     c.version = Math.max(c.version || 0, 20);
   }
+  if ((c.version || 0) < 21) { // v21 : skins qui transforment vraiment le perso (style + couleurs + lueur)
+    const D2 = D.skins || []; if (!Array.isArray(c.skins)) c.skins = []; D2.forEach(d => { const x = c.skins.find(s => s.cle === d.cle); if (!x) c.skins.push(JSON.parse(JSON.stringify(d))); else if (!x.style) Object.assign(x, d, { cout: x.cout ?? d.cout }); });
+    (c.quetes || []).forEach(q => { if (!q.recompense) { q.recompense = 'jetons'; q.quantite = q.jetons ?? 1; q.element = 'tous'; } }); // quêtes : récompense au choix
+    c.version = Math.max(c.version || 0, 21);
+  }
+
 
 
   c.persos.forEach(p => { if (typeof p.base === 'boolean') { p.deBase = p.base; delete p.base; } }); // réparation : ancien nom du champ

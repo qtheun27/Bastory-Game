@@ -285,7 +285,7 @@ const Rendu3D = (() => {
         const a = o.mixer.clipAction(clip); a.reset(); a.setLoop(anim === 'repos' || anim === 'marche' || fin ? THREE.LoopRepeat : THREE.LoopOnce); a.clampWhenFinished = true;
         if (o.action && o.action !== a) a.crossFadeFrom(o.action, 0.12, false); a.play(); o.action = a; o.clip = clip;
       }
-      const fl = (e.flash || 0) > 0 || (e.touche && temps - e.touche < 6); if (fl !== o.flash) { o.flash = fl; o.racine.traverse(x => { if (x.material && x.material.emissive) x.material.emissive.setRGB(fl ? 0.6 : 0, fl ? 0.6 : 0, fl ? 0.6 : 0); }); if (!fl) o.skin = null; } // éclair blanc du coup reçu (puis la lueur du skin revient)
+      const fl = (e.flash || 0) > 0 || (e.touche && temps - e.touche < 6); if (fl !== o.flash) { o.flash = fl; o.racine.traverse(x => { if (x.material && x.material.emissive) x.material.emissive.setRGB(fl ? 0.6 : 0, fl ? 0.6 : 0, fl ? 0.6 : 0); }); } // éclair blanc du coup reçu
       if (o.action) o.action.timeScale = anim === 'marche' ? Math.max(0.6, Math.min(1.8, (o.pas || 2.6) / Math.max(0.5, reglage('pasMarche', 2.6)))) : 1; // pas calés sur la vitesse : plus de glissade
       o.mixer.update(dt);
       if (o.hanches && anim === 'marche') { o.hanches.position.x = o.repos.x; o.hanches.position.z = o.repos.z; } // pas de glissade
@@ -310,7 +310,7 @@ const Rendu3D = (() => {
     const aff = [(b[0] - a[0]) / 100, (b[1] - a[1]) / 100, (d[0] - a[0]) / 100, (d[1] - a[1]) / 100];
     aff.push(a[0] - c0.x * aff[0] - c0.z * aff[2], a[1] - c0.x * aff[1] - c0.z * aff[3]);
     const t = performance.now(); majPersos(Math.min(0.05, (t - (horloge || t)) / 1000), aff); horloge = t;
-    majTirs(); majObjectifs(); majVisee(); R.render(scene, camera);
+    majTirs(); majObjectifs(); majVisee(); if (Modele3D.tic) Modele3D.tic(); R.render(scene, camera);
     return aff;
   }
   function versMonde(sx, sy) { // écran → sol (rayon depuis la caméra)
