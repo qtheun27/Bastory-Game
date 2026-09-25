@@ -1044,6 +1044,7 @@ const CONFIG_PAR_DEFAUT = {
     "tailleDegats": 1,
     "esquiveBots": 1,
     "quetesParJour": 3,
+    "comboDelai": 3,
     "butinArme": 75,
     "dureeChute": 4,
     "vitesseChute": 1.6,
@@ -1078,6 +1079,14 @@ const CONFIG_PAR_DEFAUT = {
     { "cle": "bonbon", "nom": "Sucre d'orge", "icone": "🍬", "style": "bonbon", "couleur1": "#ff4f9a", "couleur2": "#fff4fa", "lueur": "#ffc2e0", "contour": "#8a1044", "force": 0.9, "cout": 4 },
     { "cle": "galaxie", "nom": "Galaxie", "icone": "🌌", "style": "galaxie", "couleur1": "#1a0b4a", "couleur2": "#ff4fd8", "lueur": "#6fd1ff", "contour": "#0a0420", "force": 0.95, "cout": 8 }
   ],
+  "combos": {
+    "air+eau": { "nom": "ORAGE!", "effet": "chaine", "valeur": 40, "rayon": 240, "couleur": "#ffe14a", "actif": true },
+    "air+feu": { "nom": "TORNADE DE FEU!", "effet": "nuageFeu", "valeur": 60, "rayon": 100, "duree": 3, "couleur": "#ff6a00", "actif": true },
+    "eau+feu": { "nom": "VAPEUR!", "effet": "vapeur", "valeur": 15, "rayon": 120, "duree": 4, "couleur": "#e8f4ff", "actif": true },
+    "eau+terre": { "nom": "BOUE!", "effet": "ralenti", "valeur": 45, "duree": 2.5, "couleur": "#8a5a2b", "actif": true },
+    "feu+terre": { "nom": "MAGMA!", "effet": "nuageFeu", "valeur": 80, "rayon": 80, "duree": 4, "couleur": "#ff4a00", "actif": true },
+    "air+terre": { "nom": "TEMPÊTE DE SABLE!", "effet": "souffle", "valeur": 25, "recul": 40, "couleur": "#e8c38a", "actif": true }
+  },
   "raretes": [
     { "cle": "commun", "nom": "Commune", "icone": "⚪", "couleur": "#c9d0dc", "mult": 1, "poids": 50 },
     { "cle": "rare", "nom": "Rare", "icone": "🔵", "couleur": "#4aa3ff", "mult": 1.15, "poids": 30 },
@@ -1260,7 +1269,7 @@ const ROYAUME = {"nom": "🏰 Royaume", "actif": true, "theme": "neutre", "grand
 function migrerConfig(c) {
   const D = CONFIG_PAR_DEFAUT, copie = o => JSON.parse(JSON.stringify(o)), def = (o, d) => { for (const k in d) if (o[k] === undefined) o[k] = d[k]; return o; };
   if (!c.bosses) c.bosses = { troll: c.boss || copie(D.bosses.troll) }; delete c.boss;
-  ['modes', 'pouvoirs', 'app', 'elements', 'progression', 'recompenses', 'roles', 'gadgets', 'quetes', 'rangs', 'skins', 'raretes'].forEach(k => { if (!c[k] || (Array.isArray(c[k]) && !c[k].length)) c[k] = copie(D[k]); });
+  ['modes', 'pouvoirs', 'app', 'elements', 'progression', 'recompenses', 'roles', 'gadgets', 'quetes', 'rangs', 'skins', 'raretes', 'combos'].forEach(k => { if (!c[k] || (Array.isArray(c[k]) && !c[k].length)) c[k] = copie(D[k]); });
   for (const k in D.armes) if (!c.armes[k] && ['seisme', 'ricochet', 'eclair', 'fumigene', 'dard', 'rocher', 'vent', 'trident', 'boulefeu'].includes(k)) c.armes[k] = copie(D.armes[k]);
   if ((c.version || 0) < 8) { // v8 : persos = vrais modèles 3D .glb + éléments ; les anciens persos "assemblés" sont retirés
     c.persos = c.persos.filter(p => p.image || p.modele);

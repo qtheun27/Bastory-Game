@@ -144,6 +144,7 @@ var CH_JEU = [['vitesseJeu','🏃 Vitesse générale de tous les persos (multipl
   ['esquiveBots','🤖 Réflexes des bots pour esquiver (0 = jamais, 1 = normal, 2 = très réactifs)','number'],
   ['volumeSons','🔊 Volume des sons (0 = coupé, 1 = normal, 2 = fort)','number'],['volumeMusique','🎵 Volume de la musique (0 = coupée, 1 = normal)','number'],
   ['musiqueMenu','🎧 Ta musique des menus (fichier MP3, ex : musique/menu.mp3 — vide = musique du jeu)','text'],['musiqueJeu','🎧 Ta musique en partie (fichier MP3, ex : musique/combat.mp3 — vide = musique du jeu)','text'],
+  ['comboDelai','⚡ Combos : délai max entre les 2 éléments (s)','number'],
   ['butinArme','🎁 Butin : % de coffres qui donnent une arme de rareté (modes avec butin)','number'],
   ['—','🪂 Atterrissage (modes où il est activé)','titre'],['dureeChute','Durée de la chute (s)','number'],['vitesseChute','Vitesse pendant la chute (× normale)','number'],
   ['—','🧱 Construction (modes où elle est activée)','titre'],
@@ -501,6 +502,10 @@ const VUES = {
       ['force','Intensité (0.5 = on voit encore l\'original, 1 = transformation totale)','number'],['cout','Prix (jetons perso)','number']];
     z.append(el('h3', { textContent: '🎨 Skins (variantes de couleur achetables pour chaque perso)' }), el('div', { className: 'grille-cartes' }, ...(cfg.skins || []).map((s, i) => carte((s.icone || '') + ' ' + s.nom, formulaire(s, CH_S), () => { if (confirm('Supprimer ce skin ?')) { cfg.skins.splice(i, 1); modifie(); afficher(); } }))),
       el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouveau skin', onclick: () => { cfg.skins.push({ cle: 'skin' + Date.now().toString(36), nom: 'Nouveau', icone: '🎨', style: 'dore', couleur1: '#1e3a8a', couleur2: '#5ac8fa', lueur: '#b6f0ff', contour: '#0b1440', force: 0.9, cout: 4 }); modifie(); afficher(); } })));
+    const CH_CO = [['nom','Texte affiché (manga)','text'],['actif','Actif','check'],['effet','Effet','select',[['chaine','⚡ Rebondit sur 2 ennemis proches'],['nuageFeu','🔥 Zone de feu au sol'],['vapeur','🌫️ Nuage qui cache + dégâts'],['ralenti','🐌 Ralentit la cible'],['souffle','🌪️ Projette la cible + dégâts']]],
+      ['valeur','Puissance (% des dégâts du coup, ou % de ralentissement)','number'],['rayon','Rayon (px)','number'],['duree','Durée (s)','number'],['recul','Recul (projection)','number'],['couleur','Couleur','color']];
+    z.append(el('h3', { textContent: '⚡ Combos d\'éléments (2 éléments différents touchent la même cible en moins de « délai » secondes — réglage dans Sensations de jeu)' }),
+      el('div', { className: 'grille-cartes' }, ...Object.entries(cfg.combos || {}).map(([k, c]) => carte(k.split('+').map(e => ((cfg.elements || {})[e] || {}).icone || e).join(' + ') + '  ' + (c.nom || ''), formulaire(c, CH_CO)))));
     const CH_RA = [['nom','Nom de la rareté','text'],['icone','Icône','text'],['couleur','Couleur','color'],['mult','Dégâts × (1.3 = +30 %)','number'],['poids','Fréquence (+ grand = + fréquent)','number']];
     z.append(el('h3', { textContent: '🎁 Raretés du butin' }), el('div', { className: 'grille-cartes' }, ...(cfg.raretes || []).map(r => carte((r.icone || '') + ' ' + r.nom, formulaire(r, CH_RA)))));
     const CH_R = [['nom','Nom du rang','text'],['icone','Icône (emoji)','text'],['couleur','Couleur','color'],['min','Points de saison nécessaires','number']];

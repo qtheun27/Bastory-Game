@@ -738,6 +738,18 @@ function impact(e, p, x, y, avecEffet) {
 }
 const roleDe = p => { const r = (baseDe(p) || {}).role; return r && (CONFIG.roles || {})[r] ? r : null; };
 const RV = (r, champ, d) => { const v = ((CONFIG.roles || {})[r] || {})[champ]; return v === undefined || v === '' ? d : +v; }; // 🎭 valeur d'un rôle (admin)
+function comboElem(e, pr, cle, deg, ang) { // effet du combo (réglable dans l'admin)
+  const c = (CONFIG.combos || {})[cle]; if (!c || c.actif === false) return; const v = (+c.valeur || 0) / 100, col = c.couleur || '#ffe14a', arme = { effet: 'etincelle', couleur: col, combo: true };
+  ono(c.nom || 'COMBO!', e.x, e.y - 70, 1.5, col); ondes.push({ x: e.x, y: e.y, r: 12, max: (+c.rayon || 100) * 1.2, c: col, vie: 1, ep: 12 }); son('super', volA(e.x, e.y)); secousse = Math.max(secousse, 8);
+  if (pr === moi && moi.st) moi.st.combo = (moi.st.combo || 0) + 1;
+  const ennemis = [...joueurs().filter(j => j.eq !== pr.eq && j.pv > 0), ...bosses.filter(b => b.pv > 0 && !b.def.cristal)];
+  if (c.effet === 'chaine') ennemis.filter(o => o !== e && Math.hypot(o.x - e.x, o.y - e.y) < (+c.rayon || 240)).sort((a2, b2) => Math.hypot(a2.x - e.x, a2.y - e.y) - Math.hypot(b2.x - e.x, b2.y - e.y)).slice(0, 2)
+    .forEach(o => { effet('foudre', o.x, o.y, col, 60); particules.push({ x: (e.x + o.x) / 2, y: (e.y + o.y) / 2, vx: 0, vy: 0, c: col, t: 5, vie: 1, forme: 'trait', a: Math.atan2(o.y - e.y, o.x - e.x), len: Math.hypot(o.x - e.x, o.y - e.y) }); degats(o, pr.uid, Math.round(deg * v), e.x, e.y, 0, arme); });
+  else if (c.effet === 'nuageFeu') nuages.push({ x: e.x, y: e.y, r: +c.rayon || 90, fin: temps + (+c.duree || 3) * 60, debut: temps, c: col, deg: Math.round(deg * v), de: pr.uid, arme: { effet: 'feu', couleur: col, combo: true }, feu: true });
+  else if (c.effet === 'vapeur') { nuages.push({ x: e.x, y: e.y, r: +c.rayon || 120, fin: temps + (+c.duree || 4) * 60, debut: temps, c: col, deg: 0, de: pr.uid, arme }); degats(e, pr.uid, Math.round(deg * v), e.x, e.y, 0, arme); }
+  else if (c.effet === 'ralenti') { e.ralenti = Math.max(0.1, 1 - v); e.ralentiT = temps + (+c.duree || 2.5) * 60; effet('eclaboussure', e.x, e.y, col, 70); }
+  else if (c.effet === 'souffle') { const r = +c.recul || 40; e.kx = (e.kx || 0) + Math.cos(ang || 0) * r; e.ky = (e.ky || 0) + Math.sin(ang || 0) * r; effet('vortex', e.x, e.y, col, 90); degats(e, pr.uid, Math.round(deg * v), e.x, e.y, ang, arme); }
+}
 function degats(e, de, deg, x, y, ang, a) { // applique les dégâts selon qui a l'autorité
   if (a && +a.ralenti) { e.ralenti = +a.ralenti; e.ralentiT = temps + 120; } // 🫧 arme qui ralentit
   const pr = entite(de); if (enChute() && e.perso) return; // 🪂 intouchable pendant la chute
@@ -746,7 +758,10 @@ function degats(e, de, deg, x, y, ang, a) { // applique les dégâts selon qui a
     if (rA === 'assassin' && dd < P * 0.4) deg *= 1 + RV('assassin', 'valeur', 25) / 100;
     if (rA === 'controle') { e.ralenti = Math.min(e.ralentiT > temps ? e.ralenti || 1 : 1, 1 - RV('controle', 'valeur', 25) / 100); e.ralentiT = Math.max(e.ralentiT || 0, temps + 60); } }
   if (e.perso && roleDe(e.perso) === 'tank') deg *= 1 - RV('tank', 'valeur', 15) / 100; // 🛡️ le tank encaisse
-  deg = Math.round(deg); e.combatT = temps; if (de === moi.uid && moi.st && e !== moi) moi.st.deg += deg; // 📊 stats du match (quêtes)
+  deg = Math.round(deg); e.combatT = temps;
+  if (pr && pr.perso && e !== pr && !(a && a.combo) && e.pv > 0) { const k = cleElem(pr.perso); if (k) { const st = e.elemT; // ⚡🔥 combos d'éléments
+    if (st && st.k !== k && temps - st.t < reglage('comboDelai', 3) * 60 && temps - (e.comboT || -999) > 60) { e.elemT = null; e.comboT = temps; comboElem(e, pr, [st.k, k].sort().join('+'), deg, ang); } // 2e élément différent à temps → combo
+    else e.elemT = { k, t: temps, de: pr.uid }; } } if (de === moi.uid && moi.st && e !== moi) moi.st.deg += deg; // 📊 stats du match (quêtes)
   const kb = (a && +a.recul) || (a && a.effet === 'explosion' ? 6 : 3);
   if (pr && pr.perso && (de === moi.uid || (hote && pr.bot))) gagnerSuper(pr, deg); // ⭐ les dégâts chargent le super
   if (e === moi) { if (a && +a.recul && moi.depSpecial !== 'orage') { moi.kx += Math.cos(ang) * a.recul; moi.ky += Math.sin(ang) * a.recul; } return toucherMoi(deg, x, y, de); }
