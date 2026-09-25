@@ -20,7 +20,7 @@ function configEnDirect() { // 🔄 les réglages publiés dans l'admin s'appliq
       const v = d.data(); if (!v || !v.json) return;
       const n = migrerConfig(JSON.parse(v.json)), fus = (a, b) => { if (a && b) for (const k in b) if (a[k] && b[k] && typeof a[k] === 'object' && !Array.isArray(a[k])) Object.assign(a[k], b[k]); else if (!a[k]) a[k] = b[k]; };
       Object.assign(CONFIG.app, n.app); ['progression'].forEach(k => n[k] && Object.assign(CONFIG[k] || (CONFIG[k] = {}), n[k]));
-      ['armes', 'bosses', 'elements'].forEach(k => fus(CONFIG[k], n[k]));                         // mis à jour sur place : les armes en cours de partie changent aussi
+      ['armes', 'bosses', 'elements', 'roles'].forEach(k => { if (!CONFIG[k]) CONFIG[k] = {}; fus(CONFIG[k], n[k]); });                         // mis à jour sur place : les armes en cours de partie changent aussi
       ['persos', 'modes', 'maps', 'pouvoirs', 'recompenses'].forEach(k => { const A = CONFIG[k], B = n[k]; if (!Array.isArray(A) || !Array.isArray(B)) return;
         if (A.length === B.length) A.forEach((x, i) => Object.assign(x, B[i])); else A.splice(0, A.length, ...B); }); // stats des persos : appliquées à la prochaine partie
     } catch (e) { console.warn('Config en direct illisible', e); }
@@ -702,9 +702,18 @@ function impact(e, p, x, y, avecEffet) {
   if ((+a.retard || 0) > 0 || (+a.poisonDuree || 0) > 0) return planifier(e, p, deg, ang); // ⏳ dégâts à retardement / poison
   degats(e, p.de, deg, x, y, ang, a);
 }
+const roleDe = p => { const r = (baseDe(p) || {}).role; return r && (CONFIG.roles || {})[r] ? r : null; };
+const RV = (r, champ, d) => { const v = ((CONFIG.roles || {})[r] || {})[champ]; return v === undefined || v === '' ? d : +v; }; // 🎭 valeur d'un rôle (admin)
 function degats(e, de, deg, x, y, ang, a) { // applique les dégâts selon qui a l'autorité
   if (a && +a.ralenti) { e.ralenti = +a.ralenti; e.ralentiT = temps + 120; } // 🫧 arme qui ralentit
-  const pr = entite(de), kb = (a && +a.recul) || (a && a.effet === 'explosion' ? 6 : 3);
+  const pr = entite(de);
+  if (pr && pr.perso) { const rA = roleDe(pr.perso), dd = Math.hypot(e.x - pr.x, e.y - pr.y), P = +pr.perso.portee || 400; // 🎭 bonus du rôle de l'attaquant
+    if (rA === 'tireur' && dd > P * 0.6) deg *= 1 + RV('tireur', 'valeur', 20) / 100;
+    if (rA === 'assassin' && dd < P * 0.4) deg *= 1 + RV('assassin', 'valeur', 25) / 100;
+    if (rA === 'controle') { e.ralenti = Math.min(e.ralentiT > temps ? e.ralenti || 1 : 1, 1 - RV('controle', 'valeur', 25) / 100); e.ralentiT = Math.max(e.ralentiT || 0, temps + 60); } }
+  if (e.perso && roleDe(e.perso) === 'tank') deg *= 1 - RV('tank', 'valeur', 15) / 100; // 🛡️ le tank encaisse
+  deg = Math.round(deg);
+  const kb = (a && +a.recul) || (a && a.effet === 'explosion' ? 6 : 3);
   if (pr && pr.perso && (de === moi.uid || (hote && pr.bot))) gagnerSuper(pr, deg); // ⭐ les dégâts chargent le super
   if (e === moi) { if (a && +a.recul && moi.depSpecial !== 'orage') { moi.kx += Math.cos(ang) * a.recul; moi.ky += Math.sin(ang) * a.recul; } return toucherMoi(deg, x, y, de); }
   e.flash = 8;
@@ -756,7 +765,7 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     const d = Math.hypot(e.x - j.x, e.y - j.y);
     if ((!e.cache || d < 170) && d < dm) { dm = d; c = e; }
   }
-  const v = j.perso.vitesse * KV() * (0.7 + 0.15 * (j.niv || 1)) * bonus(j, 'vitesse');
+  const v = j.perso.vitesse * KV() * (0.7 + 0.15 * (j.niv || 1)) * bonus(j, 'vitesse') * (j.ralentiT > temps ? j.ralenti || 0.6 : 1) * (roleDe(j.perso) === 'assassin' ? 1 + RV('assassin', 'vitesse', 10) / 100 : 1);
   if (!j.objet && obj() === 'tresor' && (!c || dm > 260)) { // 🤖 part à la chasse au trésor
     const t = tresors.filter(t => t.pris === null).sort((a, b) => Math.hypot(a.x - j.x, a.y - j.y) - Math.hypot(b.x - j.x, b.y - j.y))[0];
     if (t) { allerVers(j, t.x, t.y, v); return; }
@@ -785,6 +794,12 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     if (!j.but || Math.hypot(j.but.x - j.x, j.but.y - j.y) < 30 || temps % 240 === 0) j.but = caseLibre([]);
     allerVers(j, j.but.x, j.but.y, v);
   }
+}
+function soinsSoutien() { // 💚 le soutien soigne ses alliés proches (chacun gère ses PV : moi, et les bots chez l'hôte)
+  const sou = joueurs().filter(j => j.pv > 0 && roleDe(j.perso) === 'soutien'); if (!sou.length) return;
+  const R = RV('soutien', 'rayon', 220), k = RV('soutien', 'valeur', 3) / 100 / 2;
+  for (const c of joueurs()) if (c.pv > 0 && c.pv < c.pvMax && (c === moi || (hote && c.bot)) && sou.some(s => s !== c && s.eq === c.eq && Math.hypot(s.x - c.x, s.y - c.y) < R)) {
+    const g = Math.round(c.pvMax * k); c.pv = Math.min(c.pvMax, c.pv + g); if (c === moi || visible(c)) texteFlottant('+' + g, c.x, c.y - 40, '#6dff8a', 0.8); }
 }
 function toucherMoi(deg, x, y, de) {
   if (moi.pv <= 0 || moi.invuln > temps) return;
@@ -912,7 +927,7 @@ function maj() {
   if (moi.pv <= 0) mx = my = 0;
   const elm = elemDe(moi.perso) || {}, surEau = tuileA(moi.x, moi.y) === 'W';
   if (fige) { mx = 0; my = 0; }
-  const vit = moi.perso.vitesse * KV() * bonus(moi, 'vitesse') * (moi.dep === 'nage' && surEau ? +elm.valeur || 1.3 : 1) * (moi.dep !== 'vol' && tuileA(moi.x, moi.y) === 'S' ? 0.8 : 1) * (moi.ralentiT > temps ? moi.ralenti || 0.6 : 1); // 🏖️ le sable ralentit
+  const vit = moi.perso.vitesse * KV() * bonus(moi, 'vitesse') * (moi.dep === 'nage' && surEau ? +elm.valeur || 1.3 : 1) * (moi.dep !== 'vol' && tuileA(moi.x, moi.y) === 'S' ? 0.8 : 1) * (moi.ralentiT > temps ? moi.ralenti || 0.6 : 1) * (roleDe(moi.perso) === 'assassin' ? 1 + RV('assassin', 'vitesse', 10) / 100 : 1); // 🏖️ le sable ralentit
   if (moi.dep === 'nage' && surEau && moi.pv > 0) moi.pv = Math.min(moi.pvMax, moi.pv + moi.pvMax * (+elm.soin || 0) / 100 / 60); // 💧 se soigne dans l'eau
   if (moi.dep === 'brise' && (mx || my)) { const tx = Math.floor((moi.x + mx * moi.r * 1.3) / TUILE), ty = Math.floor((moi.y + my * moi.r * 1.3) / TUILE); if (bloqueTir(tuile(tx, ty))) abimer(tx, ty, +elm.valeur || 60); } // 🌍 brise les blocs en fonçant dedans
   moi.vx = (moi.vx || 0) + (mx * vit - (moi.vx || 0)) * REAC(); moi.vy = (moi.vy || 0) + (my * vit - (moi.vy || 0)) * REAC(); // départ / arrêt rapides (réactif)
@@ -921,6 +936,7 @@ function maj() {
   if (mx || my) { moi.marche += vit; if (!joyD.actif && !(moi.viseT > temps)) tourner(moi, Math.atan2(my, mx), reglage('rotation', 0.4)); }
   if (joyD.actif) { const v = vec(joyD); if (v.d > 15) tourner(moi, v.a, 0.4); }
   if (moi.recharge > 0) moi.recharge--;
+  if (temps % 30 === 0) soinsSoutien();
   if (moi.tirAttente && moi.recharge <= 0) { const q = moi.tirAttente; moi.tirAttente = null; if (temps - q.t < reglage('tamponTir', 15)) tirer(q.a, q.f); } // tir mémorisé (clic un peu trop tôt)
   if (moi.flash > 0) moi.flash--;
   if (moi.recharge <= 0) moi.mun = Math.min(+moi.perso.munitions || 3, moi.mun + 1 / (+moi.perso.recharge || 60)); // recharge des munitions
@@ -2747,7 +2763,7 @@ function menuPersos() {
     if (i === persoIndex) texte('✔', cx + cw - 14 * u, cy + is - 2 * u, 15 * k * u, '#b6ff4a');
     const ty = cy + 10 * k * u + is;
     titre(p.nom, cx + cw / 2, ty + 10 * k * u, 17 * k * u, '#fff', 'center', cw - 10 * u);
-    texte(TYPES_ARME[a.type] || '', cx + cw / 2, ty + 27 * k * u, 10 * k * u, '#ffe8a3', 'center', cw - 8 * u);
+    const ro = roleDe(p); texte([ro ? CONFIG.roles[ro].nom : '', TYPES_ARME[a.type] || ''].filter(Boolean).join(' • '), cx + cw / 2, ty + 27 * k * u, 10 * k * u, '#ffe8a3', 'center', cw - 8 * u);
     const mini = [['❤', p.pvMax / 9000, '#ff5a6e'], ['💥', p.degats / 3000, '#ff9f43'], ['🏃', p.vitesse / 5, '#4cd964'], ['🎯', p.portee / 600, '#5ac8fa']], bw = (cw - 20 * u) / 2 - 16 * k * u;
     mini.forEach(([ic, f, col], m) => { const bx = cx + 8 * u + (m % 2) * (cw / 2 - 4 * u), by = ty + (40 + Math.floor(m / 2) * 13) * k * u; // résumé des stats
       texte(ic, bx + 6 * k * u, by, 9 * k * u, '#fff'); rect(bx + 14 * k * u, by - 3 * k * u, bw, 6 * k * u, 3 * k * u, 'rgba(11,6,32,.6)'); rect(bx + 14 * k * u, by - 3 * k * u, Math.max(3, bw * Math.min(1, f)), 6 * k * u, 3 * k * u, col); });
@@ -2777,6 +2793,7 @@ function menuPersos() {
   // arme + super / action
   let y = sol + 16 * u;
   texte((TYPES_ARME[a.type] ? TYPES_ARME[a.type] + ' • ' : '') + (a.nom || p.arme) + (a.rebonds > 0 ? ' • ' + a.rebonds + ' ricochets' : '') + (a.chaine > 0 ? ' • chercheur ×' + a.chaine : ''), cx, y, 12 * u, '#ffe8a3', 'center', panW - 20 * u);
+  const ro = roleDe(p); if (ro) { y += 16 * u; texte(CONFIG.roles[ro].nom + ' : ' + (CONFIG.roles[ro].description || ''), cx, y, 11 * u, '#9cff57', 'center', panW - 20 * u); }
   const ie = ELEM_DEF[cleElem(p)] && { ...ELEM_DEF[cleElem(p)], ...el }; if (ie) { y += 16 * u; texte(`⭐ ${ie.superNom}  •  🎮 ${ie.actionNom}`, cx, y, 11 * u, '#ffe14a', 'center', panW - 20 * u); }
   // stats
   const st = [['❤️', 'Vie', p.pvMax / 8000, p.pvMax, '#ff5a6e'], ['💥', 'Dégâts', p.degats / 3000, p.degats, '#ff9f43'], ['🏃', 'Vitesse', p.vitesse / 5, p.vitesse, '#4cd964'],
