@@ -1,0 +1,2 @@
+Dépose ici tes musiques MP3 (libres de droits), puis indique leur chemin dans l'admin :
+Appli › Sensations de jeu › « Ta musique des menus » (ex : musique/menu.mp3) et « Ta musique en partie ».

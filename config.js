@@ -1027,6 +1027,8 @@ const CONFIG_PAR_DEFAUT = {
     "quetesParJour": 3,
     "volumeSons": 1,
     "volumeMusique": 1,
+    "musiqueMenu": "",
+    "musiqueJeu": "",
     "decor3D": 1
   },
   "quetes": [

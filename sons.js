@@ -1,18 +1,20 @@
 // 🔊 SONS & MUSIQUE — tout est synthétisé (aucun fichier à télécharger), style cartoon / manga
 // Son.jouer('tir', volume) • Son.musique('menu' | 'jeu' | null) • Son.regler({ sons, musique })
 const Son = (() => {
-  let ac = null, sortie = null, busSons = null, busMus = null, bruit = null;
+  let ac = null, sortie = null, busSons = null, busMus = null, busMusIn = null, bruit = null;
   const pref = { sons: true, musique: true }; try { Object.assign(pref, JSON.parse(localStorage.getItem('bastorySon') || '{}')); } catch (e) {}
   const volApp = k => { const a = (typeof CONFIG !== 'undefined' && CONFIG.app) || {}, v = a[k]; return v === undefined || v === '' || isNaN(+v) ? 1 : Math.max(0, +v); };
   function init() {
     if (ac) return true;
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
     ac = new AC(); sortie = ac.createDynamicsCompressor(); sortie.connect(ac.destination);
-    busSons = ac.createGain(); busSons.connect(sortie); busMus = ac.createGain(); busMus.connect(sortie); appliquer();
+    busSons = ac.createGain(); busSons.connect(sortie); busMus = ac.createGain(); busMus.connect(sortie);
+    const echo = ac.createDelay(1), fb = ac.createGain(), fl = ac.createBiquadFilter(), mixE = ac.createGain(); echo.delayTime.value = 0.3; fb.gain.value = 0.28; fl.type = 'lowpass'; fl.frequency.value = 2600; mixE.gain.value = 0.22; // petit écho = son plus « produit »
+    busMusIn = ac.createGain(); busMusIn.connect(busMus); busMusIn.connect(echo); echo.connect(fl); fl.connect(fb); fb.connect(echo); fl.connect(mixE); mixE.connect(busMus); appliquer();
     const n = ac.sampleRate; bruit = ac.createBuffer(1, n, n); const d = bruit.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
     return true;
   }
-  function appliquer() { if (!ac) return; busSons.gain.value = pref.sons ? 0.55 * volApp('volumeSons') : 0; busMus.gain.value = pref.musique ? 0.22 * volApp('volumeMusique') : 0; }
+  function appliquer() { if (!ac) return; busSons.gain.value = pref.sons ? 0.55 * volApp('volumeSons') : 0; busMus.gain.value = pref.musique ? 0.3 * volApp('volumeMusique') : 0; if (fichier) fichier.volume = Math.min(1, (pref.musique ? 0.6 : 0) * volApp('volumeMusique')); }
   // 📱 iPhone : l'audio ne se débloque que pendant un vrai geste (appui relâché), et le bouton silencieux coupe le son du web
   // → on se déclare « lecture audio » (comme une appli de musique) et on joue un son muet en boucle pour garder le son actif
   let muet = null;
@@ -64,26 +66,40 @@ const Son = (() => {
     const t = ac.currentTime; if (derniers[nom] && t - derniers[nom] < 0.035) return; derniers[nom] = t; // pas 20 fois le même son d'un coup
     try { f(t + 0.005, Math.min(1, v)); } catch (e) {}
   }
-  // 🎵 musique : petite boucle chiptune (menus : posée • partie : plus rapide)
+  // 🎵 MUSIQUE : fichier MP3 choisi dans l'admin, sinon musique synthétisée (accords pop, nappe, arpèges, basse, batterie légère)
+  const accord = (r, min) => [r, r + (min ? 3 : 4), r + 7];
   const MUS = {
-    menu: { bpm: 104, gamme: [0, 3, 5, 7, 10], racine: 57, basse: [0, 0, 5, 5, 3, 3, 7, 7], motif: [0, 2, 4, 2, 3, 4, 2, 1, 0, 2, 4, 5, 4, 2, 1, 0] },
-    jeu: { bpm: 138, gamme: [0, 2, 3, 5, 7, 8, 10], racine: 52, basse: [0, 0, 3, 3, 5, 5, 4, 4], motif: [0, 2, 4, 6, 4, 2, 5, 4, 0, 2, 4, 2, 1, 2, 3, 4] }
+    menu: { bpm: 96, swing: 0.08, prog: [[60, 0], [67, 0], [69, 1], [65, 0]], lead: [12, null, 14, 16, null, 14, 12, null, 11, null, 12, 14, null, 7, null, null] },          // Do – Sol – La m – Fa : joyeux, posé
+    jeu: { bpm: 132, swing: 0, prog: [[57, 1], [53, 0], [60, 0], [55, 0]], lead: [12, 15, 17, 15, 19, null, 17, 15, 12, null, 15, 17, 19, 22, 19, 17] }                     // La m – Fa – Do – Sol : énergique
   };
-  let courante = null, voulue = null, pas = 0, prochain = 0, minuteur = null;
+  function voix(type, f, t, dur, v, att = 0.01, filtre = 0, det = 0) {
+    const o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.value = f; o.detune.value = det; let dst = g;
+    if (filtre) { const b = ac.createBiquadFilter(); b.type = 'lowpass'; b.frequency.value = filtre; b.Q.value = 0.6; o.connect(b); b.connect(g); } else o.connect(g);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(v, t + att); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); g.connect(busMusIn); o.start(t); o.stop(t + dur + 0.05); return dst;
+  }
+  let courante = null, voulue = null, pas = 0, prochain = 0, minuteur = null, fichier = null;
   function planifier() {
-    if (!courante || !ac) return; const m = MUS[courante], d = 60 / m.bpm / 2;
-    while (prochain < ac.currentTime + 0.25) {
-      const i = pas % 16, mes = Math.floor(pas / 16) % 8, b = m.basse[mes], deg = m.motif[i], n = m.racine + 12 + m.gamme[(deg + b) % m.gamme.length] + (deg + b >= m.gamme.length ? 12 : 0);
-      if (i % 2 === 0) osc('triangle', note(m.racine - 12 + b), note(m.racine - 12 + b), prochain, d * 1.8, 0.5, busMus);   // basse
-      if (i % 4 !== 3 || mes % 2) osc('square', note(n), note(n), prochain, d * 0.9, 0.22, busMus);                        // mélodie
-      if (courante === 'jeu' && i % 4 === 0) souffle(prochain, 0.08, 0.5, 120, 60, 'lowpass', 0.7, busMus);                // grosse caisse
-      if (courante === 'jeu' && i % 2 === 1) souffle(prochain, 0.03, 0.15, 8000, 6000, 'highpass', 0.7, busMus);            // charleston
+    if (!courante || !ac) return; const m = MUS[courante], d = 60 / m.bpm / 4; // pas = double-croche
+    while (prochain < ac.currentTime + 0.3) {
+      const i = pas % 16, mes = Math.floor(pas / 16) % 4, [r, min] = m.prog[mes], ch = accord(r, min), t = prochain + (i % 2 ? m.swing * d * 2 : 0), jeu = courante === 'jeu';
+      if (i === 0) ch.forEach((n, k) => { voix('sawtooth', note(n), t, d * 16, 0.035, 0.25, 1100, -7); voix('sawtooth', note(n), t, d * 16, 0.035, 0.25, 1100, 7); });   // nappe douce (2 voix désaccordées)
+      if (jeu ? i % 2 === 0 : i % 4 === 0) voix('triangle', note(r - 24 + (i % 8 === 6 ? 7 : 0)), t, d * (jeu ? 1.8 : 3.5), 0.42, 0.005);                          // basse
+      if (i % (jeu ? 1 : 2) === 0) voix('triangle', note(ch[(i >> (jeu ? 0 : 1)) % 3] + 12 + (i >= 8 ? 12 : 0)), t, d * 1.6, 0.07, 0.003, 3500);                    // arpège qui pétille
+      const ld = m.lead[i]; if (ld !== null && (mes % 2 === 1 || jeu)) voix('square', note(r + ld), t, d * 1.9, 0.045, 0.01, 2400);                               // petite mélodie (1 mesure sur 2 dans les menus)
+      if (i % 8 === 0 || (jeu && i % 8 === 6)) { voix('sine', 140, t, 0.16, 0.5, 0.002); }                                           // grosse caisse (douce)
+      if (i % 8 === 4) souffle(t, 0.13, jeu ? 0.28 : 0.16, 2400, 1400, 'bandpass', 0.9, busMusIn);                                                                   // caisse claire
+      if (jeu ? i % 2 === 1 : i % 4 === 2) souffle(t, 0.035, jeu ? 0.1 : 0.06, 9000, 7000, 'highpass', 0.7, busMusIn);                                              // charleston
       prochain += d; pas++;
     }
   }
+  function urlMusique(nom) { const a = (typeof CONFIG !== 'undefined' && CONFIG.app) || {}; return (nom === 'jeu' ? a.musiqueJeu : a.musiqueMenu) || ''; }
   function musique(nom) {
-    voulue = nom; if (!ac || ac.state !== 'running') return; if (nom === courante) return;
-    courante = nom; pas = 0; prochain = ac.currentTime + 0.1; clearInterval(minuteur); if (nom) minuteur = setInterval(planifier, 90);
+    voulue = nom; if (!ac || ac.state !== 'running') return; const url = nom ? urlMusique(nom) : '';
+    if (nom === courante && (!fichier || fichier.dataset.url === url)) return;
+    courante = nom; clearInterval(minuteur); minuteur = null; if (fichier) { fichier.pause(); fichier = null; }
+    if (!nom) return;
+    if (url) { fichier = new Audio(url); fichier.dataset.url = url; fichier.loop = true; fichier.volume = Math.min(1, (pref.musique ? 0.6 : 0) * volApp('volumeMusique')); fichier.play().catch(() => {}); return; } // 🎧 ta musique
+    pas = 0; prochain = ac.currentTime + 0.1; minuteur = setInterval(planifier, 100);
   }
   function regler(p) { Object.assign(pref, p); try { localStorage.setItem('bastorySon', JSON.stringify(pref)); } catch (e) {} appliquer(); }
   return { jouer, musique, regler, pref, appliquer, etat: () => ({ contexte: ac ? ac.state : 'aucun', musique: courante, sons: busSons ? busSons.gain.value : 0, volMusique: busMus ? busMus.gain.value : 0 }) };
