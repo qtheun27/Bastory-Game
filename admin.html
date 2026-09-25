@@ -56,6 +56,11 @@
   #loginErr { color:#ff9f95; font-size:13px; min-height:16px; text-align:center; }
 
   .carte h3 { gap: 10px; overflow-wrap: anywhere; }
+  details.carte > summary { list-style:none; cursor:pointer; } details.carte > summary::-webkit-details-marker { display:none; }
+  details.carte > summary h3::before { content:'▸ '; } details.carte[open] > summary h3::before { content:'▾ '; }
+  .titre-form { grid-column:1/-1; margin:14px 0 4px; padding-bottom:4px; border-bottom:2px solid rgba(255,255,255,.25); font-weight:700; color:#ffe14a; }
+  .en-clair { display:block; font-weight:500; font-size:12px; color:#9ff0c8; margin-top:2px; }
+  .barre-liste { margin-bottom:12px; } .recherche { flex:1; min-width:180px; padding:10px 14px; }
   .form label { grid-template-columns: minmax(110px, 42%) minmax(0, 1fr) auto; overflow-wrap: anywhere; }
   input, select { min-width: 0; border-radius: 14px; text-overflow: ellipsis; }
   .boite3d { display: flex; flex-direction: column; align-items: center; margin: -4px 0 8px; padding: 10px; border-radius: 22px;
@@ -116,6 +121,25 @@ const modifie = () => $('#modif').textContent = '● modifications non enregistr
 const optArmes = () => Object.entries(cfg.armes).map(([k, a]) => [k, a.nom]);
 const optBoss = () => [['aleatoire', '🎲 Aléatoire'], ...Object.entries(cfg.bosses).map(([k, b]) => [k, b.nom])];
 var CH_APP = [['nom','Nom de l\'appli','text'],['vitesseJeu','🏃 Vitesse générale des persos (1 = valeurs des fiches, 0.85 = par défaut)','number'],['introVitesse','⏱ Durée de l\'intro de match (1 = normale, 0.6 = plus courte)','number'],['nomCourt','Nom court (écran d\'accueil)','text'],['icone','Icône de l\'appli (carrée)','icone'],['couleur','Couleur de fond de l\'icône','color']];
+// 💡 traductions en clair affichées sous les nombres
+const KVa = () => Math.max(0.3, +(cfg.app || {}).vitesseJeu || 0.85), n1 = v => (Math.round(v * 10) / 10).toLocaleString('fr');
+const AIDE = {
+  vitPerso: v => { const c = v * KVa() * 60 / 64; return `≈ ${n1(c)} cases/s — ${c < 2.2 ? '🐢 lent' : c < 2.6 ? '🚶 normal' : c < 2.9 ? '🏃 rapide' : c < 3.4 ? '⚡ très rapide' : '⚠️ trop rapide, difficile à contrôler'}`; },
+  vitArme: v => `≈ ${n1(v * 60 / 64)} cases/s — ${v < 8 ? 'lent, facile à esquiver' : v < 14 ? 'normal' : 'très rapide'}`,
+  images: v => `= ${n1(v / 60)} s`,
+  cadence: v => `= ${n1(v / 60)} s entre 2 tirs (${n1(60 / Math.max(1, v))} tirs/s)`,
+  portee: v => `≈ ${n1(v / 64)} cases`,
+  reac: v => v >= 0.8 ? 'très nerveux (arcade)' : v >= 0.45 ? 'réactif (style arcade)' : v >= 0.25 ? 'souple' : 'glissant, lourd',
+  multi: v => v == 1 ? 'normal' : v > 1 ? `+${Math.round((v - 1) * 100)} %` : `−${Math.round((1 - v) * 100)} %`
+};
+var CH_JEU = [['vitesseJeu','🏃 Vitesse générale de tous les persos (multiplie chaque fiche)','number',null,AIDE.multi],
+  ['reactivite','🎮 Réactivité des déplacements (0.1 = glissant … 1 = instantané)','number',null,AIDE.reac],
+  ['rotation','🔄 Vitesse à laquelle le perso se tourne (0.1 à 1)','number'],
+  ['tamponTir','🎯 Tir mémorisé : un clic trop tôt part quand même si la recharge finit dans (images, 0 = off)','number',null,AIDE.images],
+  ['maintienVisee','👀 Le perso reste tourné vers son tir pendant (images)','number',null,AIDE.images],
+  ['reculTir','💥 Recul du perso à chaque tir (0 = aucun)','number'],
+  ['tremblementTir','📳 Tremblement de l\'écran au tir (0 = aucun)','number'],
+  ['eclatCanon','✨ Éclat lumineux au bout du canon','check']];
 const optMaps = () => [[-1, 'Au choix du joueur'], ...cfg.maps.map((m, i) => [i, m.nom])];
 const CH = {
   mode:  [['nom','Nom','text'],['description','Description','text'],['actif','Visible dans le jeu','check'],
@@ -135,8 +159,8 @@ const CH = {
           ['boss','Boss activés','check'],['nbBoss','Nombre de boss (max 10)','number'],
           ['typesBoss','Types de boss (aucun coché = au hasard)','multi',() => Object.entries(cfg.bosses).map(([k, b]) => [k, b.nom])],['map','Map','select',optMaps]],
   perso: [['nom','Nom','text'],['capacite','Capacité spéciale (vide = celle de l\'élément)','select',[['','Celle de l\'élément'],['sol','Aucune'],['brise','🌍 Brise les blocs'],['vol','💨 Vole'],['saut','💨 Saute par-dessus les murs'],['nage','💧 Marche sur l\'eau'],['feu','🔥 Traînée de feu'],['lave','🌋 Lave (eau + feu)'],['orage','⛈️ Orage (vol + anti-recul)']]],['action','Action du bouton (vide = celle de l\'élément)','select',[['','Celle de l\'élément'],['terre','🌍 Charge'],['air','💨 Saut'],['eau','💧 Bulle'],['feu','🔥 Brasier'],['tourbillon','🌪️ Tornade qui repousse'],['gel','❄️ Souffle glacé']]],['description','📝 Description (perso + attaques, visible dans l\'appli)','text'],['deBase','🔓 Perso de base (débloqué d\'office)','check'],['coutJetons','🎟️ Coût pour le débloquer (jetons perso)','number'],['couleur','Couleur','color'],['animAccueil','🎬 Animation dans les menus (accueil, persos)','anims'],['pvMax','Points de vie','number'],
-          ['taille','Taille (rayon, px)','number'],['vitesse','Vitesse (px par image, 2 à 8)','number'],['arme','Arme','select',optArmes],['degats','Dégâts','number'],['portee','Portée (px)','number'],['delaiTir','Cadence : délai entre 2 tirs (60 = 1 s)','number'],
-          ['munitions','Nombre de munitions','number'],['recharge','Recharge d\'1 munition (60 = 1 s)','number'],
+          ['—','⚔️ Combat et déplacement','titre'],['taille','Taille (rayon, px)','number'],['vitesse','🏃 Vitesse de déplacement (conseillé : 2.8 à 3.9)','number',null,v => AIDE.vitPerso(v)],['arme','Arme','select',optArmes],['degats','Dégâts','number'],['portee','Portée (px)','number',null,AIDE.portee],['delaiTir','Cadence : délai entre 2 tirs (60 = 1 s)','number',null,AIDE.cadence],
+          ['munitions','Nombre de munitions','number'],['recharge','Recharge d\'1 munition (60 = 1 s)','number',null,AIDE.images],['—','🌟 Éléments et apparence','titre'],
           ['element','Élément','select',() => [['', 'Aucun'], ...Object.entries(cfg.elements || {}).map(([k, e]) => [k, e.icone + ' ' + e.nom])]],
           ['element2','2e élément (perso fusion, plus fort)','select',() => [['', 'Aucun'], ...Object.entries(cfg.elements || {}).map(([k, e]) => [k, e.icone + ' ' + e.nom])]],['element3','3e élément (plus tard)','select',() => [['', 'Aucun'], ...Object.entries(cfg.elements || {}).map(([k, e]) => [k, e.icone + ' ' + e.nom])]],['element4','4e élément (plus tard)','select',() => [['', 'Aucun'], ...Object.entries(cfg.elements || {}).map(([k, e]) => [k, e.icone + ' ' + e.nom])]],
           ['modele','Modèle 3D (.glb, ex : modeles/rokh.glb)','text'],['modeleEchelle','Taille du perso (1 = normal, 1.4 = grand)','number'],['modeleRotation','Modèle : rotation (degrés)','number'],
@@ -145,7 +169,7 @@ const CH = {
           ['type','Trajectoire','select',[['lob','Lancer en cloche (passe les murs)'],['retour','Aller-retour'],['droit','Tir droit'],['terrain','🌋 Terrain (fait sortir des cases du sol)']]],
           ['effet','Animation d\'impact','select',[['explosion','💥 Explosion'],['entaille','⚔️ Entaille'],['etincelle','✨ Étincelles'],['impact','🔨 Onde de choc'],
             ['foudre','⚡ Foudre'],['glace','❄️ Glace'],['poison','☠️ Poison'],['fumee','🌫️ Fumée'],['feu','🔥 Feu'],['etoiles','⭐ Étoiles'],['vortex','🌀 Tourbillon'],['eclaboussure','💦 Éclaboussure']]],
-          ['vitesse','Vitesse (px par image, 2 à 8)','number'],['taille','Taille (rayon, px)','number'],['rayon','Rayon explosion','number'],['couleur','Couleur effet','color'],
+          ['vitesse','Vitesse du projectile (conseillé : 9 à 16)','number',null,AIDE.vitArme],['taille','Taille (rayon, px)','number'],['rayon','Rayon explosion','number'],['couleur','Couleur effet','color'],
           ['retard','Dégâts à retardement (s)','number'],['poisonDuree','Poison : dégâts étalés sur (s)','number'],
           ['nuage','Nuage / fumée au sol : durée (s)','number'],['rayonNuage','Rayon du nuage','number'],['degatsNuage','Dégâts du nuage par seconde','number'],
           ['rebonds','Tir droit : ricochets sur les murs','number'],['bonusRebond','Puissance × à chaque ricochet','number'],
@@ -154,7 +178,7 @@ const CH = {
           ['nbCases','🌋 Nombre / taille (cases)','number'],
           ['typeCase','🌋 Case créée','select',[['#','🟫 Mur (bloquant)'],['B','🌳 Buisson (cache)'],['W','🟦 Eau (bloque la marche)'],['S','🟨 Sable (ralentit)'],['.','🟩 Herbe (efface les obstacles)']]],
           ['dureeCase','🌋 Durée (s, 0 = permanent)','number'],['delaiCase','🌋 Délai entre cases (60 = 1 s)','number']],
-  boss:  [['nom','Nom','text'],['image','Image jeu (vue du dessus)','image'],['imageCarte','Image carte (fin de partie)','image'],['pvMax','Points de vie','number'],['vitesse','Vitesse','number'],['degats','Dégâts du coup','number'],
+  boss:  [['nom','Nom','text'],['image','Image jeu (vue du dessus)','image'],['imageCarte','Image carte (fin de partie)','image'],['pvMax','Points de vie','number'],['vitesse','Vitesse','number',null,v => AIDE.vitPerso(v)],['degats','Dégâts du coup','number'],
           ['delaiAttaque','Recharge (60 = 1 s)','number'],['rayonAttaque','Rayon du coup','number'],['taille','Taille (rayon)','number'],
           ['arme','Arme à distance (effet sombre)','select',() => [['', 'Aucune (massue seulement)'], ...Object.entries(cfg.armes).map(([k, a]) => [k, a.nom])]],
           ['porteeTir','Portée de tir','number'],['degatsTir','Dégâts du tir','number'],['cadenceTir','Délai entre 2 tirs (60 = 1 s)','number'],
@@ -170,7 +194,8 @@ const CH = {
 };
 function formulaire(obj, champs) {
   const f = el('div', { className: 'form' });
-  for (const [k, lab, type, opts] of champs) {
+  for (const [k, lab, type, opts, aide] of champs) {
+    if (type === 'titre') { f.append(el('div', { className: 'titre-form', textContent: lab })); continue; }
     if (type === 'anims') { // 🎬 liste des animations réelles du modèle 3D
       const sel = el('select', { onchange: () => { obj[k] = sel.value; modifie(); } }), base = [['', '✨ Auto (repos + attaque de temps en temps)'], ['fixe', '🧍 Fixe (sans animation)']];
       const remplir = l => { sel.innerHTML = ''; [...base, ...l.map(n => [n, '🎬 ' + n])].forEach(([v, t]) => sel.add(new Option(t, v, false, v === (obj[k] || '')))); };
@@ -209,11 +234,14 @@ function formulaire(obj, champs) {
     else inp = el('input', { type: type === 'image' || type === 'icone' ? 'text' : type === 'check' ? 'checkbox' : type, step: 'any' });
     if (type === 'image' || type === 'icone') { prev = el('img', { className: 'apercu' }); afficherImage(prev, obj[k]); prev.onerror = () => prev.style.opacity = .2; prev.onload = () => prev.style.opacity = 1; }
     if (type === 'check') inp.checked = !!obj[k]; else inp.value = obj[k] ?? '';
+    const bulle = aide ? el('small', { className: 'en-clair' }) : '', clair = () => { if (bulle) bulle.textContent = inp.value === '' ? '' : aide(+inp.value, obj); };
+    if (opts && typeof opts === 'string') inp.title = opts;
     inp.oninput = inp.onchange = () => {
       obj[k] = type === 'number' ? (parseFloat(inp.value) || 0) : type === 'check' ? inp.checked : typeof obj[k] === 'number' ? +inp.value : inp.value;
-      if (prev) afficherImage(prev, inp.value); modifie();
+      if (prev) afficherImage(prev, inp.value); clair(); modifie();
     };
-    f.append(el('label', {}, el('span', { textContent: lab }), inp,
+    clair();
+    f.append(el('label', {}, el('span', { textContent: lab }, bulle), inp,
       type === 'icone' ? el('span', { className: 'img-outils' }, prev, boutonIcone(src => { inp.value = src; inp.oninput(); }, obj)) :
       type === 'image' ? el('span', { className: 'img-outils' }, prev, boutonUpload(src => { inp.value = src; inp.oninput(); }, () => inp.value)) : ''));
   }
@@ -301,10 +329,10 @@ function apercu3D(p, form) {
   setTimeout(maj, 300);
   return el('div', {}, boite, form);
 }
-function carte(titre, contenu, onSuppr) {
-  const h = el('h3', { textContent: titre });
-  if (onSuppr) h.append(el('button', { className: 'danger', textContent: '🗑', onclick: onSuppr }));
-  return el('div', { className: 'carte' }, h, contenu);
+function carte(titre, contenu, onSuppr, ouvert) { // carte repliable : clic sur le titre pour ouvrir / fermer
+  const h = el('summary', {}, el('h3', { textContent: titre }));
+  if (onSuppr) h.firstChild.append(el('button', { className: 'danger', textContent: '🗑', title: 'Supprimer', onclick: e => { e.preventDefault(); e.stopPropagation(); onSuppr(); } }));
+  return el('details', { className: 'carte', open: !!ouvert }, h, contenu);
 }
 
 // ---------- Vues ----------
@@ -327,7 +355,7 @@ const VUES = {
           ...nouveaux.map(f => el('div', { className: 'outils' }, el('span', { textContent: f.name }), el('button', { textContent: '➕ Ajouter', onclick: () => {
             const m = f.name.replace(/\.glb$/i, '').match(/^(terre|air|eau|feu)[-_ ](.+)$/i);
             cfg.persos.push({ deBase: false, coutJetons: 3, nom: (m ? m[2] : f.name.replace(/\.glb$/i, '')).replace(/[-_]+/g, ' ').toUpperCase().slice(0, 16), element: m ? m[1].toLowerCase() : '', modele: 'modeles/' + f.name, modeleEchelle: 1, modeleRotation: 0,
-              couleur: '#8b5cf6', image: '', imageCarte: '', arme: Object.keys(cfg.armes)[0], pvMax: 5500, vitesse: 5, degats: 1400, portee: 400, delaiTir: 28, munitions: 3, recharge: 55 });
+              couleur: '#8b5cf6', image: '', imageCarte: '', arme: Object.keys(cfg.armes)[0], pvMax: 5500, vitesse: 3.2, degats: 1400, portee: 400, delaiTir: 28, munitions: 3, recharge: 55 });
             modifie(); afficher(); } })))));
       } catch (e) {}
     })();
@@ -341,7 +369,7 @@ const VUES = {
       if (cfg.persos.length > 1 && confirm('Supprimer ' + p.nom + ' ?')) { cfg.persos.splice(i, 1); modifie(); afficher(); }
     })));
     z.append(el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouveau perso', onclick: () => {
-      cfg.persos.push({ deBase: false, coutJetons: 3, taille: 26, nom: 'NOUVEAU', image: '', imageCarte: '', munitions: 3, recharge: 60, element: 'terre', modele: '', modeleEchelle: 1, modeleRotation: 0, couleur: '#e67e22', pvMax: 5000, vitesse: 5, arme: Object.keys(cfg.armes)[0], degats: 1000, portee: 350, delaiTir: 30 });
+      cfg.persos.push({ deBase: false, coutJetons: 3, taille: 26, nom: 'NOUVEAU', image: '', imageCarte: '', munitions: 3, recharge: 60, element: 'terre', modele: '', modeleEchelle: 1, modeleRotation: 0, couleur: '#e67e22', pvMax: 5000, vitesse: 3.2, arme: Object.keys(cfg.armes)[0], degats: 1000, portee: 350, delaiTir: 30 });
       modifie(); afficher();
     } })), g);
   },
@@ -421,7 +449,8 @@ const VUES = {
     }).catch(e => box.append(el('p', { className: 'aide', textContent: 'Lecture impossible : ' + e.message })));
   },
   app(z) {
-    z.append(el('div', { className: 'grille-cartes' }, carte('📱 Appli installable', formulaire(cfg.app, CH_APP))),
+    z.append(el('div', { className: 'grille-cartes' }, carte('🎮 Sensations de jeu', formulaire(cfg.app, CH_JEU), null, true), carte('📱 Appli installable', formulaire(cfg.app, CH_APP.filter(c => c[0] !== 'vitesseJeu')), null, true)),
+      el('p', { className: 'aide', textContent: '🎮 Ces réglages s\'appliquent en direct dans le jeu dès que tu cliques sur « Publier » (même pendant une partie). Survole un nombre pour voir sa traduction en clair.' }),
       el('p', { className: 'aide', textContent: 'Nom et icône utilisés quand on ajoute le jeu à l\'écran d\'accueil. Après « Publier », supprime puis réinstalle l\'appli sur le téléphone pour voir la nouvelle icône.' }));
   },
   boss(z) {
@@ -498,6 +527,12 @@ function afficher() {
     $('#onglets').append(el('button', { textContent: t, className: k === onglet ? 'on' : '', onclick: () => { onglet = k; afficher(); } }));
   $('#zone').innerHTML = '';
   VUES[onglet]($('#zone'));
+  const g = $('#zone .grille-cartes'), cartes = g ? [...g.children].filter(c => c.matches('details.carte')) : [];
+  if (cartes.length > 2) { // 🔎 recherche + ouvrir / fermer tout
+    const q = el('input', { type: 'search', placeholder: '🔎 Rechercher par nom…', className: 'recherche', oninput: () => cartes.forEach(c => c.style.display = c.querySelector('h3').textContent.toLowerCase().includes(q.value.toLowerCase()) ? '' : 'none') });
+    g.before(el('div', { className: 'outils barre-liste' }, q, el('button', { className: 'sec', textContent: '📂 Tout ouvrir', onclick: () => cartes.forEach(c => c.open = true) }), el('button', { className: 'sec', textContent: '📁 Tout fermer', onclick: () => cartes.forEach(c => c.open = false) })));
+  } else cartes.forEach(c => c.open = true);
+  $('#zone').querySelectorAll('details.carte').forEach(c => { if (!cartes.includes(c) || cartes.length <= 2) c.open = true; }); // cartes seules : ouvertes
 }
 
 // ---------- Firebase ----------

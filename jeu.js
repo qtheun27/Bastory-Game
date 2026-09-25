@@ -13,6 +13,20 @@ try { rtdb = firebase.database(); } catch (e) { console.warn('Realtime Database 
 let db = null;
 try { db = firebase.firestore(); } catch (e) { console.warn('Firestore indisponible → pas de points', e); }
 let user = null;
+function configEnDirect() { // 🔄 les réglages publiés dans l'admin s'appliquent tout de suite, sans recharger la page
+  if (!db) return;
+  db.collection('bastory').doc('config').onSnapshot(d => {
+    try {
+      const v = d.data(); if (!v || !v.json) return;
+      const n = migrerConfig(JSON.parse(v.json)), fus = (a, b) => { if (a && b) for (const k in b) if (a[k] && b[k] && typeof a[k] === 'object' && !Array.isArray(a[k])) Object.assign(a[k], b[k]); else if (!a[k]) a[k] = b[k]; };
+      Object.assign(CONFIG.app, n.app); ['progression'].forEach(k => n[k] && Object.assign(CONFIG[k] || (CONFIG[k] = {}), n[k]));
+      ['armes', 'bosses', 'elements'].forEach(k => fus(CONFIG[k], n[k]));                         // mis à jour sur place : les armes en cours de partie changent aussi
+      ['persos', 'modes', 'maps', 'pouvoirs', 'recompenses'].forEach(k => { const A = CONFIG[k], B = n[k]; if (!Array.isArray(A) || !Array.isArray(B)) return;
+        if (A.length === B.length) A.forEach((x, i) => Object.assign(x, B[i])); else A.splice(0, A.length, ...B); }); // stats des persos : appliquées à la prochaine partie
+    } catch (e) { console.warn('Config en direct illisible', e); }
+  }, () => {});
+}
+configEnDirect();
 
 // ---------- 2. IMAGES ----------
 const cacheImg = {}, cacheBlanc = new Map();
@@ -562,16 +576,15 @@ function creerProjectile(j, angle, force, x, y, deg) {
 function tirer(angle, force = 1) {
   if (moi.anim && moi.anim.n === 'releve' && temps - moi.anim.t < DUREE_ANIM.releve) return; // pas de tir en se relevant
   if (!moi || moi.pv <= 0 || resultat) return;
-  if (moi.recharge > 0) { moi.tirAttente = { a: angle, f: force, t: temps }; return; } // 🎯 tir mémorisé : part dès la fin de la recharge
+  if (moi.recharge > 0) { if (reglage('tamponTir', 15) > 0) moi.tirAttente = { a: angle, f: force, t: temps }; return; } // 🎯 tir mémorisé : part dès la fin de la recharge
   moi.tirAttente = null;
   const illimite = pouvoirActif(moi, 'munitions');
   if (moi.mun < 1 && !illimite) return;               // plus de munitions
   if (!illimite) moi.mun -= 1;
-  moi.recharge = moi.perso.delaiTir; moi.angle = angle; moi.viseT = temps + 18; // cadence de tir • le perso garde la direction du tir un instant
+  moi.recharge = moi.perso.delaiTir; moi.angle = angle; moi.viseT = temps + reglage('maintienVisee', 18); // cadence de tir • le perso garde la direction du tir un instant
   const cx = moi.x + Math.cos(angle) * moi.r, cy = moi.y + Math.sin(angle) * moi.r, cf = (moi.arme || {}).couleur || '#fff';
-  ondes.push({ x: cx, y: cy, r: 4, max: 26, c: cf, vie: 1, ep: 5 }); // 💥 éclair au canon
-  for (let i = 0; i < 6; i++) particule(cx, cy, i % 2 ? cf : '#fff', 5, 3, 1, 'trait', { len: 10 });
-  moi.kx -= Math.cos(angle) * 1.6; moi.ky -= Math.sin(angle) * 1.6; secousse = Math.max(secousse, 2); // recul
+  if ((CONFIG.app || {}).eclatCanon !== false) { ondes.push({ x: cx, y: cy, r: 4, max: 26, c: cf, vie: 1, ep: 5 }); for (let i = 0; i < 6; i++) particule(cx, cy, i % 2 ? cf : '#fff', 5, 3, 1, 'trait', { len: 10 }); } // 💥 éclat au canon
+  const rc = reglage('reculTir', 1.6); moi.kx -= Math.cos(angle) * rc; moi.ky -= Math.sin(angle) * rc; secousse = Math.max(secousse, reglage('tremblementTir', 2)); // recul
   const deg = Math.round(moi.perso.degats * bonus(moi, 'degats'));
   creerProjectile(moi, angle, force, moi.x, moi.y, deg);
   envoyer({ t: 'tir', a: +angle.toFixed(3), f: +force.toFixed(2), x: Math.round(moi.x), y: Math.round(moi.y), d: deg });
@@ -865,13 +878,13 @@ function maj() {
   const vit = moi.perso.vitesse * KV() * bonus(moi, 'vitesse') * (moi.dep === 'nage' && surEau ? +elm.valeur || 1.3 : 1) * (moi.dep !== 'vol' && tuileA(moi.x, moi.y) === 'S' ? 0.8 : 1) * (moi.ralentiT > temps ? moi.ralenti || 0.6 : 1); // 🏖️ le sable ralentit
   if (moi.dep === 'nage' && surEau && moi.pv > 0) moi.pv = Math.min(moi.pvMax, moi.pv + moi.pvMax * (+elm.soin || 0) / 100 / 60); // 💧 se soigne dans l'eau
   if (moi.dep === 'brise' && (mx || my)) { const tx = Math.floor((moi.x + mx * moi.r * 1.3) / TUILE), ty = Math.floor((moi.y + my * moi.r * 1.3) / TUILE); if (bloqueTir(tuile(tx, ty))) abimer(tx, ty, +elm.valeur || 60); } // 🌍 brise les blocs en fonçant dedans
-  moi.vx = (moi.vx || 0) + (mx * vit - (moi.vx || 0)) * 0.55; moi.vy = (moi.vy || 0) + (my * vit - (moi.vy || 0)) * 0.55; // départ / arrêt rapides (réactif)
+  moi.vx = (moi.vx || 0) + (mx * vit - (moi.vx || 0)) * REAC(); moi.vy = (moi.vy || 0) + (my * vit - (moi.vy || 0)) * REAC(); // départ / arrêt rapides (réactif)
   if (!dash(moi)) deplacer(moi, moi.vx + moi.kx, moi.vy + moi.ky); else deplacer(moi, moi.kx, moi.ky);
   moi.kx *= 0.8; moi.ky *= 0.8;
-  if (mx || my) { moi.marche += vit; if (!joyD.actif && !(moi.viseT > temps)) tourner(moi, Math.atan2(my, mx), 0.4); }
+  if (mx || my) { moi.marche += vit; if (!joyD.actif && !(moi.viseT > temps)) tourner(moi, Math.atan2(my, mx), reglage('rotation', 0.4)); }
   if (joyD.actif) { const v = vec(joyD); if (v.d > 15) tourner(moi, v.a, 0.4); }
   if (moi.recharge > 0) moi.recharge--;
-  if (moi.tirAttente && moi.recharge <= 0) { const q = moi.tirAttente; moi.tirAttente = null; if (temps - q.t < 15) tirer(q.a, q.f); } // tir mémorisé (clic un peu trop tôt)
+  if (moi.tirAttente && moi.recharge <= 0) { const q = moi.tirAttente; moi.tirAttente = null; if (temps - q.t < reglage('tamponTir', 15)) tirer(q.a, q.f); } // tir mémorisé (clic un peu trop tôt)
   if (moi.flash > 0) moi.flash--;
   if (moi.recharge <= 0) moi.mun = Math.min(+moi.perso.munitions || 3, moi.mun + 1 / (+moi.perso.recharge || 60)); // recharge des munitions
   moi.cache = tuileA(moi.x, moi.y) === 'B' || !!pouvoirActif(moi, 'invisible') || nuages.some(n => !n.feu && Math.hypot(n.x - moi.x, n.y - moi.y) < n.r);
@@ -1199,6 +1212,8 @@ function chocManga() { // image "choc" : flash + lignes de concentration
 
 // ---------- 🎬 INTRO DE MATCH : chaque combattant en grand, puis VS, puis 3-2-1 ----------
 let intro = null;
+const reglage = (k, d) => { const v = (CONFIG.app || {})[k]; return v === undefined || v === '' || isNaN(+v) ? d : +v; }; // ⚙️ réglage de l'onglet Appli (admin), lu en direct
+const REAC = () => Math.max(0.05, Math.min(1, reglage('reactivite', 0.55)));
 const KV = () => Math.max(0.3, +((CONFIG.app || {}).vitesseJeu) || 0.85); // vitesse générale des persos (réglage Appli)
 const KI = () => Math.max(0.4, +((CONFIG.app || {}).introVitesse) || 1); // durée de l'intro (réglage Appli)
 const SHOW = 80, VS = 95, CD = 136, TIC = 32; // durées (images à 60/s)
