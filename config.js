@@ -1143,7 +1143,7 @@ const CONFIG_PAR_DEFAUT = {
 // 🗡️ armes toutes prêtes des persos à débloquer (chacune son effet)
 const ARMES_NEUVES = {
   pioche:      { nom: 'Pioche à cristaux', type: 'droit', effet: 'etincelle', vitesse: 9, taille: 26, rayon: 70, couleur: '#ffd23f', forme: 'rocher', onde: 90, recul: 8, rebonds: 0, chaine: 0, nuage: 0, retard: 0 },
-  eventail:    { nom: 'Éventail de vent', type: 'droit', effet: 'vortex', vitesse: 12, taille: 34, rayon: 90, couleur: '#b6f0ff', forme: 'onde', recul: 30, rebonds: 0, chaine: 0, nuage: 0, retard: 0 },
+  eventail:    { nom: 'Éventail de vent', type: 'droit', effet: 'vortex', vitesse: 12, taille: 34, rayon: 90, couleur: '#b6f0ff', forme: 'lame', recul: 30, rebonds: 0, chaine: 0, nuage: 0, retard: 0 },
   canonbulles: { nom: 'Canon à bulles', type: 'droit', effet: 'eclaboussure', vitesse: 8, taille: 24, rayon: 60, couleur: '#5ff0ff', forme: 'bulle', ralenti: 0.55, rebonds: 1, recul: 6, chaine: 0, nuage: 0 },
   marteauforge:{ nom: 'Marteau-enclume', type: 'lob', effet: 'impact', vitesse: 14, taille: 30, rayon: 95, couleur: '#ff8a1f', forme: 'feu', nuage: 3, rayonNuage: 70, degatsNuage: 260, onde: 110, recul: 14 },
   magma:       { nom: 'Coulée de magma', type: 'droit', effet: 'feu', vitesse: 7, taille: 30, rayon: 80, couleur: '#ff4a00', forme: 'feu', nuage: 4, rayonNuage: 80, degatsNuage: 320, onde: 100, recul: 10 },
@@ -1222,6 +1222,10 @@ function migrerConfig(c) {
     if (c.armes.rocher && c.armes.rocher.forme === 'onde') Object.assign(c.armes.rocher, { type: 'frappe', distanceFrappe: 100, delaiFrappe: 16, rayon: 85, eclats: 5, degatsEclats: 45, angleEclats: 75, porteeEclats: 180, vitesseEclats: 9, ralentiElan: 0.35 });
     c.modes.forEach(m => { if (m.nom === 'Guerre des cristaux') m.nom = 'Assaut des tours'; if (m.description === 'Détruis le cristal ennemi') m.description = 'Détruis la tour ennemie (elle se défend en tirant !)'; if (m.description) m.description = m.description.replace(/^Cristaux puis/, 'Tours puis'); }); // 🏰 le cristal devient une tour
     c.version = Math.max(c.version || 0, 16);
+  }
+  if ((c.version || 0) < 17) { // v17 : l'éventail de Nimbus devient une lame de vent tournoyante (la forme « onde » est réservée au marteau)
+    if (c.armes.eventail && c.armes.eventail.forme === 'onde') c.armes.eventail.forme = 'lame';
+    c.version = 17;
   }
   c.persos.forEach(p => { if (typeof p.base === 'boolean') { p.deBase = p.base; delete p.base; } }); // réparation : ancien nom du champ
   c.persos.forEach(p => { if (p.deBase === false && !p.armeAuto) armePour(c, p); }); // nouveaux persos : arme créée automatiquement

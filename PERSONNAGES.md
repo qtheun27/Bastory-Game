@@ -7,7 +7,7 @@ Fichier de référence à compléter à chaque nouveau perso ou boss.
 
 1. **Texte → Image** : colle le « Préfixe commun » puis le prompt du perso.
 2. **Image → 3D** : style **Cartoon**, **sans PBR**.
-3. **Rig**, puis **Animate** : Idle, Walk, Attack (adaptée à l'arme), Hit Reaction, Dead, Stand Up et Jump.
+3. **Rig**, puis **Animate** : Idle, Walk, Attack (adaptée à l'arme), Hit Reaction, Dead, Stand Up, Jump et **une danse de victoire** (Dance / Victory / Cheer). Dans l'admin, choisis-la dans « 🕺 Animation de victoire ». Sans danse, le perso saute sur place à la fin du match.
 4. **Export .glb** et nommage :
    - perso : `element-nom.glb` (par exemple `terre-bouldo.glb`) ;
    - boss : `boss-nom.glb`.
@@ -24,7 +24,7 @@ Fichier de référence à compléter à chaque nouveau perso ou boss.
 
 ### 🌍 ROKH — Terre
 - **Description** : ours-golem en armure de roche couverte de mousse, avec des runes gravées. Lent, mais rien ne l'arrête.
-- **Arme** : marteau de pierre. Il frappe le sol, qui se fend et libère une onde de choc.
+- **Arme** : marteau de pierre, en deux temps. Il prend son élan (ralenti), frappe le sol juste devant lui (gros dégâts), puis des éclats de roche partent en éventail plus loin (dégâts plus faibles). La visée ne choisit que la direction.
 - **Spécificité** : sa charge brise les blocs. Il ne peut pas aller dans l'eau.
 - **Action** : Charge • **Super** : Séisme titan.
 - **Prompt** : un petit ours golem fait de pierres taillées, mousse verte entre les roches, runes gravées sur les épaules et les genoux, cristaux jaunes dans le dos, tenant un gros marteau de pierre sanglé de cuir, couleurs brun, beige et vert mousse.
@@ -62,7 +62,7 @@ Fichier de référence à compléter à chaque nouveau perso ou boss.
 - **Prompt** : un petit tatou mineur, carapace de roche avec des cristaux ambre lumineux, casque de mineur avec une lampe, **tenant une grosse pioche dont la pointe est un cristal ambre**, couleurs brun, sable et ambre.
 
 ### 💨 NIMBUS — Air
-- **Arme** : *Éventail de vent* — souffle une bourrasque large qui repousse fort les ennemis.
+- **Arme** : *Éventail de vent* — lance une lame de vent tournoyante, large, qui repousse fort les ennemis.
 - **Capacité** : vole au-dessus des blocs et de l'eau. • **Action** : 🌪️ Tornade qui repousse tout autour.
 - **Prompt** : un renard duveteux fait de nuages, longue écharpe de vent en spirale, queue de brume, **tenant un grand éventail pliant blanc et argent d'où sortent des spirales de vent**, couleurs blanc, bleu ciel et argent.
 
