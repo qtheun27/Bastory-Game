@@ -308,8 +308,27 @@ function creerBoss(id, x, y, i) {
            uid: 'boss' + i, eq: -1, tir: 60, arme: CONFIG.armes[d.arme] || null, perso: { portee: +d.porteeTir || 400, degats: +d.degatsTir || Math.round(d.degats / 2) } };
 }
 // liste = joueurs de la partie [{uid, nom, p}] (le 1er est l'hôte) ; null = solo
+// ---------- 🌦️ MÉTÉO : tirée au sort à chaque partie (la même pour tous les joueurs) ----------
+let meteo = null;
+function choisirMeteo(liste, mapIdx) {
+  const L = (CONFIG.meteos || []).filter(m => m.actif !== false); if (!mode.meteo || !L.length) return null;
+  const tot = L.reduce((t, m) => t + (+m.poids || 0), 0); let x = (hacher((liste || []).map(j => j.uid).join() + mapIdx + (salle && salle.ref ? salle.ref.key : Date.now())) % 10000) / 10000 * tot;
+  for (const m of L) { x -= +m.poids || 0; if (x <= 0) return m; } return L[0];
+}
+const meteoMult = k => (meteo && k && +meteo[k]) || 1;
+function dessinerMeteo() { // effets à l'écran (au-dessus du monde, sous l'interface)
+  if (!meteo || !meteo.visuel || etat !== 'JEU') return; const v = meteo.visuel; ecran(); ctx.save();
+  if (v === 'pluie') { ctx.fillStyle = 'rgba(40,70,140,.12)'; ctx.fillRect(0, 0, W, H); ctx.strokeStyle = 'rgba(200,225,255,.55)'; ctx.lineWidth = 1.5; ctx.beginPath();
+    for (let i = 0; i < 140; i++) { const x = (i * 97.3 + temps * 9) % (W + 60) - 30, y = (i * 53.7 + temps * 22 + i * i) % (H + 40) - 20; ctx.moveTo(x, y); ctx.lineTo(x - 6, y + 18); } ctx.stroke(); }
+  else if (v === 'neige') { ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = 'rgba(255,255,255,.85)';
+    for (let i = 0; i < 110; i++) { const x = (i * 71.1 + Math.sin(temps * 0.02 + i) * 30 + temps * 0.6) % W, y = (i * 37.9 + temps * (1.2 + (i % 5) * 0.3)) % H; ctx.beginPath(); ctx.arc(x, y, 1.5 + (i % 3), 0, 7); ctx.fill(); } }
+  else if (v === 'sable') { const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.25, W / 2, H / 2, Math.max(W, H) * 0.7); g.addColorStop(0, 'rgba(230,180,110,.08)'); g.addColorStop(1, 'rgba(210,150,80,.75)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(255,225,170,.4)'; ctx.lineWidth = 2; ctx.beginPath(); for (let i = 0; i < 50; i++) { const x = (i * 131 + temps * 14) % (W + 200) - 100, y = (i * 61.3) % H; ctx.moveTo(x, y); ctx.lineTo(x + 40, y + 3); } ctx.stroke(); }
+  else if (v === 'nuit') { const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.18, W / 2, H / 2, Math.max(W, H) * 0.65); g.addColorStop(0, 'rgba(10,5,40,0)'); g.addColorStop(1, 'rgba(10,5,40,.78)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
+  ctx.restore();
+}
 function demarrer(mapIdx, liste) {
-  mode = modeChoisi(); atterri = !mode.atterrissage;
+  mode = modeChoisi(); atterri = !mode.atterrissage; meteo = choisirMeteo(liste, mapIdx);
   map = chargerMap(CONFIG.maps[mapIdx] || CONFIG.maps[0]);
   liste = liste || [{ uid: user.uid, nom: nomJoueur(), p: persoIndex }];
   const c = t => (t + 0.5) * TUILE, places = [];
@@ -656,7 +675,7 @@ function tirerAuto() {
   for (const e of vus) { const d = Math.hypot(e.x - moi.x, e.y - moi.y); if (d < dm) { dm = d; c = e; } }
   if (c) tirer(Math.atan2(c.y - moi.y, c.x - moi.x), Math.min(1, dm / moi.perso.portee)); else tirer(moi.angle, 1);
 }
-const visible = j => j === moi || j.eq === moi.eq || !j.cache || Math.hypot(j.x - moi.x, j.y - moi.y) < 170;
+const visible = j => { if (j === moi || j.eq === moi.eq) return true; const d = Math.hypot(j.x - moi.x, j.y - moi.y), vm = meteo && +meteo.visibilite ? +meteo.visibilite * 620 : 0; return (!j.cache || d < 170) && (!vm || d < vm); }; // 🌪️ la tempête de sable cache les ennemis lointains
 function cibles(p) { // ce qu'un projectile peut toucher (boss + joueurs d'une autre équipe)
   const pr = entite(p.de), eq = pr ? pr.eq : -1;
   const l = bosses.filter(b => b.pv > 0 && !(pr && pr.def) && b.eq !== eq).map(b => ({ e: b, k: 'b' + b.i }));
@@ -758,6 +777,7 @@ function degats(e, de, deg, x, y, ang, a) { // applique les dégâts selon qui a
     if (rA === 'assassin' && dd < P * 0.4) deg *= 1 + RV('assassin', 'valeur', 25) / 100;
     if (rA === 'controle') { e.ralenti = Math.min(e.ralentiT > temps ? e.ralenti || 1 : 1, 1 - RV('controle', 'valeur', 25) / 100); e.ralentiT = Math.max(e.ralentiT || 0, temps + 60); } }
   if (e.perso && roleDe(e.perso) === 'tank') deg *= 1 - RV('tank', 'valeur', 15) / 100; // 🛡️ le tank encaisse
+  if (pr && pr.perso && !(a && a.combo)) deg *= meteoMult(cleElem(pr.perso)); // 🌦️ la météo renforce ou affaiblit les éléments
   deg = Math.round(deg); e.combatT = temps;
   if (pr && pr.perso && e !== pr && !(a && a.combo) && e.pv > 0) { const k = cleElem(pr.perso); if (k) { const st = e.elemT; // ⚡🔥 combos d'éléments
     if (st && st.k !== k && temps - st.t < reglage('comboDelai', 3) * 60 && temps - (e.comboT || -999) > 60) { e.elemT = null; e.comboT = temps; comboElem(e, pr, [st.k, k].sort().join('+'), deg, ang); } // 2e élément différent à temps → combo
@@ -827,7 +847,7 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     const d = Math.hypot(e.x - j.x, e.y - j.y);
     if ((!e.cache || d < 170) && d < dm) { dm = d; c = e; }
   }
-  const v = j.perso.vitesse * KV() * (0.7 + 0.15 * (j.niv || 1)) * bonus(j, 'vitesse') * (j.ralentiT > temps ? j.ralenti || 0.6 : 1) * (roleDe(j.perso) === 'assassin' ? 1 + RV('assassin', 'vitesse', 10) / 100 : 1);
+  const v = j.perso.vitesse * KV() * (0.7 + 0.15 * (j.niv || 1)) * bonus(j, 'vitesse') * meteoMult('vitesse') * (j.ralentiT > temps ? j.ralenti || 0.6 : 1) * (roleDe(j.perso) === 'assassin' ? 1 + RV('assassin', 'vitesse', 10) / 100 : 1);
   if (!j.objet && obj() === 'tresor' && (!c || dm > 260)) { // 🤖 part à la chasse au trésor
     const t = tresors.filter(t => t.pris === null).sort((a, b) => Math.hypot(a.x - j.x, a.y - j.y) - Math.hypot(b.x - j.x, b.y - j.y))[0];
     if (t) { allerVers(j, t.x, t.y, v); return; }
@@ -1053,7 +1073,7 @@ function maj() {
   if (moi.pv <= 0) mx = my = 0;
   const elm = elemDe(moi.perso) || {}, surEau = tuileA(moi.x, moi.y) === 'W';
   if (fige) { mx = 0; my = 0; }
-  const vit = moi.perso.vitesse * KV() * bonus(moi, 'vitesse') * (moi.dep === 'nage' && surEau ? +elm.valeur || 1.3 : 1) * (moi.dep !== 'vol' && tuileA(moi.x, moi.y) === 'S' ? 0.8 : 1) * (moi.ralentiT > temps ? moi.ralenti || 0.6 : 1) * (roleDe(moi.perso) === 'assassin' ? 1 + RV('assassin', 'vitesse', 10) / 100 : 1) * (enChute() ? reglage('vitesseChute', 1.6) : 1); // 🏖️ le sable ralentit
+  const vit = moi.perso.vitesse * KV() * bonus(moi, 'vitesse') * (moi.dep === 'nage' && surEau ? +elm.valeur || 1.3 : 1) * (moi.dep !== 'vol' && tuileA(moi.x, moi.y) === 'S' ? 0.8 : 1) * (moi.ralentiT > temps ? moi.ralenti || 0.6 : 1) * (roleDe(moi.perso) === 'assassin' ? 1 + RV('assassin', 'vitesse', 10) / 100 : 1) * (enChute() ? reglage('vitesseChute', 1.6) : 1) * meteoMult('vitesse'); // 🏖️ le sable ralentit
   if (moi.dep === 'nage' && surEau && moi.pv > 0) moi.pv = Math.min(moi.pvMax, moi.pv + moi.pvMax * (+elm.soin || 0) / 100 / 60); // 💧 se soigne dans l'eau
   if (moi.dep === 'brise' && (mx || my)) { const tx = Math.floor((moi.x + mx * moi.r * 1.3) / TUILE), ty = Math.floor((moi.y + my * moi.r * 1.3) / TUILE); if (bloqueTir(tuile(tx, ty))) abimer(tx, ty, +elm.valeur || 60); } // 🌍 brise les blocs en fonçant dedans
   moi.vx = (moi.vx || 0) + (mx * vit - (moi.vx || 0)) * REAC(); moi.vy = (moi.vy || 0) + (my * vit - (moi.vy || 0)) * REAC(); // départ / arrêt rapides (réactif)
@@ -1696,7 +1716,7 @@ const infoElem = j => { const k = j && cleElem(j.perso); return ELEM_DEF[k] ? { 
 const chargeSuper = j => +(infoElem(j) || {}).superCharge || Math.max(3000, (j.perso.degats || 1000) * 4);
 function gagnerSuper(j, deg) {
   if (!j || !j.perso || j.superPret || !infoElem(j)) return;
-  j.superC = (j.superC || 0) + deg;
+  j.superC = (j.superC || 0) + deg * meteoMult('super');
   if (j.superC >= chargeSuper(j)) { j.superPret = true; if (j === moi) ono('SUPER PRÊT !', moi.x, moi.y - 70, 1.2, '#ffe14a'); }
 }
 function tirSpecial(j, arme, angle, force, deg) { const a = j.arme; j.arme = arme; creerProjectile(j, angle, force, j.x, j.y, deg); j.arme = a; }
@@ -1945,6 +1965,7 @@ function dessinerGaz() { // brume violette hors du cercle + bord lumineux (dessi
 }
 function hudObjectif() { // compteurs trésors / étapes + bandeau d'étape animé
   const u = U();
+  if (meteo && etat === 'JEU' && temps - debutJeu < 360) { const a = Math.min(1, (360 - (temps - debutJeu)) / 40); ctx.save(); ctx.globalAlpha = a; verre(W / 2 - 170 * u, 92 * u, 340 * u, 30 * u, 15 * u); texte((meteo.icone || '') + ' ' + meteo.nom + (meteo.description ? ' : ' + meteo.description : ''), W / 2, 107 * u, 12 * u, '#fff', 'center', 330 * u); ctx.restore(); } // 🌦️ annonce de la météo
   if (obj() === 'survie') { const g = gaz(), n = joueurs().filter(j => j.pv > 0).length; if (g) { verre(W / 2 - 150 * u, 50 * u, 300 * u, 30 * u, 15 * u);
     texte((g.actif ? (g.fini ? '☠️ Zone minimale' : '☠️ Le gaz se referme') : '☠️ Le gaz arrive dans ' + g.dans + ' s') + '  •  🧍 ' + n + ' en vie', W / 2, 65 * u, 13 * u, g.actif ? '#e0b0ff' : '#fff'); } }
   if (obj() === 'tresor') { const eqs = [...new Set(joueurs().map(j => j.eq))], but = +mode.objectifTresors || 7;
@@ -2557,6 +2578,7 @@ function dessinerJeu() {
   if (vue25 && !v3) perspective25D();
   ecran(); ctx.fillStyle = vignette(); ctx.fillRect(0, 0, W, H); // vignette cinéma
   const lum = ctx.createLinearGradient(0, 0, W, H); lum.addColorStop(0, 'rgba(255,225,160,.08)'); lum.addColorStop(1, 'rgba(60,90,200,.08)'); ctx.fillStyle = lum; ctx.fillRect(0, 0, W, H); // lumière chaude / ombre froide
+  dessinerMeteo();
   zoneSure(dessinerHUD);
   chocManga();
 }
