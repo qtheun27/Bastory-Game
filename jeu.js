@@ -1558,7 +1558,7 @@ function lancerSuper(j, angle = j.angle, distant) {
   const e = infoElem(j); if (!e || j.pv <= 0 || resultat || (!distant && !j.superPret)) return;
   if (!distant) { j.superPret = false; j.superC = 0; envoyer({ t: 'su', de: j.uid, a: +angle.toFixed(3) }); }
   const deg = Math.round(j.perso.degats * bonus(j, 'degats')), A = j.arme;
-  j.anim = { n: (baseDe(j.perso) || {}).animSuper || 'attaque', t: temps, super: true }; ono(e.ono, j.x, j.y - 60, 1.7, j.perso.couleur); choc = 1; flash = 0.4;
+  j.anim = { n: (baseDe(j.perso) || {}).animSuper || 'attaque', t: temps }; ono(e.ono, j.x, j.y - 60, 1.7, j.perso.couleur); choc = 1; flash = 0.4;
   const ks = elementsDe(j.perso), d2 = Math.round(deg * (ks.length > 1 ? 0.8 : 1)); if (ks.length > 1) ono('FUSION!!', j.x, j.y - 100, 1.6, '#ffe14a');
   ks.forEach(k => {
     if (k === 'terre') exploser({ x: j.x, y: j.y, de: j.uid, deg: Math.round(d2 * 1.6), perso: j.perso, arme: { effet: 'impact', rayon: 190, couleur: '#c98a4b', recul: 26 } });

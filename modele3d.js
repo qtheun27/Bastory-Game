@@ -73,11 +73,10 @@ const Modele3D = (() => {
     if (!anims.attaque) anims.attaque = clips.find(c => c !== anims.repos && c !== anims.marche && !/idle|walk|run|dead|death|die|hit|hurt|react|stand|breath|t-?pose|fly|hover/i.test(c.name)); // repli : 1re animation « d'action »
     let hanches = null; obj.traverse(o => { if (!hanches && o.isBone && /hips|pelvis/i.test(o.name)) hanches = o; });
     const parNom = Object.fromEntries(clips.map(c => [c.name, c]));
-    return { p, racine, mixer, anims, parNom, clips: clips.map(c => c.name), hanches, repos: hanches && hanches.position.clone(), decalage: (+p.modeleRotation || 0) * Math.PI / 180, liberer: () => clonable || obj.traverse(o => { if (o.geometry) o.geometry.dispose(); }) };
+    return { racine, mixer, anims, parNom, clips: clips.map(c => c.name), hanches, repos: hanches && hanches.position.clone(), decalage: (+p.modeleRotation || 0) * Math.PI / 180, liberer: () => clonable || obj.traverse(o => { if (o.geometry) o.geometry.dispose(); }) };
   }
   function poser(m, anim, t) { // place le modèle à l'instant t d'une animation
     m.mixer.stopAllAction();
-    if (procActif(m, m.p)) return animer(m, anim, t * 90, { phase: t * Math.PI * 2, danse: m.p.danseProc, force: +m.p.forceAnim || 1, nom: m.p.nom });
     const clip = m.anims[anim] || (m.parNom || {})[anim] || m.anims.repos; // clé (repos, attaque…) ou nom exact d'animation
     if (clip) { const a = m.mixer.clipAction(clip); a.reset(); a.play(); m.mixer.setTime(Math.min(t, 0.999) * clip.duration);
       if (m.hanches) { m.hanches.position.x = m.repos.x; m.hanches.position.z = m.repos.z; } } // le perso reste sur place (pas de glissade)
@@ -200,77 +199,6 @@ const Modele3D = (() => {
     const res = { murs: PAL.flatMap(c => [1, 2, 3].map(n => bloc(n, false, c))), coffre: bloc(9, true), buissons: [1, 2, 3].map(buisson) };
     return res;
   }
-  // 🤸 ANIMATIONS CALCULÉES PAR LE JEU : un modèle déposé sans animation bouge quand même (squelette s'il en a un, sinon le corps entier)
-  // Tout est calculé dans le repère du perso (haut = +Y, devant = +Z, côté = X) → marche avec n'importe quel squelette (Meshy, Mixamo…)
-  const I = new THREE.Quaternion(), AX = new THREE.Vector3(1, 0, 0), AY = new THREE.Vector3(0, 1, 0), AZ = new THREE.Vector3(0, 0, 1);
-  const genre = n => /fore|lower.?arm|elbow/i.test(n) ? 'avant' : /up.?leg|thigh|upper.?leg/i.test(n) ? 'cuisse' : /calf|shin|lower.?leg|knee|(^|[^p])leg/i.test(n) ? 'tibia'
-    : /arm/i.test(n) && !/hand|twist|roll|armature/i.test(n) ? 'bras' : /hips|pelvis/i.test(n) ? 'bassin' : /neck/i.test(n) ? 'cou' : /head/i.test(n) && !/end|top|nub/i.test(n) ? 'tete' : /spine|chest/i.test(n) ? 'dos' : null;
-  function squelette(obj) { // os utiles + pose de repos
-    obj.updateMatrixWorld(true);
-    const rac = obj.parent, inv = rac ? rac.matrixWorld.clone().invert() : new THREE.Matrix4(), qR = new THREE.Quaternion(); if (rac) rac.getWorldQuaternion(qR); qR.invert();
-    const pos = b => b.getWorldPosition(new THREE.Vector3()).applyMatrix4(inv), P = {}, os = new Map();
-    obj.traverse(b => { if (!b.isBone) return; const g = genre(b.name); if (!g) return;
-      const cote = ['bras', 'avant', 'cuisse', 'tibia'].includes(g) ? (pos(b).x >= 0 ? 'G' : 'D') : '', cle = g === 'dos' && P.dos ? 'poitrine' : g + cote;
-      if (P[cle] && cle !== 'poitrine') return;
-      const enf = b.children.find(x => x.isBone), dir = enf ? pos(enf).sub(pos(b)) : new THREE.Vector3(0, 1, 0);
-      const r = { b, q: b.quaternion.clone(), qp: b.parent.getWorldQuaternion(new THREE.Quaternion()).premultiply(qR), dir: dir.lengthSq() > 1e-8 ? dir.normalize() : new THREE.Vector3(0, 1, 0), d: new THREE.Quaternion() };
-      P[cle] = r; os.set(b, r); });
-    for (const r of os.values()) { let a = r.b.parent; while (a && !os.has(a)) a = a.parent; r.anc = a ? os.get(a) : null; }
-    return { P, liste: [...os.values()], y0: obj.position.y, z0: obj.position.z, r0: obj.rotation.clone(), os: os.size > 0 };
-  }
-  function orienter(S, cle, D) { const r = S.P[cle]; if (!r) return; const A = r.anc ? r.anc.d : I; r.b.quaternion.copy(A).multiply(r.qp).invert().multiply(D).multiply(r.qp).multiply(r.q); r.d.copy(D); r.fait = true; }
-  const tourne = (S, cle, axe, a) => { const r = S.P[cle]; if (r) orienter(S, cle, new THREE.Quaternion().setFromAxisAngle(axe, a).multiply(r.fait ? r.d : r.anc ? r.anc.d : I)); }; // s'ajoute à la rotation déjà faite cette image
-  const vise = (S, cle, v) => { const r = S.P[cle]; if (r) orienter(S, cle, new THREE.Quaternion().setFromUnitVectors(r.dir, v)); };
-  const DANSES = ['fete', 'toupie', 'muscles', 'disco'];
-  function animer(m, etat, f, o = {}) { // f = images (60/s) depuis le début de l'animation
-    const obj = m.racine.children[0], S = m.sq || (m.sq = squelette(obj)), k = +o.force || 1, sin = Math.sin;
-    const c01 = x => Math.max(0, Math.min(1, x)), doux = x => { x = c01(x); return x * x * (3 - 2 * x); }, mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
-    for (const r of S.liste) { r.b.quaternion.copy(r.q); r.d.identity(); r.fait = false; }
-    let y = 0, rx = 0, ry = 0, rz = 0, z = 0, dos = 0, dosY = 0, dosZ = 0, tete = 0;
-    const R = [0.38, -1, 0.06]; // bras au repos, le long du corps
-    let bG = R, bD = R, aG = null, aD = null, cG = [0.05, -1, 0], cD = [0.05, -1, 0], tG = null, tD = null;
-    const souffle = sin(f * 0.0698); // 1 respiration = 90 images (boucle parfaite dans les menus)
-    if (etat === 'marche') {
-      const ph = o.phase || f * 0.2, sw = sin(ph) * k; y = Math.abs(sin(ph)) * 0.07 * k; dos = 0.12; dosY = sw * 0.12; rz = sw * 0.035;
-      cG = [0.05, -1, sw * 0.6]; cD = [0.05, -1, -sw * 0.6]; const tib = c => c[2] < 0 ? [0.03, -1, c[2] * 2.2] : [0.03, -1, c[2] * 0.4]; tG = tib(cG); tD = tib(cD);
-      bG = [0.32, -1, -sw * 0.75]; bD = [0.32, -1, sw * 0.75]; aG = [0.28, -1, -sw * 0.6 + 0.45]; aD = [0.28, -1, sw * 0.6 + 0.45];
-    } else if (etat === 'attaque' && o.type === 'frappe') { // 🔨 élan au-dessus de la tête → écrasement au sol → retour
-      const du = Math.max(4, o.du || 16), H = [0.15, 1, -0.4], B = [0.1, -0.35, 1];
-      if (f < du) { const p = doux(f / du); bG = bD = mix(R, H, p); dos = -0.3 * p; tete = -0.1 * p; y = 0.04 * p; }
-      else if (f < du + 5) { const p = doux((f - du) / 5); bG = bD = mix(H, B, p); dos = -0.3 + 0.85 * p; y = -0.08 * p; z = 0.12 * p; }
-      else { const p = doux((f - du - 5) / 18); bG = bD = mix(B, R, p); dos = 0.55 * (1 - p); y = -0.08 * (1 - p); z = 0.12 * (1 - p); }
-      cG = [0.18, -1, 0.25]; cD = [0.18, -1, -0.2];
-    } else if (etat === 'attaque' && o.type === 'lob') { // 🤾 lancer : armé en arrière → lancer vers l'avant
-      const Ar = [0.35, 0.7, -0.8], Av = [0.15, 0.6, 1];
-      if (f < 10) { const p = doux(f / 10); bD = mix(R, Ar, p); bG = mix(R, [0.45, -0.2, 0.8], p); dosY = 0.35 * p; dos = -0.1 * p; }
-      else if (f < 16) { const p = doux((f - 10) / 6); bD = mix(Ar, Av, p); bG = mix([0.45, -0.2, 0.8], [0.5, -0.8, -0.2], p); dosY = 0.35 - 0.75 * p; dos = -0.1 + 0.35 * p; z = 0.06 * p; }
-      else { const p = doux((f - 16) / 16); bD = mix(Av, R, p); bG = mix([0.5, -0.8, -0.2], R, p); dosY = -0.4 * (1 - p); dos = 0.25 * (1 - p); z = 0.06 * (1 - p); }
-    } else if (etat === 'attaque') { // 🎯 tir : bras tendus vers la cible + recul
-      const V2 = [0.12, 0.05, 1], p = f < 22 ? doux(f / 4) : 1 - doux((f - 22) / 10), rc = f > 3 && f < 12 ? sin((f - 3) / 9 * Math.PI) : 0;
-      bG = mix(R, [0.2, 0, 1], p); bD = mix(R, V2, p); aG = aD = null; dos = -0.12 * rc * k; z = -0.05 * rc * k; tete = -0.05 * rc;
-    } else if (etat === 'touche') { const p = 1 - doux(f / 22); dos = -0.35 * p * k; tete = -0.3 * p; bG = bD = mix(R, [0.9, 0.3, -0.3], p); z = -0.1 * p; rz = sin(f * 1.3) * 0.05 * p; }
-    else if (etat === 'mort' || etat === 'releve') { const p = etat === 'mort' ? doux(f / 22) : 1 - doux(f / 40); rx = -1.45 * p; bG = bD = mix(R, [1, 0.1, 0], p); cG = cD = mix([0.05, -1, 0], [0.1, -1, 0.35], p); tete = -0.2 * p; }
-    else if (etat === 'saut') { bG = bD = [0.6, 0.8, 0.1]; cG = cD = [0.05, -0.4, 0.9]; tG = tD = [0.05, -1, -0.3]; dos = 0.1; }
-    else if (etat === 'defaite') { dos = 0.45; tete = 0.5; bG = bD = [0.12, -1, 0.35]; y = -0.03; rz = sin(f * 0.03) * 0.04; }
-    else if (etat === 'victoire' || etat === 'super') { // 🕺 danses (réglables par perso)
-      let d = o.danse && DANSES.includes(o.danse) ? o.danse : DANSES[[...String(o.nom || '')].reduce((a, c) => a + c.charCodeAt(0), 0) % DANSES.length];
-      if (etat === 'super') d = 'super';
-      if (d === 'super') { const p = doux(f / 8); bG = bD = mix(R, [0.9, 1, 0.2], p); y = 0.18 * sin(Math.min(1, f / 24) * Math.PI); dos = -0.2 * p; tete = -0.2 * p; }
-      else if (d === 'fete') { const h = Math.floor(f / 15) % 2, up = [0.35, 1, 0.15], bas = [0.5, -0.6, 0.45]; y = Math.abs(sin(f * 0.21)) * 0.22 * k; bG = h ? up : bas; bD = h ? bas : up; ry = sin(f * 0.105) * 0.25; dosZ = sin(f * 0.21) * 0.1; }
-      else if (d === 'toupie') { ry = f * 0.18; bG = bD = [1, 0.25, 0]; y = Math.abs(sin(f * 0.36)) * 0.1 * k; cG = [0.3, -0.7, 0.3 + 0.3 * sin(f * 0.18)]; }
-      else if (d === 'muscles') { bG = bD = [1, 0.35, 0]; aG = aD = [0.15, 1, 0.1]; dosZ = sin(f * 0.12) * 0.18 * k; y = Math.abs(sin(f * 0.24)) * 0.05; tete = sin(f * 0.24) * 0.12; }
-      else { const p = (sin(f * 0.157) + 1) / 2, A = [0.6, 0.9, 0.3], Bb = [0.6, -0.9, 0.1]; bG = mix(A, Bb, p); bD = mix(Bb, A, p); dosZ = sin(f * 0.157) * 0.15 * k; cG = [0.1, -1, 0.15 * p]; cD = [0.1, -1, 0.15 * (1 - p)]; y = Math.abs(sin(f * 0.314)) * 0.04; }
-    } else { dos = 0.03 * souffle; tete = 0.03 * souffle; bG = bD = [0.38, -1, 0.06 + 0.04 * souffle]; y = 0.01 * souffle; } // repos : respiration
-    // corps entier (tous les modèles, même sans squelette)
-    obj.position.y = S.y0 + y; obj.position.z = S.z0 + z; obj.rotation.set(S.r0.x + rx, S.r0.y + ry, S.r0.z + rz);
-    if (!S.os) return;
-    tourne(S, 'bassin', AY, dosY * 0.5); tourne(S, 'dos', AX, dos * 0.6); tourne(S, 'dos', AZ, dosZ); tourne(S, 'poitrine', AX, dos * 0.4); tourne(S, 'poitrine', AY, dosY * 0.5); tourne(S, 'tete', AX, tete); tourne(S, 'cou', AX, tete * 0.5);
-    const V3 = (a, s) => new THREE.Vector3(a[0] * s, a[1], a[2]).normalize(), plie = a => [a[0], a[1], a[2] + 0.35];
-    for (const [c, s, b, a, cu, ti] of [['G', 1, bG, aG, cG, tG], ['D', -1, bD, aD, cD, tD]]) {
-      vise(S, 'bras' + c, V3(b, s)); vise(S, 'avant' + c, V3(a || plie(b), s)); vise(S, 'cuisse' + c, V3(cu, s)); vise(S, 'tibia' + c, V3(ti || cu, s));
-    }
-  }
-  const procActif = (m, p) => !!m && ((p && p.animProc) === 'toujours' || ((p && p.animProc) !== 'jamais' && !(m.clips || []).length));
   async function listeAnims(p) { const m = await charger(p); if (!m) return []; m.liberer(); return m.clips; } // noms des animations d'un modèle (admin)
-  return { dispo, generer, visage, vitrine, apercu, decor, instance: charger, listeAnims, animer, procActif }; // instance = modèle animé pour la vraie 3D
+  return { dispo, generer, visage, vitrine, apercu, decor, instance: charger, listeAnims }; // instance = modèle animé pour la vraie 3D
 })();

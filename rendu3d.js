@@ -250,23 +250,15 @@ const Rendu3D = (() => {
       else if (e.anim && temps - e.anim.t < (DUREE_ANIM[e.anim.n] || 40) && (o.anims[e.anim.n] || (o.parNom || {})[e.anim.n])) anim = e.anim.n;
       else if (temps - (o.marcheT || -99) < 12) anim = 'marche'; // garde la marche entre deux positions reçues du réseau (plus de saccades)
       o.marcheP = e.marche;
-      const proc = Modele3D.procActif(o, p), A = e.arme || {};
-      if (proc) { // 🤸 modèle sans animation : c'est le jeu qui l'anime (marche, attaque selon l'arme, coup reçu, KO, danse…)
-        const dA = n => n === 'attaque' ? (A.type === 'frappe' ? (+A.delaiFrappe || 16) + 26 : 34) : DUREE_ANIM[n] || 40;
-        anim = fin ? e.finAnim : e.pv <= 0 ? 'mort' : saut ? 'saut' : e.anim && temps - e.anim.t < dA(e.anim.n) ? (e.anim.super ? 'super' : e.anim.n) : temps - (o.marcheT || -99) < 12 ? 'marche' : 'repos';
-        if (o.action) { o.mixer.stopAllAction(); o.action = null; o.clip = null; }
-        const t0 = anim === 'mort' ? (o.mortT || temps) : fin ? (finInfo ? finInfo.t0 : 0) : e.anim && (anim === e.anim.n || anim === 'super') ? e.anim.t : 0;
-        Modele3D.animer(o, anim, temps - t0, { phase: (e.marche || 0) * 0.085 * (+p.pasProc || 1), type: A.type, du: +A.delaiFrappe || 16, danse: p.danseProc, force: +p.forceAnim || 1, nom: p.nom });
-      }
-      const clip = proc ? null : o.anims[anim] || (o.parNom || {})[anim] || o.anims.repos || Object.values(o.parNom || {})[0]; // jamais de pose en T : au pire la 1re animation du modèle
+      const clip = o.anims[anim] || (o.parNom || {})[anim] || o.anims.repos || Object.values(o.parNom || {})[0]; // jamais de pose en T : au pire la 1re animation du modèle
       if (clip && o.clip !== clip) {
         const a = o.mixer.clipAction(clip); a.reset(); a.setLoop(anim === 'repos' || anim === 'marche' || fin ? THREE.LoopRepeat : THREE.LoopOnce); a.clampWhenFinished = true;
         if (o.action && o.action !== a) a.crossFadeFrom(o.action, 0.12, false); a.play(); o.action = a; o.clip = clip;
       }
       const fl = (e.flash || 0) > 0 || (e.touche && temps - e.touche < 6); if (fl !== o.flash) { o.flash = fl; o.racine.traverse(x => { if (x.material && x.material.emissive) x.material.emissive.setRGB(fl ? 0.6 : 0, fl ? 0.6 : 0, fl ? 0.6 : 0); }); } // éclair blanc du coup reçu
-      if (o.action && !proc) o.action.timeScale = anim === 'marche' ? Math.max(0.6, Math.min(1.8, (o.pas || 2.6) / Math.max(0.5, reglage('pasMarche', 2.6)))) : 1; // pas calés sur la vitesse : plus de glissade
-      if (!proc) o.mixer.update(dt);
-      if (!proc && o.hanches && anim === 'marche') { o.hanches.position.x = o.repos.x; o.hanches.position.z = o.repos.z; } // pas de glissade
+      if (o.action) o.action.timeScale = anim === 'marche' ? Math.max(0.6, Math.min(1.8, (o.pas || 2.6) / Math.max(0.5, reglage('pasMarche', 2.6)))) : 1; // pas calés sur la vitesse : plus de glissade
+      o.mixer.update(dt);
+      if (o.hanches && anim === 'marche') { o.hanches.position.x = o.repos.x; o.hanches.position.z = o.repos.z; } // pas de glissade
       const pied = projeter(e.x, e.y, 0), tete = projeter(e.x, e.y, ech * 2.05); // barre de vie juste au-dessus de la tête
       e.topY = e.y + (tete[1] - pied[1]) / aff[3]; e.topT = temps;
     }
