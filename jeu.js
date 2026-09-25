@@ -410,10 +410,10 @@ function finir(r, msg) {
     const elJ = elemDe(moi.perso), gainE = elJ ? +(r === 'VICTOIRE' ? elJ.gainVictoire : elJ.gainDefaite) || 0 : 0; finInfo.essence = elJ && gainE ? gainE + ' ' + elJ.icone : '';
     db.collection('joueurs').doc(user.uid).set({ pseudo: nomJoueur(), points: inc(finInfo.points), ...(elJ ? { essences: { [baseDe(moi.perso).element]: inc(gainE) } } : {}), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0),
       persos: { [cleP(baseDe(moi.perso))]: { points: inc(finInfo.points), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0) } },
-      quetes: avancerQuetes(r), ...(mesStats.saisonId === saisonId() ? { saisonPts: inc(finInfo.points) } : { saisonId: saisonId(), saisonPts: finInfo.points }) }, { merge: true }).catch(e => console.warn(e));
+      quetes: avancerQuetes(r), ...majXpPass((r === 'VICTOIRE' ? +PASS().xpVictoire || 100 : +PASS().xpDefaite || 35) + ((moi.st || {}).ko || 0) * (+PASS().xpKO || 15)), ...(mesStats.saisonId === saisonId() ? { saisonPts: inc(finInfo.points) } : { saisonId: saisonId(), saisonPts: finInfo.points }) }, { merge: true }).catch(e => console.warn(e));
   }
 }
-function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; if (!persoCharge && v.perso !== undefined) { persoCharge = true; persoIndex = persoSauve = Math.max(0, Math.min(CONFIG.persos.length - 1, +v.perso)); } if (v.hud) Object.assign(hudPerso, v.hud); mesPoints = v.points || 0; if (v.touches && !toucheAttendue) mesTouches = { ...TOUCHES_DEF, ...v.touches }; mesStats = { skins: v.skins || {}, skinChoisi: v.skinChoisi || {}, quetes: v.quetes || null, saisonId: v.saisonId || '', saisonPts: v.saisonPts || 0, points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {}, essences: v.essences || {}, recompenses: v.recompenses || [], jetons: v.jetons || 0, persosDebloques: v.persosDebloques || [], avatars: v.avatars || [], avatar: v.avatar || null }; }, () => {}); }
+function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; if (!persoCharge && v.perso !== undefined) { persoCharge = true; persoIndex = persoSauve = Math.max(0, Math.min(CONFIG.persos.length - 1, +v.perso)); } if (v.hud) Object.assign(hudPerso, v.hud); mesPoints = v.points || 0; if (v.touches && !toucheAttendue) mesTouches = { ...TOUCHES_DEF, ...v.touches }; mesStats = { passId: v.passId || '', passXP: v.passXP || 0, passPris: v.passPris || [], skins: v.skins || {}, skinChoisi: v.skinChoisi || {}, quetes: v.quetes || null, saisonId: v.saisonId || '', saisonPts: v.saisonPts || 0, points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {}, essences: v.essences || {}, recompenses: v.recompenses || [], jetons: v.jetons || 0, persosDebloques: v.persosDebloques || [], avatars: v.avatars || [], avatar: v.avatar || null }; }, () => {}); }
 
 // ---------- 8. MULTIJOUEUR (Realtime Database) ----------
 // Salle d'attente → départ quand le max est atteint (ou 10 s après avoir atteint le minimum).
@@ -2123,7 +2123,7 @@ async function reclamerQuete(k) {
   const q = quetesDuJour()[k], e = etatQuetes(); if (!q || !db || !((e.p || [])[k] >= q.n) || (e.pris || [])[k]) return;
   const pris = [...(e.pris || [])]; pris[k] = true;
   const r = recQuete(q);
-  try { await db.collection('joueurs').doc(user.uid).set(majRecompense(r, { quetes: { jour: e.jour, p: e.p || [], pris } }), { merge: true }); notif('🎁 ' + libRecompense(r) + ' récupéré !'); vagues.push({ x: W / 2, y: H / 2, t: temps }); }
+  try { await db.collection('joueurs').doc(user.uid).set(majRecompense(r, { quetes: { jour: e.jour, p: e.p || [], pris }, ...majXpPass(+PASS().xpQuete || 60) }), { merge: true }); notif('🎁 ' + libRecompense(r) + ' récupéré !'); vagues.push({ x: W / 2, y: H / 2, t: temps }); }
   catch (er) { notif('Impossible : ' + er.message); }
 }
 function menuQuetes() {
@@ -2153,11 +2153,47 @@ function majRecompense(r, maj = {}) { // 🎁 ce que rapporte une récompense (p
   const inc = firebase.firestore.FieldValue.increment, ess = {};
   if (r.type === 'jetons') maj.jetons = inc(+r.quantite || 1);
   else if (r.type === 'points') { maj.points = inc(+r.quantite || 1); maj.saisonPts = inc(+r.quantite || 1); }
+  else if (r.type === 'skin') { const sk = skinParCle(r.skin) || (CONFIG.skins || [])[0]; if (sk) { maj.skins = { [cleP(baseDe(CONFIG.persos[persoIndex]) || {})]: firebase.firestore.FieldValue.arrayUnion(sk.cle) }; } }
   else if (r.type === 'avatar') { const ok = avatarsDebloques(), dispo = libAvatars().filter(a => !ok.has(a.cle)).sort(() => Math.random() - 0.5).slice(0, +r.quantite || 1).map(a => a.cle); if (dispo.length) maj.avatars = firebase.firestore.FieldValue.arrayUnion(...dispo); }
   else { (r.element === 'tous' ? Object.keys(CONFIG.elements) : [r.element]).filter(Boolean).forEach(k => ess[k] = inc(+r.quantite || 0)); maj.essences = ess; }
   return maj;
 }
-const libRecompense = r => { const el = (CONFIG.elements || {})[r.element]; return '+' + (+r.quantite || 1) + ' ' + ({ jetons: '🎟️', points: '🏆', avatar: '🖼️' }[r.type] || (r.element === 'tous' ? '🌈' : el ? el.icone : '💎')); };
+const libRecompense = r => { if (r.type === 'skin') { const sk = skinParCle(r.skin); return '🎨 ' + (sk ? sk.nom : 'Skin'); } const el = (CONFIG.elements || {})[r.element]; return '+' + (+r.quantite || 1) + ' ' + ({ jetons: '🎟️', points: '🏆', avatar: '🖼️' }[r.type] || (r.element === 'tous' ? '🌈' : el ? el.icone : '💎')); };
+// ---------- ⭐ PASS DE SAISON : l'expérience des parties et des quêtes fait avancer une barre de paliers (remise à zéro chaque saison) ----------
+const PASS = () => CONFIG.pass || { xpPalier: 250, paliers: [] };
+const xpPass = () => mesStats.passId === saisonId() ? mesStats.passXP || 0 : 0, prisPass = () => mesStats.passId === saisonId() ? mesStats.passPris || [] : [];
+const majXpPass = xp => mesStats.passId === saisonId() ? { passXP: firebase.firestore.FieldValue.increment(xp) } : { passId: saisonId(), passXP: xp, passPris: [] };
+const nbPaliersPrets = () => { const xp = xpPass(), pr = prisPass(), P = PASS(); return (P.paliers || []).filter((r, i) => xp >= (i + 1) * (+P.xpPalier || 250) && !pr.includes(i)).length; };
+async function reclamerPalier(i) {
+  const P = PASS(), r = (P.paliers || [])[i]; if (!r || !db || xpPass() < (i + 1) * (+P.xpPalier || 250) || prisPass().includes(i)) return;
+  try { await db.collection('joueurs').doc(user.uid).set(majRecompense(r, { passPris: firebase.firestore.FieldValue.arrayUnion(i) }), { merge: true }); notif('⭐ Palier ' + (i + 1) + ' : ' + libRecompense(r) + ' !'); vagues.push({ x: W / 2, y: H / 2, t: temps }); son('piece'); }
+  catch (e) { notif('Impossible : ' + e.message); }
+}
+let pass0 = -1;
+function menuPass() {
+  const u = U(), top = barreHaut('PASS DE SAISON', true), P = PASS(), l = P.paliers || [], pas = +P.xpPalier || 250, xp = xpPass(), pr = prisPass(), niv = Math.min(l.length, Math.floor(xp / pas));
+  titre('⭐ ' + nomSaison() + '  •  palier ' + niv + ' / ' + l.length, W / 2, top + 18 * u, 20 * u, '#ffe14a');
+  const bw = Math.min(560 * u, W - 60 * u), bx = (W - bw) / 2, by = top + 38 * u, f = niv >= l.length ? 1 : (xp % pas) / pas; // barre du palier en cours
+  rect(bx, by, bw, 16 * u, 8 * u, 'rgba(11,6,32,.6)', NOIR, 2 * u); rect(bx, by, Math.max(16 * u, bw * f), 16 * u, 8 * u, '#ffe14a');
+  texte(niv >= l.length ? 'Pass terminé ! 🏁' : (xp % pas) + ' / ' + pas + ' XP vers le palier ' + (niv + 1), W / 2, by + 8 * u, 10 * u, '#1f1300');
+  texte('XP : victoire +' + (P.xpVictoire || 100) + ' • défaite +' + (P.xpDefaite || 35) + ' • K.O. +' + (P.xpKO || 15) + ' • quête +' + (P.xpQuete || 60), W / 2, by + 30 * u, 10 * u, 'rgba(255,255,255,.75)');
+  const par = Math.max(2, Math.min(6, Math.floor((W - 40 * u) / (130 * u)))), pages = Math.max(1, Math.ceil(l.length / par));
+  if (pass0 !== transT) { pass0 = transT; pageMenu = Math.min(pages - 1, Math.floor(Math.max(0, niv - 1) / par)); } pageMenu = Math.min(pageMenu, pages - 1); // s'ouvre sur le palier en cours
+  const cw = (W - 40 * u) / par - 12 * u, y = by + 48 * u, ch = Math.min(H - y - 60 * u, cw * 1.35);
+  l.slice(pageMenu * par, pageMenu * par + par).forEach((r, k) => {
+    const i = pageMenu * par + k, x = 20 * u + k * (cw + 12 * u) + 6 * u, ok = xp >= (i + 1) * pas, pris = pr.includes(i), grand = (i + 1) % 5 === 0, c = pris ? '#8b8fa8' : ok ? '#4cd964' : grand ? '#b44dff' : '#5a4dff';
+    rect(x + 4 * u, y + 5 * u, cw, ch, 14 * u, NOIR); const g = ctx.createLinearGradient(0, y, 0, y + ch); g.addColorStop(0, ombrer(c, 0.3)); g.addColorStop(1, ombrer(c, -0.35)); rect(x, y, cw, ch, 14 * u, g, NOIR, 3 * u);
+    if (ok && !pris) { ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, cw, ch, 14 * u); ctx.clip(); rayons(x + cw / 2, y + ch * 0.45, temps * 0.01, '#fff', 0.2, 12); ctx.restore(); }
+    titre(String(i + 1), x + cw / 2, y + 18 * u, 20 * u, '#fff');
+    const lib = libRecompense(r), ic = r.type === 'skin' ? '🎨' : lib.split(' ').slice(-1)[0]; titre(ic, x + cw / 2, y + ch * 0.42, Math.min(cw * 0.35, 40 * u), '#fff'); texte(lib, x + cw / 2, y + ch * 0.66, 11 * u, '#fff', 'center', cw - 10 * u);
+    const bY = y + ch - 38 * u;
+    if (pris) titre('✔', x + cw / 2, bY + 15 * u, 18 * u, '#fff');
+    else if (ok) { boutonJeu(x + 8 * u, bY, cw - 16 * u, 30 * u, '#b6ff4a', '#1fc46b', () => reclamerPalier(i)); titre('Récupérer', x + cw / 2, bY + 15 * u, 13 * u, '#fff', 'center', cw - 24 * u); }
+    else texte('🔒 ' + ((i + 1) * pas - xp) + ' XP', x + cw / 2, bY + 15 * u, 11 * u, 'rgba(255,255,255,.8)');
+  });
+  if (pages > 1) { bouton3D(20 * u, H - 44 * u, 60 * u, 32 * u, '#8e7bff', '#5b3fd6', () => pageMenu = (pageMenu + pages - 1) % pages); texte('◀', 50 * u, H - 28 * u, 14 * u, '#fff');
+    texte((pageMenu + 1) + ' / ' + pages, W / 2, H - 28 * u, 13 * u, '#fff'); bouton3D(W - 80 * u, H - 44 * u, 60 * u, 32 * u, '#8e7bff', '#5b3fd6', () => pageMenu = (pageMenu + 1) % pages); texte('▶', W - 50 * u, H - 28 * u, 14 * u, '#fff'); }
+}
 async function reclamer(i) {
   const r = (CONFIG.recompenses || [])[i]; if (!r || !db || (mesStats.recompenses || []).includes(i) || (mesStats.victoires || 0) < r.victoires) return;
   const inc = firebase.firestore.FieldValue.increment, ess = {}, maj = { recompenses: firebase.firestore.FieldValue.arrayUnion(i) };
@@ -2933,7 +2969,7 @@ function dessinerMenu() {
   ecran(); zones = [];
   fondMenu();
   if (etat === 'AUTH') return;
-  ({ accueil: menuAccueil, persos: menuPersos, modes: menuModes, classement: menuClassement, pouvoirs: menuPouvoirs, amis: menuAmis, recompenses: menuRecompenses, quetes: menuQuetes, commandes: menuCommandes, hud: menuHud, avatar: menuAvatar })[ecranMenu]();
+  ({ accueil: menuAccueil, persos: menuPersos, modes: menuModes, classement: menuClassement, pouvoirs: menuPouvoirs, amis: menuAmis, recompenses: menuRecompenses, quetes: menuQuetes, pass: menuPass, commandes: menuCommandes, hud: menuHud, avatar: menuAvatar })[ecranMenu]();
   const kt = Math.min(1, (temps - transT) / 14); if (kt < 1) { ctx.fillStyle = `rgba(5,7,15,${(1 - kt) * 0.9})`; ctx.fillRect(-100, -100, W + 200, H + 200); } // fondu entre écrans
   dessinerVagues(); dessinerNotif();
   if (invitations.length) modaleInvitation();
@@ -2944,12 +2980,13 @@ function menuAccueil() {
   const u = U(), p = selPerso(), a = CONFIG.armes[p.arme] || {}, m = modeChoisi(), [, c1, c2, lab] = modesStyle(m), multi = m.type === 'multi';
   const top = barreHaut();
   // navigation à gauche
-  const nav = [['perso', 'Persos', 'persos', '#5ac8fa', '#2f6bff'], ['amis', 'Amis', 'amis', '#4ade80', '#059669'], ['classement', 'Classement', 'classement', '#ffc24b', '#ff7a00'], ['eclair', 'Pouvoirs', 'pouvoirs', '#ff7ac0', '#b43cff'], ['trophee', 'Récompenses', 'recompenses', '#ffe14a', '#ff8a1f'], ['check', 'Quêtes', 'quetes', '#b6ff4a', '#1fc46b'], ['reglages', 'Commandes', 'commandes', '#5ff0ff', '#1e7bff']];
+  const nav = [['perso', 'Persos', 'persos', '#5ac8fa', '#2f6bff'], ['amis', 'Amis', 'amis', '#4ade80', '#059669'], ['classement', 'Classement', 'classement', '#ffc24b', '#ff7a00'], ['eclair', 'Pouvoirs', 'pouvoirs', '#ff7ac0', '#b43cff'], ['trophee', 'Récompenses', 'recompenses', '#ffe14a', '#ff8a1f'], ['check', 'Quêtes', 'quetes', '#b6ff4a', '#1fc46b'], ['eclair', 'Pass', 'pass', '#ffd23f', '#b44dff'], ['reglages', 'Commandes', 'commandes', '#5ff0ff', '#1e7bff']];
   nav.forEach(([ic, t, e, a1, a2], k) => {
-    const pas = Math.min(52 * u, (H - top - 24 * u) / nav.length), y = top + 14 * u + k * pas, w = 158 * u;
-    boutonJeu(14 * u, y, w, 42 * u, a1, a2, () => allerA(e));
-    icone(ic, 40 * u, y + 21 * u, 20 * u); titre(t, 58 * u, y + 22 * u, 20 * u, '#fff', 'left', w - 80 * u);
+    const pas = Math.min(52 * u, (H - top - 24 * u) / nav.length), y = top + 14 * u + k * pas, w = 158 * u, bh = Math.min(42 * u, pas - 6 * u), fz = Math.min(20 * u, bh * 0.5);
+    boutonJeu(14 * u, y, w, bh, a1, a2, () => allerA(e));
+    icone(ic, 40 * u, y + bh / 2, fz, '#fff'); titre(t, 58 * u, y + bh / 2 + 1 * u, fz, '#fff', 'left', w - 80 * u);
     if (e === 'amis' && Object.keys(demandesAmis).length) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(Object.keys(demandesAmis).length), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
+    if (e === 'pass' && nbPaliersPrets()) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(nbPaliersPrets()), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
     if (e === 'quetes' && nbQuetesPretes()) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(nbQuetesPretes()), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
     if (e === 'recompenses' && nbRecompenses()) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(nbRecompenses()), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
     if (k === 1 && Object.keys(groupe.membres).length) { ctx.beginPath(); ctx.arc(14 * u + w - 22 * u, y + 23 * u, 10 * u, 0, 7); ctx.fillStyle = '#34d399'; ctx.fill(); texte(String(Object.keys(groupe.membres).length + 1), 14 * u + w - 22 * u, y + 24 * u, 11 * u, '#fff'); }
