@@ -1025,6 +1025,8 @@ const CONFIG_PAR_DEFAUT = {
     "tailleDegats": 1,
     "esquiveBots": 1,
     "quetesParJour": 3,
+    "volumeSons": 1,
+    "volumeMusique": 1,
     "decor3D": 1
   },
   "quetes": [

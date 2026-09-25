@@ -19,7 +19,7 @@ function configEnDirect() { // 🔄 les réglages publiés dans l'admin s'appliq
     try {
       const v = d.data(); if (!v || !v.json) return;
       const n = migrerConfig(JSON.parse(v.json)), fus = (a, b) => { if (a && b) for (const k in b) if (a[k] && b[k] && typeof a[k] === 'object' && !Array.isArray(a[k])) Object.assign(a[k], b[k]); else if (!a[k]) a[k] = b[k]; };
-      Object.assign(CONFIG.app, n.app); ['progression'].forEach(k => n[k] && Object.assign(CONFIG[k] || (CONFIG[k] = {}), n[k]));
+      Object.assign(CONFIG.app, n.app); if (typeof Son !== 'undefined') Son.appliquer(); // volumes réglés dans l'admin ['progression'].forEach(k => n[k] && Object.assign(CONFIG[k] || (CONFIG[k] = {}), n[k]));
       ['armes', 'bosses', 'elements', 'roles'].forEach(k => { if (!CONFIG[k]) CONFIG[k] = {}; fus(CONFIG[k], n[k]); });                         // mis à jour sur place : les armes en cours de partie changent aussi
       ['persos', 'modes', 'maps', 'pouvoirs', 'recompenses', 'quetes', 'rangs'].forEach(k => { const A = CONFIG[k], B = n[k]; if (!Array.isArray(A) || !Array.isArray(B)) return;
         if (A.length === B.length) A.forEach((x, i) => Object.assign(x, B[i])); else A.splice(0, A.length, ...B); }); // stats des persos : appliquées à la prochaine partie
@@ -371,7 +371,7 @@ function noterCombat(r) { // 📓 journal des 30 derniers combats (joueurs affro
 function finir(r, msg) {
   if (!resultat) noterCombat(r);
   if (resultat) return;
-  resultat = r; messageFin = msg || ''; finDans = 70; envoyerEtat(true); moi.revivre = 0;
+  resultat = r; messageFin = msg || ''; setTimeout(() => son(r === 'VICTOIRE' ? 'victoire' : r === 'DEFAITE' ? 'defaite' : 'bip'), 900); finDans = 70; envoyerEtat(true); moi.revivre = 0;
   const tous = [moi, ...Object.values(autres)], ennemis = tous.filter(j => j.eq !== moi.eq), allies = tous.filter(j => j.eq === moi.eq);
   const [g, p] = ennemis.length ? (r !== 'DEFAITE' ? [allies, ennemis] : [ennemis, allies]) : (r === 'VICTOIRE' ? [allies, bosses] : [bosses, allies]);
   const carte = e => e.def ? { im: img(e.def.imageCarte || e.def.image), nom: e.def.nom } : { im: carteDe(e.perso), nom: e.nom };
@@ -596,12 +596,15 @@ canvas.addEventListener('mousedown', e => {
 function clic(x, y) {
   if ((etat === 'VICTOIRE' || etat === 'DEFAITE' || etat === 'EGALITE') && finInfo && temps - finInfo.t0 < 40) return;
   x -= sa.l; y -= sa.t; vagues.push({ x, y, t: temps }); // onde au toucher
-  const z = zones.find(z => x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h);
+  const z = zones.find(z => x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h); if (z) son('clic');
   if (z) z.action();
 }
 
 // ---------- 10. TIRS & DÉGÂTS ----------
+const volA = (x, y) => moi ? Math.max(0, 1 - Math.hypot(x - moi.x, y - moi.y) / 900) : 1; // 🔊 plus c'est loin, moins on l'entend
+const son = (n, v = 1) => { if (typeof Son !== 'undefined') Son.jouer(n, v); };
 function creerProjectile(j, angle, force, x, y, deg) {
+  { const ty = (j.arme || {}).type; son(ty === 'lob' ? 'lob' : ty === 'frappe' ? 'frappe' : ty === 'retour' ? 'retour' : 'tir', volA(x, y) * (j === moi ? 1 : 0.7)); }
   if (j.perso) j.anim = { n: 'attaque', t: temps }; // 🎬 animation d'attaque
   const a = j.arme, v = a.vitesse || 10;
   const p = { rebonds: +a.rebonds || 0, chaine: +a.chaine || 0, sombre: !!j.def, type: a.type, arme: a, perso: j.perso, deg: deg || j.perso.degats, de: j.uid, x, y, vx: Math.cos(angle) * v, vy: Math.sin(angle) * v, dist: 0, rot: 0, z: 0, vie: 0, retour: false, touches: new Set() };
@@ -693,6 +696,7 @@ function majProjectiles() {
   }
 }
 function exploser(p) {
+  son(p.type === 'frappe' ? 'frappe' : 'explosion', volA(p.x, p.y));
   const r = p.arme.rayon || 70;
   effet(p.arme.effet || 'explosion', p.x, p.y, p.arme.couleur, r);
   for (const c of cibles(p)) if (Math.hypot(p.x - c.e.x, p.y - c.e.y) < r + c.e.r * 0.6) impact(c.e, p, p.x, p.y, false);
@@ -713,7 +717,7 @@ function eclatsRoche(p) { // 🪨 2e temps de la frappe : éclats projetés en �
     projectiles.push({ rebonds: 0, chaine: 0, sombre: p.sombre, type: 'droit', arme: ae, perso: p.perso, deg, de: p.de, x: p.x, y: p.y, vx: Math.cos(an) * v, vy: Math.sin(an) * v, dist: 0, portee: +a.porteeEclats || 170, rot: 0, z: 0, vie: 0, retour: false, touches: new Set() }); }
 }
 function impact(e, p, x, y, avecEffet) {
-  const a = p.arme, deg = p.deg, ang = Math.atan2(e.y - y, e.x - x);
+  const a = p.arme, deg = p.deg, ang = Math.atan2(e.y - y, e.x - x); son(a.effet === 'explosion' ? 'explosion' : 'impact', volA(e.x, e.y));
   if (avecEffet) effet(a.effet, e.x, e.y - 10, p.sombre ? '#2a0033' : a.couleur, 40, ang);
   if (p.sombre) effetSombre(e.x, e.y - 10);
   if ((+a.retard || 0) > 0 || (+a.poisonDuree || 0) > 0) return planifier(e, p, deg, ang); // ⏳ dégâts à retardement / poison
@@ -848,7 +852,7 @@ function toucherMoi(deg, x, y, de) {
   moi.pv = Math.max(0, moi.pv - deg); moi.flash = 8;
   const ang = Math.atan2(moi.y - y, moi.x - x);
   moi.kx += Math.cos(ang) * 14; moi.ky += Math.sin(ang) * 14;
-  texteFlottant('-' + deg, moi.x, moi.y - 50, '#ff4d4d', 1);
+  texteFlottant('-' + deg, moi.x, moi.y - 50, '#ff4d4d', 1); son('aie');
   if (moi.pv === 0) mourir(moi);
 }
 function blesserBoss(b, deg, de) {
@@ -912,7 +916,7 @@ const bonusActifs = j => Object.entries(j.bonus || {}).filter(([, fin]) => fin >
 const gadgetDe = j => { const k = (baseDe(j.perso) || {}).gadget; return k && (CONFIG.gadgets || {})[k] ? k : null; };
 function lancerGadget(j = moi) { // 🧰 gadget : 3 fois par partie (réglable), 5 s entre deux utilisations
   const k = gadgetDe(j); if (!k || j.pv <= 0 || resultat || !(j.gadgets > 0) || temps < (j.gadgetT || 0)) return;
-  j.gadgets--; j.gadgetT = temps + 300; activerPouvoir('g_' + k, j); if (j === moi && moi.st) moi.st.gad++;
+  j.gadgets--; j.gadgetT = temps + 300; son('gadget', volA(j.x, j.y)); activerPouvoir('g_' + k, j); if (j === moi && moi.st) moi.st.gad++;
   const g = CONFIG.gadgets[k]; ondes.push({ x: j.x, y: j.y, r: 10, max: 80, c: g.couleur || '#fff', vie: 1, ep: 8 });
   if (j === moi) envoyer({ t: 'gd', de: moi.uid, g: k });
 }
@@ -993,7 +997,7 @@ function maj() {
   for (const j of joueurs()) if (j.dep === 'feu' && j.pv > 0 && j.marche !== j.mFeu) { j.mFeu = j.marche; if (temps % 10 === 0) { const e = elemDe(j.perso) || {}; nuages.push({ x: j.x, y: j.y + 10, r: 28, fin: temps + (+e.duree || 2) * 60, debut: temps, c: '#ff6a00', deg: +e.valeur || 120, de: j.uid, arme: { effet: 'etincelle', couleur: '#ff8a00' }, feu: true }); } } // 🔥 traînée de feu
   if ((moi.dep === 'feu' || moi.depSpecial === 'lave') && moi.pv > 0 && tuileA(moi.x, moi.y) === 'B' && map.def.casseBuissons !== false) abimer(Math.floor(moi.x / TUILE), Math.floor(moi.y / TUILE), 1e6); // 🔥 Pyro brûle les buissons
   for (const o of objets) if (moi.pv > 0 && Math.hypot(o.x - moi.x, o.y - moi.y) < 42) {
-    objets = objets.filter(x => x !== o); envoyer({ t: 'pr', tx: o.tx, ty: o.ty }); activerPouvoir(o.id); break;
+    son('piece'); objets = objets.filter(x => x !== o); envoyer({ t: 'pr', tx: o.tx, ty: o.ty }); activerPouvoir(o.id); break;
   }
   for (const j of Object.values(autres)) {
     if (j.bot && hote) { iaBot(j); if (j.pv > 0 && j.pv < j.pvMax * 0.4 && j.gadgets > 0 && Math.random() < 0.02) lancerGadget(j); } // 🤖 les bots utilisent aussi leur gadget
@@ -1429,13 +1433,14 @@ function pasDeJeu() { // ⏱ une étape de jeu = 1/60 s, quel que soit l'écran 
     if (persoIndex !== persoSauve && user) { persoSauve = persoIndex; try { localStorage.setItem('bastoryPerso', persoIndex); } catch (e) {} if (db) db.collection('joueurs').doc(user.uid).set({ perso: persoIndex }, { merge: true }).catch(() => {}); } }
   else if (etat === 'ATTENTE') { temps++; rafraichirAttente(); }
   else if (etat === 'INTRO') { temps++; majEffets();
-    if (intro && intro.cle === introT && temps - introT > intro.total) { etat = 'JEU'; debutJeu = temps; intro.vedettes.forEach(v => { if (v.vue) v.vue.liberer(); v.vue = null; }); ono('FIGHT!!', moi.x, moi.y - 60, 1.6, '#ffe14a'); } }
+    if (intro && intro.cle === introT && temps - introT > intro.total) { etat = 'JEU'; son('go'); debutJeu = temps; intro.vedettes.forEach(v => { if (v.vue) v.vue.liberer(); v.vue = null; }); ono('FIGHT!!', moi.x, moi.y - 60, 1.6, '#ffe14a'); } }
   else if (etat === 'JEU') maj();
   else temps++;
 }
 let horlogeJeu = 0, resteJeu = 0;
 function boucle(ts) {
   const now = ts || performance.now(); if (!horlogeJeu) horlogeJeu = now;
+  if (typeof Son !== 'undefined') Son.musique(etat === 'JEU' || etat === 'INTRO' ? 'jeu' : etat === 'AUTH' ? null : 'menu'); // 🎵
   resteJeu += Math.min(120, now - horlogeJeu); horlogeJeu = now;
   let n = Math.floor(resteJeu / (1000 / 60)); resteJeu -= n * (1000 / 60);
   for (n = Math.min(n, 4); n > 0; n--) pasDeJeu();   // au plus 4 étapes d'un coup (écran lent)
@@ -1624,6 +1629,7 @@ function tirSpecial(j, arme, angle, force, deg) { const a = j.arme; j.arme = arm
 const moiOuBot = j => j === moi || (j.bot && hote); // qui applique les effets sur ce perso
 function lancerSuper(j, angle = j.angle, distant) {
   const e = infoElem(j); if (!e || j.pv <= 0 || resultat || (!distant && !j.superPret)) return;
+  son('super', volA(j.x, j.y));
   if (!distant) { if (j === moi && moi.st) moi.st.sup++; j.superPret = false; j.superC = 0; envoyer({ t: 'su', de: j.uid, a: +angle.toFixed(3) }); }
   const deg = Math.round(j.perso.degats * bonus(j, 'degats')), A = j.arme;
   j.anim = { n: (baseDe(j.perso) || {}).animSuper || 'attaque', t: temps }; ono(e.ono, j.x, j.y - 60, 1.7, j.perso.couleur); choc = 1; flash = 0.4;
@@ -1682,7 +1688,7 @@ function prendreBoutonHud(q) { const P = posHUD(), x = q.x - sa.l, y = q.y - sa.
 function deplacerBoutonHud(q) { const x = Math.max(0.05, Math.min(0.97, (q.x - sa.l) / W)), y = Math.max(0.12, Math.min(0.95, (q.y - sa.t) / H)); const k = hudDrag.toLowerCase(); hudPerso[k + 'x'] = x; hudPerso[k + 'y'] = y; }
 function menuHud() { // 📱 placer et redimensionner les boutons SUPER / ACTION
   const u = U(), top = barreHaut(mobile ? 'COMMANDES' : 'BOUTONS', true), { S, A, T } = posHUD(), e = infoElem({ perso: CONFIG.persos[persoIndex] }) || { k: 'feu', couleur: '#ff6a00', actionNom: 'Action' };
-  titre('Glisse les boutons où tu veux', W / 2, top + 20 * u, 20 * u, '#fff', 'center', W - 40 * u);
+  titre('Glisse les boutons où tu veux', W / 2, top + 20 * u, 20 * u, '#fff', 'center', W - 40 * u); boutonsSon(W / 2 - 175 * u, top + 42 * u, u);
   ctx.save(); ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.arc(120 * u, H - 110 * u, 55 * u, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore(); texte('Joystick', 120 * u, H - 110 * u, 12 * u, '#fff');
   for (const [b, c1, c2, nom] of [[T, '#ff8c6e', '#c81e3c', 'ATTAQUE'], [S, '#fff3a0', '#ff8a1f', 'SUPER'], [A, ombrer(e.couleur || '#ff6a00', 0.4), ombrer(e.couleur || '#ff6a00', -0.35), e.actionNom]]) {
     ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); const g = ctx.createRadialGradient(b.x - b.r * 0.3, b.y - b.r * 0.4, 1, b.x, b.y, b.r); g.addColorStop(0, c1); g.addColorStop(1, c2); ctx.fillStyle = g; ctx.fill();
@@ -1792,6 +1798,7 @@ function preparerObjectif() { // met en place l'objectif en cours (cristaux, zon
   if (obj() === 'tresor') placerTresors(graine + etape * 101);
 }
 function prendreTresor(id, eq, distant, uid) {
+  son('piece', eq === (moi && moi.eq) ? 1 : 0.5);
   const t = tresors.find(t => t.id === id); if (!t || t.pris !== null) return;
   t.pris = eq; scoreTresor[eq] = (scoreTresor[eq] || 0) + 1; const pj = entite(uid); if (pj) pj.tresors = (pj.tresors || 0) + 1;
   effet('etoiles', t.x, t.y, '#ffd23f', 70); ono(eq === moi.eq ? 'KACHING!' : 'OH NON!', t.x, t.y - 20, 1.1, eq === moi.eq ? '#ffe14a' : '#ff5a6e');
@@ -2072,9 +2079,14 @@ function sauverTouches() {
   try { localStorage.setItem('bastoryTouches', JSON.stringify(mesTouches)); } catch (e) {}
   if (db && user) db.collection('joueurs').doc(user.uid).set({ touches: mesTouches }, { merge: true }).catch(() => {});
 }
+function boutonsSon(x, y, u) { // 🔊 couper / remettre les sons et la musique (réglage de chaque joueur)
+  if (typeof Son === 'undefined') return; const P = Son.pref;
+  [['sons', P.sons ? '🔊 Sons : oui' : '🔇 Sons : non'], ['musique', P.musique ? '🎵 Musique : oui' : '🔇 Musique : non']].forEach(([k, t], i) => {
+    bouton3D(x + i * 180 * u, y, 170 * u, 38 * u, P[k] ? '#ff7ac0' : '#9aa5b8', P[k] ? '#b43cff' : '#5d6778', () => Son.regler({ [k]: !P[k] })); titre(t, x + i * 180 * u + 85 * u, y + 17 * u, 14 * u, '#fff', 'center', 160 * u); });
+}
 function menuCommandes() {
   if (mobile) return menuHud(); // 📱 sur mobile : placement des boutons (pas de clavier)
-  const u = U(), top = barreHaut('COMMANDES', true), l = Object.keys(TOUCHES_DEF), w = Math.min(580 * u, W - 40 * u), x = (W - w) / 2, lh = Math.min(46 * u, (H - top - 90 * u) / l.length);
+  const u = U(), top = barreHaut('COMMANDES', true), l = Object.keys(TOUCHES_DEF), w = Math.min(580 * u, W - 40 * u), x = (W - w) / 2, lh = Math.min(46 * u, (H - top - 140 * u) / l.length); // place en bas pour les boutons son + vue
   l.forEach((a, i) => {
     const y = top + 10 * u + i * lh, h = lh - 6 * u, att = toucheAttendue === a, kw = Math.min(170 * u, w * 0.4);
     verre(x, y, w, h, 12 * u, att ? 'rgba(255,225,74,.35)' : null); texte(NOM_TOUCHE[a], x + 16 * u, y + h / 2, 14 * u, '#fff', 'left', w - kw - 30 * u);
@@ -2085,6 +2097,7 @@ function menuCommandes() {
   bouton3D(x, by, 150 * u, 38 * u, '#8e7bff', '#5b3fd6', () => { mesTouches = { ...TOUCHES_DEF }; toucheAttendue = null; sauverTouches(); }); titre('Par défaut', x + 75 * u, by + 17 * u, 16 * u, '#fff');
   bouton3D(x + 160 * u, by, 170 * u, 38 * u, '#b6ff4a', '#1fc46b', () => { vueMode = ({ '3d': '25', '25': '2d', '2d': '3d' })[vueMode]; vue25 = vueMode === '25'; try { localStorage.setItem('bastoryVue', vueMode); } catch (e) {} });
   titre('Vue : ' + NOM_VUE[vueMode], x + 245 * u, by + 17 * u, 16 * u, '#fff');
+  boutonsSon(x, by - 50 * u, u);
   bouton3D(x + 340 * u, by, 190 * u, 38 * u, '#5ff0ff', '#1e7bff', () => allerA('hud')); titre('📱 Placer les boutons', x + 435 * u, by + 17 * u, 14 * u, '#fff', 'center', 180 * u);
 }
 const angleSouris = () => { if (!souris || !moi) return moi ? moi.angle : 0; const m = versMonde(souris.x, souris.y); return Math.atan2(m.y - moi.y, m.x - moi.x); };
@@ -3150,7 +3163,7 @@ function animReap(e) { // colonne de lumière à la réapparition
   fantomes.push({ lumiere: true, x: e.x, y: e.y, t: temps });
 }
 function mourir(j) {
-  effet('explosion', j.x, j.y, '#888', 60); animMort(j); if (j !== moi && j.dernier === moi.uid && moi.st) moi.st.ko++;
+  effet('explosion', j.x, j.y, '#888', 60); animMort(j); son('ko', j === moi ? 1 : volA(j.x, j.y)); if (j !== moi && j.dernier === moi.uid && moi.st) moi.st.ko++;
   if (j === moi) {
     envoyerEtat(true);
     if (moi.dernier && moi.dernier !== moi.uid) { kills[moi.dernier] = (kills[moi.dernier] || 0) + 1; envoyer({ t: 'mort', k: moi.dernier }); }
