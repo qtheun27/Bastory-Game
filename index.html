@@ -30,21 +30,19 @@
       </form>
     </div>
 
-    <script src="config.js"></script>
-    <script src="firebase-config.js"></script>
+    <script>const V = Date.now(), charge = f => document.write('<script src="' + f + '?v=' + V + '"><\/script>'); // 🔄 toujours la dernière version des fichiers du jeu (pas d'ancienne copie gardée en mémoire)
+    charge('config.js'); charge('firebase-config.js');</script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-    <script src="profil.js"></script>
+    <script>charge('profil.js');</script>
     <!-- Moteur 3D (Three.js) pour les persos 3D, avec un 2e serveur en secours -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" onerror="document.write('<script src=&quot;https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js&quot;><\/script>')"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
-    <script src="modele3d.js"></script>
-    <script src="rendu3d.js"></script>
-    <script src="sons.js"></script>
+    <script>charge('modele3d.js'); charge('rendu3d.js'); charge('sons.js');</script>
     <script>
     // Charge la config en direct depuis Firebase, puis lance le jeu
     (async () => {
@@ -68,7 +66,7 @@
                       : [192, 512].map(n => ({ src: base + `images/icone-maskable-${n}.png`, sizes: n + 'x' + n, type: 'image/png', purpose: 'any maskable' })) };
         document.querySelector('link[rel=manifest]').href = URL.createObjectURL(new Blob([JSON.stringify(man)], { type: 'application/manifest+json' }));
       } catch (e) { console.warn('Icône / nom de l\'appli', e); }
-      const s = document.createElement('script'); s.src = 'jeu.js'; document.body.appendChild(s);
+      const s = document.createElement('script'); s.src = 'jeu.js?v=' + V; document.body.appendChild(s);
     })();
     </script>
 </body>
