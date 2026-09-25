@@ -142,6 +142,7 @@ var CH_JEU = [['vitesseJeu','🏃 Vitesse générale de tous les persos (multipl
   ['eclatCanon','✨ Éclat lumineux au bout du canon','check'],
   ['decor3D','🌳 Décor 3D autour de la carte (0 = aucun, 1 = normal, 2 = très dense)','number'],
   ['esquiveBots','🤖 Réflexes des bots pour esquiver (0 = jamais, 1 = normal, 2 = très réactifs)','number'],
+  ['quetesParJour','📜 Quêtes par jour','number'],
   ['gadgetsParPartie','🧰 Gadgets : utilisations par partie','number'],
   ['—','💥 Effets manga','titre'],
   ['onomatopees','💬 Onomatopées (BAM! POW!…) sur les coups (0 = aucune, 1 = modéré, 2 = beaucoup)','number'],
@@ -482,6 +483,11 @@ const VUES = {
       el('p', { className: 'aide', textContent: '🎮 Ces réglages s\'appliquent en direct dans le jeu dès que tu cliques sur « Publier » (même pendant une partie). Survole un nombre pour voir sa traduction en clair.' }),
       el('p', { className: 'aide', textContent: 'Nom et icône utilisés quand on ajoute le jeu à l\'écran d\'accueil. Après « Publier », supprime puis réinstalle l\'appli sur le téléphone pour voir la nouvelle icône.' }));
     z.append(el('h3', { textContent: '🎭 Rôles des persos (avantages passifs)' }), roles);
+    const CH_Q = [['texte','Texte ({n} = objectif, {perso} = perso du jour)','text'],['type','Ce qui compte','select',[['victoire','Victoires'],['partie','Parties jouées'],['deg','Dégâts infligés'],['ko','K.O. d\'adversaires'],['sup','Supers lancés'],['gad','Gadgets utilisés'],['victoirePerso','Victoires avec le perso du jour']]],['min','Objectif minimum','number'],['max','Objectif maximum','number'],['jetons','Récompense (jetons perso)','number'],['actif','Active','check']];
+    z.append(el('h3', { textContent: '📜 Quêtes du jour (nombre par jour dans Sensations de jeu)' }), el('div', { className: 'grille-cartes' }, ...(cfg.quetes || []).map((q, i) => carte('📜 ' + (q.texte || 'Quête'), formulaire(q, CH_Q), () => { if (confirm('Supprimer cette quête ?')) { cfg.quetes.splice(i, 1); modifie(); afficher(); } }))),
+      el('div', { className: 'outils' }, el('button', { textContent: '➕ Nouvelle quête', onclick: () => { cfg.quetes.push({ texte: 'Gagne {n} parties', type: 'victoire', min: 1, max: 3, jetons: 1, actif: true }); modifie(); afficher(); } })));
+    const CH_R = [['nom','Nom du rang','text'],['icone','Icône (emoji)','text'],['couleur','Couleur','color'],['min','Points de saison nécessaires','number']];
+    z.append(el('h3', { textContent: '🏅 Rangs de saison (un classement par mois)' }), el('div', { className: 'grille-cartes' }, ...(cfg.rangs || []).map(r => carte((r.icone || '') + ' ' + r.nom, formulaire(r, CH_R)))));
     const CH_G = [['nom','Nom','text'],['icone','Icône (emoji)','text'],['couleur','Couleur','color'],['effet','Effet','select',[['soin','❤️ Soin instantané (valeur 0.3 = 30 % PV)'],['bouclier','🛡️ Dégâts reçus × valeur'],['vitesse','🏃 Vitesse × valeur'],['degats','💪 Dégâts × valeur'],['munitions','♾️ Munitions illimitées'],['invisible','👻 Invisible']]],['valeur','Valeur','number'],['duree','Durée (s)','number']];
     z.append(el('h3', { textContent: '🧰 Gadgets (le nombre par partie se règle dans Sensations de jeu)' }), el('div', { className: 'grille-cartes' }, ...Object.entries(cfg.gadgets || {}).map(([k, g]) => carte((g.icone || '') + ' ' + (g.nom || k), formulaire(g, CH_G)))));
   },

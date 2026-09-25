@@ -21,7 +21,7 @@ function configEnDirect() { // 🔄 les réglages publiés dans l'admin s'appliq
       const n = migrerConfig(JSON.parse(v.json)), fus = (a, b) => { if (a && b) for (const k in b) if (a[k] && b[k] && typeof a[k] === 'object' && !Array.isArray(a[k])) Object.assign(a[k], b[k]); else if (!a[k]) a[k] = b[k]; };
       Object.assign(CONFIG.app, n.app); ['progression'].forEach(k => n[k] && Object.assign(CONFIG[k] || (CONFIG[k] = {}), n[k]));
       ['armes', 'bosses', 'elements', 'roles'].forEach(k => { if (!CONFIG[k]) CONFIG[k] = {}; fus(CONFIG[k], n[k]); });                         // mis à jour sur place : les armes en cours de partie changent aussi
-      ['persos', 'modes', 'maps', 'pouvoirs', 'recompenses'].forEach(k => { const A = CONFIG[k], B = n[k]; if (!Array.isArray(A) || !Array.isArray(B)) return;
+      ['persos', 'modes', 'maps', 'pouvoirs', 'recompenses', 'quetes', 'rangs'].forEach(k => { const A = CONFIG[k], B = n[k]; if (!Array.isArray(A) || !Array.isArray(B)) return;
         if (A.length === B.length) A.forEach((x, i) => Object.assign(x, B[i])); else A.splice(0, A.length, ...B); }); // stats des persos : appliquées à la prochaine partie
     } catch (e) { console.warn('Config en direct illisible', e); }
   }, () => {});
@@ -275,7 +275,7 @@ async function evoluer(p) { // dépense les essences de l'élément pour passer 
 function creerJoueur(pi, x, y, uid, nom, eq, nv) {
   const b = CONFIG.persos[pi] || CONFIG.persos[0], p = statsNiveau(b, nv || 1), el = elemDe(b);
   return { uid, nom, eq, perso: p, dep: DEP_BASE[b.capacite || (el ? el.capacite : 'sol')] || b.capacite || (el ? el.capacite : 'sol'), depSpecial: b.capacite || '', arme: CONFIG.armes[p.arme] || Object.values(CONFIG.armes)[0], x, y, tx: x, ty: y, r: Math.round(Math.min(60, Math.max(14, +b.taille || 26))),
-           pv: p.pvMax, pvMax: p.pvMax, angle: 0, recharge: 0, mun: +p.munitions || 3, flash: 0, marche: 0, kx: 0, ky: 0, cache: false, bonus: {}, bo: [], gadgets: reglage('gadgetsParPartie', 3), gadgetT: 0 };
+           pv: p.pvMax, pvMax: p.pvMax, angle: 0, recharge: 0, mun: +p.munitions || 3, flash: 0, marche: 0, kx: 0, ky: 0, cache: false, bonus: {}, bo: [], gadgets: reglage('gadgetsParPartie', 3), gadgetT: 0, st: { deg: 0, ko: 0, sup: 0, gad: 0 } };
 }
 function creerBoss(id, x, y, i) {
   const ids = Object.keys(CONFIG.bosses);
@@ -368,10 +368,11 @@ function finir(r, msg) {
     const inc = firebase.firestore.FieldValue.increment;
     const elJ = elemDe(moi.perso), gainE = elJ ? +(r === 'VICTOIRE' ? elJ.gainVictoire : elJ.gainDefaite) || 0 : 0; finInfo.essence = elJ && gainE ? gainE + ' ' + elJ.icone : '';
     db.collection('joueurs').doc(user.uid).set({ pseudo: nomJoueur(), points: inc(finInfo.points), ...(elJ ? { essences: { [baseDe(moi.perso).element]: inc(gainE) } } : {}), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0),
-      persos: { [cleP(baseDe(moi.perso))]: { points: inc(finInfo.points), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0) } } }, { merge: true }).catch(e => console.warn(e));
+      persos: { [cleP(baseDe(moi.perso))]: { points: inc(finInfo.points), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0) } },
+      quetes: avancerQuetes(r), ...(mesStats.saisonId === saisonId() ? { saisonPts: inc(finInfo.points) } : { saisonId: saisonId(), saisonPts: finInfo.points }) }, { merge: true }).catch(e => console.warn(e));
   }
 }
-function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; if (!persoCharge && v.perso !== undefined) { persoCharge = true; persoIndex = persoSauve = Math.max(0, Math.min(CONFIG.persos.length - 1, +v.perso)); } if (v.hud) Object.assign(hudPerso, v.hud); mesPoints = v.points || 0; if (v.touches && !toucheAttendue) mesTouches = { ...TOUCHES_DEF, ...v.touches }; mesStats = { points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {}, essences: v.essences || {}, recompenses: v.recompenses || [], jetons: v.jetons || 0, persosDebloques: v.persosDebloques || [], avatars: v.avatars || [], avatar: v.avatar || null }; }, () => {}); }
+function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; if (!persoCharge && v.perso !== undefined) { persoCharge = true; persoIndex = persoSauve = Math.max(0, Math.min(CONFIG.persos.length - 1, +v.perso)); } if (v.hud) Object.assign(hudPerso, v.hud); mesPoints = v.points || 0; if (v.touches && !toucheAttendue) mesTouches = { ...TOUCHES_DEF, ...v.touches }; mesStats = { quetes: v.quetes || null, saisonId: v.saisonId || '', saisonPts: v.saisonPts || 0, points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {}, essences: v.essences || {}, recompenses: v.recompenses || [], jetons: v.jetons || 0, persosDebloques: v.persosDebloques || [], avatars: v.avatars || [], avatar: v.avatar || null }; }, () => {}); }
 
 // ---------- 8. MULTIJOUEUR (Realtime Database) ----------
 // Salle d'attente → départ quand le max est atteint (ou 10 s après avoir atteint le minimum).
@@ -714,7 +715,7 @@ function degats(e, de, deg, x, y, ang, a) { // applique les dégâts selon qui a
     if (rA === 'assassin' && dd < P * 0.4) deg *= 1 + RV('assassin', 'valeur', 25) / 100;
     if (rA === 'controle') { e.ralenti = Math.min(e.ralentiT > temps ? e.ralenti || 1 : 1, 1 - RV('controle', 'valeur', 25) / 100); e.ralentiT = Math.max(e.ralentiT || 0, temps + 60); } }
   if (e.perso && roleDe(e.perso) === 'tank') deg *= 1 - RV('tank', 'valeur', 15) / 100; // 🛡️ le tank encaisse
-  deg = Math.round(deg);
+  deg = Math.round(deg); if (de === moi.uid && moi.st && e !== moi) moi.st.deg += deg; // 📊 stats du match (quêtes)
   const kb = (a && +a.recul) || (a && a.effet === 'explosion' ? 6 : 3);
   if (pr && pr.perso && (de === moi.uid || (hote && pr.bot))) gagnerSuper(pr, deg); // ⭐ les dégâts chargent le super
   if (e === moi) { if (a && +a.recul && moi.depSpecial !== 'orage') { moi.kx += Math.cos(ang) * a.recul; moi.ky += Math.sin(ang) * a.recul; } return toucherMoi(deg, x, y, de); }
@@ -896,7 +897,7 @@ const bonusActifs = j => Object.entries(j.bonus || {}).filter(([, fin]) => fin >
 const gadgetDe = j => { const k = (baseDe(j.perso) || {}).gadget; return k && (CONFIG.gadgets || {})[k] ? k : null; };
 function lancerGadget(j = moi) { // 🧰 gadget : 3 fois par partie (réglable), 5 s entre deux utilisations
   const k = gadgetDe(j); if (!k || j.pv <= 0 || resultat || !(j.gadgets > 0) || temps < (j.gadgetT || 0)) return;
-  j.gadgets--; j.gadgetT = temps + 300; activerPouvoir('g_' + k, j);
+  j.gadgets--; j.gadgetT = temps + 300; activerPouvoir('g_' + k, j); if (j === moi && moi.st) moi.st.gad++;
   const g = CONFIG.gadgets[k]; ondes.push({ x: j.x, y: j.y, r: 10, max: 80, c: g.couleur || '#fff', vie: 1, ep: 8 });
   if (j === moi) envoyer({ t: 'gd', de: moi.uid, g: k });
 }
@@ -1607,7 +1608,7 @@ function tirSpecial(j, arme, angle, force, deg) { const a = j.arme; j.arme = arm
 const moiOuBot = j => j === moi || (j.bot && hote); // qui applique les effets sur ce perso
 function lancerSuper(j, angle = j.angle, distant) {
   const e = infoElem(j); if (!e || j.pv <= 0 || resultat || (!distant && !j.superPret)) return;
-  if (!distant) { j.superPret = false; j.superC = 0; envoyer({ t: 'su', de: j.uid, a: +angle.toFixed(3) }); }
+  if (!distant) { if (j === moi && moi.st) moi.st.sup++; j.superPret = false; j.superC = 0; envoyer({ t: 'su', de: j.uid, a: +angle.toFixed(3) }); }
   const deg = Math.round(j.perso.degats * bonus(j, 'degats')), A = j.arme;
   j.anim = { n: (baseDe(j.perso) || {}).animSuper || 'attaque', t: temps }; ono(e.ono, j.x, j.y - 60, 1.7, j.perso.couleur); choc = 1; flash = 0.4;
   const ks = elementsDe(j.perso), d2 = Math.round(deg * (ks.length > 1 ? 0.8 : 1)); if (ks.length > 1) ono('FUSION!!', j.x, j.y - 100, 1.6, '#ffe14a');
@@ -1931,6 +1932,54 @@ function dessinerMiniMap(def, x, y, w, h) {
 }
 
 // ---------- 🎁 RÉCOMPENSES : paliers selon le total de victoires ----------
+// ---------- 📜 QUÊTES DU JOUR (les mêmes pour tout le monde, renouvelées chaque jour) ----------
+const jourJ = () => new Date().toLocaleDateString('fr-CA'), saisonId = () => jourJ().slice(0, 7); // 2026-09-25 / 2026-09
+const hacher = t => [...String(t)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+function quetesDuJour() {
+  const j = jourJ(); if (quetesDuJour.j === j && quetesDuJour.l) return quetesDuJour.l;
+  const T = (CONFIG.quetes || []).map((q, i) => ({ ...q, i })).filter(q => q.actif !== false), l = [], h = hacher(j);
+  for (let k = 0; T.length && l.length < Math.min(T.length, reglage('quetesParJour', 3)); k++) { const q = T[(h + k * 7919) % T.length]; if (!l.some(x => x.i === q.i)) l.push(q); if (k > 200) break; }
+  const persos = CONFIG.persos.filter(p => p.deBase !== false); quetesDuJour.j = j;
+  return quetesDuJour.l = l.map((q, k) => { const r = (hacher(j + k) % 1000) / 1000, n = Math.round((+q.min || 1) + r * ((+q.max || q.min || 1) - (+q.min || 1))), perso = (persos[hacher(j + 'p' + k) % Math.max(1, persos.length)] || {}).nom || '';
+    const nn = n >= 1000 ? Math.round(n / 1000) * 1000 : n; return { ...q, n: nn, perso, txt: String(q.texte || '').replace('{n}', nn.toLocaleString('fr')).replace('{perso}', perso) }; });
+}
+const etatQuetes = () => { const e = mesStats.quetes; return e && e.jour === jourJ() ? e : { jour: jourJ(), p: [], pris: [] }; };
+function avancerQuetes(r) { // progression après une partie
+  const e = etatQuetes(), st = moi.st || {}, vic = r === 'VICTOIRE', p = [...(e.p || [])], nom = (baseDe(moi.perso) || {}).nom;
+  quetesDuJour().forEach((q, k) => { const g = { victoire: vic ? 1 : 0, partie: 1, deg: st.deg || 0, ko: st.ko || 0, sup: st.sup || 0, gad: st.gad || 0, victoirePerso: vic && nom === q.perso ? 1 : 0 }[q.type] || 0;
+    p[k] = Math.min(q.n, (p[k] || 0) + g); if (g && p[k] >= q.n && (e.p || [])[k] < q.n) notif('📜 Quête terminée : ' + q.txt); });
+  return mesStats.quetes = { jour: e.jour, p, pris: e.pris || [] };
+}
+const nbQuetesPretes = () => { const e = etatQuetes(); return quetesDuJour().filter((q, k) => (e.p || [])[k] >= q.n && !(e.pris || [])[k]).length; };
+async function reclamerQuete(k) {
+  const q = quetesDuJour()[k], e = etatQuetes(); if (!q || !db || !((e.p || [])[k] >= q.n) || (e.pris || [])[k]) return;
+  const pris = [...(e.pris || [])]; pris[k] = true;
+  try { await db.collection('joueurs').doc(user.uid).set({ jetons: firebase.firestore.FieldValue.increment(+q.jetons || 1), quetes: { jour: e.jour, p: e.p || [], pris } }, { merge: true }); notif('🎟️ +' + (q.jetons || 1) + ' jetons perso !'); vagues.push({ x: W / 2, y: H / 2, t: temps }); }
+  catch (er) { notif('Impossible : ' + er.message); }
+}
+function menuQuetes() {
+  const u = U(), top = barreHaut('QUÊTES DU JOUR', true), l = quetesDuJour(), e = etatQuetes();
+  const fin = new Date(); fin.setHours(24, 0, 0, 0); const hr = Math.max(0, Math.round((fin - new Date()) / 3600000));
+  titre('Nouvelles quêtes dans ' + hr + ' h', W / 2, top + 20 * u, 18 * u, '#ffe14a');
+  const w = Math.min(640 * u, W - 40 * u), x = (W - w) / 2, h = Math.min(92 * u, (H - top - 70 * u) / Math.max(1, l.length) - 12 * u);
+  l.forEach((q, k) => {
+    const y = top + 48 * u + k * (h + 12 * u), p = (e.p || [])[k] || 0, ok = p >= q.n, pris = (e.pris || [])[k], c = pris ? '#8b8fa8' : ok ? '#4cd964' : '#5a4dff';
+    ctx.save(); ctx.translate(x + w / 2, y + h / 2); ctx.rotate((k % 2 ? 1 : -1) * 0.006); ctx.translate(-x - w / 2, -y - h / 2);
+    rect(x + 5 * u, y + 6 * u, w, h, 16 * u, NOIR); const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, ombrer(c, 0.3)); g.addColorStop(1, ombrer(c, -0.35)); rect(x, y, w, h, 16 * u, g, NOIR, 3.5 * u);
+    ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, w, h, 16 * u); ctx.clip(); trame(0.1, '#000'); ctx.restore();
+    titre(q.txt, x + 20 * u, y + h * 0.34, 18 * u, '#fff', 'left', w - 190 * u);
+    const bw = w - 200 * u, by = y + h * 0.66; rect(x + 20 * u, by - 7 * u, bw, 14 * u, 7 * u, 'rgba(11,6,32,.6)'); rect(x + 20 * u, by - 7 * u, Math.max(8 * u, bw * Math.min(1, p / q.n)), 14 * u, 7 * u, '#ffe14a');
+    texte(Math.min(p, q.n).toLocaleString('fr') + ' / ' + q.n.toLocaleString('fr'), x + 20 * u + bw / 2, by, 10 * u, '#1f1300');
+    const bx = x + w - 160 * u;
+    if (pris) titre('✔ Récupéré', bx + 70 * u, y + h / 2, 16 * u, '#fff');
+    else if (ok) { boutonJeu(bx, y + h / 2 - 20 * u, 140 * u, 40 * u, '#b6ff4a', '#1fc46b', () => reclamerQuete(k)); titre('+' + (q.jetons || 1) + ' 🎟️', bx + 70 * u, y + h / 2, 17 * u, '#fff'); }
+    else titre('+' + (q.jetons || 1) + ' 🎟️', bx + 70 * u, y + h / 2, 17 * u, 'rgba(255,255,255,.8)');
+    ctx.restore();
+  });
+}
+// ---------- 🏅 SAISONS : un classement par mois, avec des rangs ----------
+const rangDe = pts => { const l = (CONFIG.rangs || []).slice().sort((a, b) => a.min - b.min); let r = l[0] || { nom: '-', icone: '', couleur: '#fff', min: 0 }; for (const x of l) if (pts >= x.min) r = x; return r; };
+const nomSaison = () => new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 async function reclamer(i) {
   const r = (CONFIG.recompenses || [])[i]; if (!r || !db || (mesStats.recompenses || []).includes(i) || (mesStats.victoires || 0) < r.victoires) return;
   const inc = firebase.firestore.FieldValue.increment, ess = {}, maj = { recompenses: firebase.firestore.FieldValue.arrayUnion(i) };
@@ -2632,7 +2681,7 @@ function menuAmis() {
 
 // ---------- 14b. MENU PRINCIPAL (style arcade) ----------
 // Écrans : accueil • persos • modes • classement • pouvoirs
-let ecranMenu = 'accueil', persoVue = 0, pageMenu = 0, mesStats = { points: 0, victoires: 0, parties: 0 }, classement = null, classementT = -9999;
+let classementVue = 'saison', ecranMenu = 'accueil', persoVue = 0, pageMenu = 0, mesStats = { points: 0, victoires: 0, parties: 0 }, classement = null, classementT = -9999;
 const cacheMini = {};
 const U = () => Math.max(0.6, Math.min(1.35, Math.min(W / 900, H / 440)));   // échelle de l'interface selon l'écran
 const selPerso = () => CONFIG.persos[persoIndex] || CONFIG.persos[0];
@@ -2697,7 +2746,7 @@ function dessinerMenu() {
   ecran(); zones = [];
   fondMenu();
   if (etat === 'AUTH') return;
-  ({ accueil: menuAccueil, persos: menuPersos, modes: menuModes, classement: menuClassement, pouvoirs: menuPouvoirs, amis: menuAmis, recompenses: menuRecompenses, commandes: menuCommandes, hud: menuHud, avatar: menuAvatar })[ecranMenu]();
+  ({ accueil: menuAccueil, persos: menuPersos, modes: menuModes, classement: menuClassement, pouvoirs: menuPouvoirs, amis: menuAmis, recompenses: menuRecompenses, quetes: menuQuetes, commandes: menuCommandes, hud: menuHud, avatar: menuAvatar })[ecranMenu]();
   const kt = Math.min(1, (temps - transT) / 14); if (kt < 1) { ctx.fillStyle = `rgba(5,7,15,${(1 - kt) * 0.9})`; ctx.fillRect(-100, -100, W + 200, H + 200); } // fondu entre écrans
   dessinerVagues(); dessinerNotif();
   if (invitations.length) modaleInvitation();
@@ -2708,12 +2757,13 @@ function menuAccueil() {
   const u = U(), p = selPerso(), a = CONFIG.armes[p.arme] || {}, m = modeChoisi(), [, c1, c2, lab] = modesStyle(m), multi = m.type === 'multi';
   const top = barreHaut();
   // navigation à gauche
-  const nav = [['perso', 'Persos', 'persos', '#5ac8fa', '#2f6bff'], ['amis', 'Amis', 'amis', '#4ade80', '#059669'], ['classement', 'Classement', 'classement', '#ffc24b', '#ff7a00'], ['eclair', 'Pouvoirs', 'pouvoirs', '#ff7ac0', '#b43cff'], ['trophee', 'Récompenses', 'recompenses', '#ffe14a', '#ff8a1f'], ['reglages', 'Commandes', 'commandes', '#5ff0ff', '#1e7bff']];
+  const nav = [['perso', 'Persos', 'persos', '#5ac8fa', '#2f6bff'], ['amis', 'Amis', 'amis', '#4ade80', '#059669'], ['classement', 'Classement', 'classement', '#ffc24b', '#ff7a00'], ['eclair', 'Pouvoirs', 'pouvoirs', '#ff7ac0', '#b43cff'], ['trophee', 'Récompenses', 'recompenses', '#ffe14a', '#ff8a1f'], ['check', 'Quêtes', 'quetes', '#b6ff4a', '#1fc46b'], ['reglages', 'Commandes', 'commandes', '#5ff0ff', '#1e7bff']];
   nav.forEach(([ic, t, e, a1, a2], k) => {
-    const y = top + 14 * u + k * 52 * u, w = 158 * u;
+    const pas = Math.min(52 * u, (H - top - 24 * u) / nav.length), y = top + 14 * u + k * pas, w = 158 * u;
     boutonJeu(14 * u, y, w, 42 * u, a1, a2, () => allerA(e));
     icone(ic, 40 * u, y + 21 * u, 20 * u); titre(t, 58 * u, y + 22 * u, 20 * u, '#fff', 'left', w - 80 * u);
     if (e === 'amis' && Object.keys(demandesAmis).length) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(Object.keys(demandesAmis).length), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
+    if (e === 'quetes' && nbQuetesPretes()) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(nbQuetesPretes()), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
     if (e === 'recompenses' && nbRecompenses()) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(nbRecompenses()), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
     if (k === 1 && Object.keys(groupe.membres).length) { ctx.beginPath(); ctx.arc(14 * u + w - 22 * u, y + 23 * u, 10 * u, 0, 7); ctx.fillStyle = '#34d399'; ctx.fill(); texte(String(Object.keys(groupe.membres).length + 1), 14 * u + w - 22 * u, y + 24 * u, 11 * u, '#fff'); }
   });
@@ -2928,28 +2978,32 @@ function menuClassement() {
   const u = U(), top = barreHaut('CLASSEMENT', true);
   if (db && temps - classementT > 900) { // rafraîchi toutes les ~15 s
     classementT = temps;
-    db.collection('joueurs').orderBy('points', 'desc').limit(30).get().then(s => classement = s.docs.map(d => ({ uid: d.id, ...d.data() }))).catch(() => classement = classement || []);
+    const sa = classementVue === 'saison';
+    db.collection('joueurs').orderBy(sa ? 'saisonPts' : 'points', 'desc').limit(sa ? 60 : 30).get().then(s => classement = s.docs.map(d => ({ uid: d.id, ...d.data() })).filter(j => !sa || j.saisonId === saisonId()).slice(0, 30)).catch(() => classement = classement || []);
   }
   const cw = Math.min(260 * u, W * 0.3), x0 = 14 * u, y0 = top + 14 * u, h = H - y0 - 14 * u;
   rect(x0, y0, cw, h, 18 * u, 'rgba(255,255,255,.1)', '#ffd23f', 3 * u);
   const im = carteDe(selPerso()), is = Math.min(cw * 0.45, h * 0.3);
   if (pret(im)) ctx.drawImage(im, x0 + cw / 2 - is / 2, y0 + 10 * u, is, is);
   texte(nomJoueur(), x0 + cw / 2, y0 + is + 24 * u, 18 * u, '#fff');
-  const rang = classement ? classement.findIndex(j => j.uid === (user && user.uid)) + 1 : 0;
-  [['🏆', 'Points', mesStats.points], ['⭐', 'Victoires', mesStats.victoires], ['🎮', 'Parties', mesStats.parties],
+  const rang = classement ? classement.findIndex(j => j.uid === (user && user.uid)) + 1 : 0, sa = classementVue === 'saison', mesPtsS = mesStats.saisonId === saisonId() ? mesStats.saisonPts : 0, rg = rangDe(mesPtsS);
+  [[rg.icone || '🏅', 'Rang de la saison', rg.nom], ['📅', 'Points ' + nomSaison(), mesPtsS], ['🏆', 'Points (total)', mesStats.points], ['⭐', 'Victoires', mesStats.victoires], ['🎮', 'Parties', mesStats.parties],
    ['📈', 'Taux de victoire', mesStats.parties ? Math.round(mesStats.victoires / mesStats.parties * 100) + ' %' : '-'], ['🥇', 'Rang', rang ? '#' + rang : '-']]
     .forEach(([i, l, v], k) => { const y = y0 + is + 50 * u + k * 26 * u; if (y > y0 + h - 14 * u) return; emoji(i, x0 + 22 * u, y, 15 * u); texte(l, x0 + 38 * u, y, 12 * u, '#cfd8ff', 'left'); texte(String(v), x0 + cw - 14 * u, y, 14 * u, '#fff', 'right'); });
   const lx = x0 + cw + 14 * u, lw = W - lx - 14 * u;
-  if (!classement) return texte('Chargement…', lx + lw / 2, y0 + 40 * u, 16 * u, '#fff');
-  if (!classement.length) return texte('Personne encore… joue une partie !', lx + lw / 2, y0 + 40 * u, 16 * u, '#fff');
-  const rh = 32 * u, parCol = Math.max(1, Math.floor(h / (rh + 6 * u))), cols = classement.length > parCol && lw > 500 * u ? 2 : 1, colW = (lw - (cols - 1) * 12 * u) / cols;
+  [['saison', '📅 Saison ' + nomSaison()], ['total', '🏆 Depuis toujours']].forEach(([v, t], k) => { const bw = Math.min(200 * u, (lw - 10 * u) / 2), bx = lx + k * (bw + 10 * u), on = classementVue === v;
+    bouton3D(bx, y0, bw, 32 * u, on ? '#ffe14a' : '#8e7bff', on ? '#ff8a1f' : '#5b3fd6', () => { if (classementVue !== v) { classementVue = v; classementT = -9999; classement = null; } }); texte(t, bx + bw / 2, y0 + 16 * u, 12 * u, on ? '#1f1300' : '#fff', 'center', bw - 10 * u); });
+  if (!classement) return texte('Chargement…', lx + lw / 2, y0 + 80 * u, 16 * u, '#fff');
+  if (!classement.length) return texte(classementVue === 'saison' ? 'Personne cette saison… joue une partie !' : 'Personne encore… joue une partie !', lx + lw / 2, y0 + 80 * u, 16 * u, '#fff');
+  const yL = y0 + 44 * u, hL = h - 44 * u, rh = 32 * u, parCol = Math.max(1, Math.floor(hL / (rh + 6 * u))), cols = classement.length > parCol && lw > 500 * u ? 2 : 1, colW = (lw - (cols - 1) * 12 * u) / cols;
   classement.slice(0, parCol * cols).forEach((j, k) => {
-    const x = lx + Math.floor(k / parCol) * (colW + 12 * u), y = y0 + (k % parCol) * (rh + 6 * u), moiL = user && j.uid === user.uid;
+    const x = lx + Math.floor(k / parCol) * (colW + 12 * u), y = yL + (k % parCol) * (rh + 6 * u), moiL = user && j.uid === user.uid;
     rect(x, y, colW, rh, 10 * u, moiL ? 'rgba(255,210,63,.35)' : 'rgba(255,255,255,.1)', moiL ? '#ffd23f' : null, 2);
     const med = ['🥇', '🥈', '🥉'][k];
     if (med) emoji(med, x + 18 * u, y + rh / 2, 18 * u); else texte('#' + (k + 1), x + 18 * u, y + rh / 2, 12 * u, '#cfd8ff');
     texte(j.pseudo || 'Joueur', x + 38 * u, y + rh / 2, 13 * u, '#fff', 'left', colW - 170 * u);
-    texte('⭐' + (j.victoires || 0) + '   🏆 ' + (j.points || 0), x + colW - 10 * u, y + rh / 2, 12 * u, '#ffe8a3', 'right');
+    const rj = rangDe(j.saisonId === saisonId() ? j.saisonPts || 0 : 0); emoji(rj.icone || '', x + colW - (sa ? 96 : 130) * u, y + rh / 2, 14 * u);
+    texte(sa ? '📅 ' + (j.saisonPts || 0) + ' pts' : '⭐' + (j.victoires || 0) + '   🏆 ' + (j.points || 0), x + colW - 10 * u, y + rh / 2, 12 * u, '#ffe8a3', 'right');
   });
 }
 
@@ -3050,7 +3104,7 @@ function animReap(e) { // colonne de lumière à la réapparition
   fantomes.push({ lumiere: true, x: e.x, y: e.y, t: temps });
 }
 function mourir(j) {
-  effet('explosion', j.x, j.y, '#888', 60); animMort(j);
+  effet('explosion', j.x, j.y, '#888', 60); animMort(j); if (j !== moi && j.dernier === moi.uid && moi.st) moi.st.ko++;
   if (j === moi) {
     envoyerEtat(true);
     if (moi.dernier && moi.dernier !== moi.uid) { kills[moi.dernier] = (kills[moi.dernier] || 0) + 1; envoyer({ t: 'mort', k: moi.dernier }); }
