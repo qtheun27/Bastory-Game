@@ -1025,6 +1025,13 @@ const CONFIG_PAR_DEFAUT = {
     "tailleDegats": 1,
     "decor3D": 1
   },
+  "gadgets": {
+    "soin": { "nom": "Trousse de soin", "icone": "❤️", "couleur": "#ff5a6e", "effet": "soin", "valeur": 0.3, "duree": 0 },
+    "bouclier": { "nom": "Carapace", "icone": "🛡️", "couleur": "#5ac8fa", "effet": "bouclier", "valeur": 0.5, "duree": 3 },
+    "sprint": { "nom": "Sprint", "icone": "💨", "couleur": "#b6f0ff", "effet": "vitesse", "valeur": 1.6, "duree": 2 },
+    "recharge": { "nom": "Rafale", "icone": "🔋", "couleur": "#ffd23f", "effet": "munitions", "valeur": 1, "duree": 3 },
+    "fantome": { "nom": "Fantôme", "icone": "👻", "couleur": "#b67aff", "effet": "invisible", "valeur": 1, "duree": 3 }
+  },
   "roles": {
     "tank": { "nom": "🛡️ Tank", "valeur": 15, "description": "Encaisse : reçoit 15 % de dégâts en moins" },
     "tireur": { "nom": "🎯 Tireur", "valeur": 20, "description": "De loin : +20 % de dégâts sur les cibles éloignées" },
@@ -1185,7 +1192,7 @@ function armePour(c, p) {
 function migrerConfig(c) {
   const D = CONFIG_PAR_DEFAUT, copie = o => JSON.parse(JSON.stringify(o)), def = (o, d) => { for (const k in d) if (o[k] === undefined) o[k] = d[k]; return o; };
   if (!c.bosses) c.bosses = { troll: c.boss || copie(D.bosses.troll) }; delete c.boss;
-  ['modes', 'pouvoirs', 'app', 'elements', 'progression', 'recompenses', 'roles'].forEach(k => { if (!c[k] || (Array.isArray(c[k]) && !c[k].length)) c[k] = copie(D[k]); });
+  ['modes', 'pouvoirs', 'app', 'elements', 'progression', 'recompenses', 'roles', 'gadgets'].forEach(k => { if (!c[k] || (Array.isArray(c[k]) && !c[k].length)) c[k] = copie(D[k]); });
   for (const k in D.armes) if (!c.armes[k] && ['seisme', 'ricochet', 'eclair', 'fumigene', 'dard', 'rocher', 'vent', 'trident', 'boulefeu'].includes(k)) c.armes[k] = copie(D.armes[k]);
   if ((c.version || 0) < 8) { // v8 : persos = vrais modèles 3D .glb + éléments ; les anciens persos "assemblés" sont retirés
     c.persos = c.persos.filter(p => p.image || p.modele);
@@ -1241,6 +1248,10 @@ function migrerConfig(c) {
   if ((c.version || 0) < 18) { // v18 : rôles des persos
     const R = { ROKH: 'tank', BOULDO: 'tank', MAGMOR: 'tank', ZEPHYR: 'tireur', STORMY: 'tireur', NAIA: 'soutien', GLOUGLOU: 'soutien', PYRO: 'controle', NIMBUS: 'controle', BRAISE: 'assassin', BORA: 'assassin', WIXY: 'controle' };
     c.persos.forEach(p => { if (!p.role) p.role = R[p.nom] || ''; }); c.version = Math.max(c.version || 0, 18);
+  }
+  if ((c.version || 0) < 19) { // v19 : gadgets (3 par partie)
+    const G = { tank: 'bouclier', tireur: 'sprint', soutien: 'soin', controle: 'recharge', assassin: 'fantome' };
+    c.persos.forEach(p => { if (p.gadget === undefined) p.gadget = G[p.role] || 'soin'; }); if (c.app && c.app.gadgetsParPartie === undefined) c.app.gadgetsParPartie = 3; c.version = 19;
   }
 
   c.persos.forEach(p => { if (typeof p.base === 'boolean') { p.deBase = p.base; delete p.base; } }); // réparation : ancien nom du champ

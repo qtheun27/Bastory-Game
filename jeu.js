@@ -275,7 +275,7 @@ async function evoluer(p) { // dépense les essences de l'élément pour passer 
 function creerJoueur(pi, x, y, uid, nom, eq, nv) {
   const b = CONFIG.persos[pi] || CONFIG.persos[0], p = statsNiveau(b, nv || 1), el = elemDe(b);
   return { uid, nom, eq, perso: p, dep: DEP_BASE[b.capacite || (el ? el.capacite : 'sol')] || b.capacite || (el ? el.capacite : 'sol'), depSpecial: b.capacite || '', arme: CONFIG.armes[p.arme] || Object.values(CONFIG.armes)[0], x, y, tx: x, ty: y, r: Math.round(Math.min(60, Math.max(14, +b.taille || 26))),
-           pv: p.pvMax, pvMax: p.pvMax, angle: 0, recharge: 0, mun: +p.munitions || 3, flash: 0, marche: 0, kx: 0, ky: 0, cache: false, bonus: {}, bo: [] };
+           pv: p.pvMax, pvMax: p.pvMax, angle: 0, recharge: 0, mun: +p.munitions || 3, flash: 0, marche: 0, kx: 0, ky: 0, cache: false, bonus: {}, bo: [], gadgets: reglage('gadgetsParPartie', 3), gadgetT: 0 };
 }
 function creerBoss(id, x, y, i) {
   const ids = Object.keys(CONFIG.bosses);
@@ -494,6 +494,7 @@ function recevoir(e) {
   const j = entite(e.de);
   if (e.t === 'tir' && j) { j.angle = e.a; creerProjectile(j, e.a, e.f, e.x, e.y, e.d); }
   else if (e.t === 'db' && hote && bosses[e.i]) blesserBoss(bosses[e.i], e.deg, e.de);
+  else if (e.t === 'gd' && j && j !== moi) { activerPouvoir('g_' + e.g, j); const g = (CONFIG.gadgets || {})[e.g] || {}; ondes.push({ x: j.x, y: j.y, r: 10, max: 80, c: g.couleur || '#fff', vie: 1, ep: 8 }); } // 🧰 gadget d'un autre joueur
   else if (e.t === 'fr') frappe(e, false);
   else if (e.t === 'ca') casser(e.tx, e.ty, e.o);
   else if (e.t === 'pr') objets = objets.filter(o => o.tx !== e.tx || o.ty !== e.ty);
@@ -520,6 +521,7 @@ addEventListener('keydown', e => {
   if (etat === 'JEU') {
     if (k === mesTouches.auto) { e.preventDefault(); tirerAuto(); }
     if (k === mesTouches.action) lancerAction(moi);            // 🎮 action d'élément
+    if (k === (mesTouches.gadget || 'g')) lancerGadget(moi);      // 🧰 gadget
     if (k === mesTouches.super) lancerSuper(moi, angleSouris()); // ⭐ super, vers la souris
   }
   if (k === 'escape' && etat !== 'MENU') { quitterSalle(); etat = 'MENU'; }
@@ -862,14 +864,22 @@ function tirerPouvoir() { // tirage au sort pondéré par la rareté
   for (const [id, p] of l) if ((t -= +p.rarete || 1) <= 0) return id;
   return l[0][0];
 }
+const defPouvoir = id => CONFIG.pouvoirs[id] || (String(id).startsWith('g_') ? (CONFIG.gadgets || {})[String(id).slice(2)] : null); // pouvoir ramassé ou gadget
 function pouvoirActif(j, effet) {
-  for (const [id, fin] of Object.entries(j.bonus || {})) { const p = CONFIG.pouvoirs[id]; if (p && p.effet === effet && fin > temps) return p; }
+  for (const [id, fin] of Object.entries(j.bonus || {})) { const p = defPouvoir(id); if (p && p.effet === effet && fin > temps) return p; }
   return null;
 }
 const bonus = (j, effet) => { const p = pouvoirActif(j, effet); return p && !isNaN(+p.valeur) ? +p.valeur : 1; };
 const bonusActifs = j => Object.entries(j.bonus || {}).filter(([, fin]) => fin > temps).map(([id]) => id);
+const gadgetDe = j => { const k = (baseDe(j.perso) || {}).gadget; return k && (CONFIG.gadgets || {})[k] ? k : null; };
+function lancerGadget(j = moi) { // 🧰 gadget : 3 fois par partie (réglable), 5 s entre deux utilisations
+  const k = gadgetDe(j); if (!k || j.pv <= 0 || resultat || !(j.gadgets > 0) || temps < (j.gadgetT || 0)) return;
+  j.gadgets--; j.gadgetT = temps + 300; activerPouvoir('g_' + k, j);
+  const g = CONFIG.gadgets[k]; ondes.push({ x: j.x, y: j.y, r: 10, max: 80, c: g.couleur || '#fff', vie: 1, ep: 8 });
+  if (j === moi) envoyer({ t: 'gd', de: moi.uid, g: k });
+}
 function activerPouvoir(id, qui = moi) {
-  const p = CONFIG.pouvoirs[id]; if (!p) return;
+  const p = defPouvoir(id); if (!p) return;
   if (p.effet === 'soin') qui.pv = Math.min(qui.pvMax, qui.pv + qui.pvMax * (+p.valeur || 0.3));
   else qui.bonus[id] = temps + (+p.duree || 8) * 60;
   if (qui !== moi) return texteFlottant((p.icone || '✨') + ' ' + p.nom, qui.x, qui.y - 70, p.couleur || '#fff');
@@ -947,7 +957,7 @@ function maj() {
     objets = objets.filter(x => x !== o); envoyer({ t: 'pr', tx: o.tx, ty: o.ty }); activerPouvoir(o.id); break;
   }
   for (const j of Object.values(autres)) {
-    if (j.bot && hote) iaBot(j);
+    if (j.bot && hote) { iaBot(j); if (j.pv > 0 && j.pv < j.pvMax * 0.4 && j.gadgets > 0 && Math.random() < 0.02) lancerGadget(j); } // 🤖 les bots utilisent aussi leur gadget
     else { j.x += (j.tx - j.x) * 0.35; j.y += (j.ty - j.y) * 0.35; if (j.flash > 0) j.flash--; }
     if (j.bot && hote && j.revivre && temps >= j.revivre) revivre(j);
   }
@@ -1650,7 +1660,8 @@ function hudElem() { // 🎮 boutons ronds façon arcade : SUPER (anneau de char
   hudBoutons = []; hudObjectif();
   const e = infoElem(moi); if (!e || moi.pv <= 0 || etat !== 'JEU') return;
   const u = U(), tact = true, { S, A, T } = posHUD();
-  if (!mobile) { texte(libTouche(mesTouches.action) + ' : ' + e.actionNom + '  •  ' + libTouche(mesTouches.super) + ' : ' + e.superNom, W / 2, H - 36, 12, '#ffe14a'); return; }
+  const gk = gadgetDe(moi), gg = gk && CONFIG.gadgets[gk];
+  if (!mobile) { texte(libTouche(mesTouches.action) + ' : ' + e.actionNom + '  •  ' + libTouche(mesTouches.super) + ' : ' + e.superNom + (gg ? '  •  ' + libTouche(mesTouches.gadget || 'g') + ' : ' + gg.icone + ' ' + gg.nom + ' (' + (moi.gadgets || 0) + ')' : ''), W / 2, H - 36, 12, '#ffe14a'); return; }
   const rond = (b, c1, c2, halo) => { // ombre portée, dégradé bombé, contour épais, reflet
     ctx.beginPath(); ctx.arc(b.x, b.y + 5 * u, b.r, 0, 7); ctx.fillStyle = 'rgba(11,6,32,.55)'; ctx.fill();
     if (halo) { ctx.save(); ctx.globalAlpha = 0.45 + 0.3 * Math.sin(temps * 0.2); ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 1.4, 0, 7); ctx.fillStyle = halo; ctx.fill(); ctx.restore(); }
@@ -1671,6 +1682,11 @@ function hudElem() { // 🎮 boutons ronds façon arcade : SUPER (anneau de char
   icone('eclair', A.x, A.y, A.r * 0.95, '#fff');
   if (reste) { ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.arc(A.x, A.y, A.r - 2 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * reste / tot); ctx.closePath(); ctx.fillStyle = 'rgba(11,6,32,.7)'; ctx.fill(); titre(Math.ceil(reste / 60), A.x, A.y, 20 * u, '#fff'); }
   hudBoutons.push({ ...A, f: () => lancerAction(moi) });
+  if (gg) { const G = { x: A.x, y: A.y - A.r * 2.5, r: A.r * 0.78 }, pret2 = moi.gadgets > 0 && temps >= (moi.gadgetT || 0); // 🧰 bouton gadget + utilisations restantes
+    rond(G, pret2 ? ombrer(gg.couleur || '#fff', 0.4) : '#5d6778', pret2 ? ombrer(gg.couleur || '#fff', -0.35) : '#2a2f40');
+    ctx.save(); ctx.globalAlpha = pret2 ? 1 : 0.5; ctx.font = Math.round(G.r * 1.05) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(gg.icone || '🧰', G.x, G.y + 1); ctx.restore();
+    for (let i = 0; i < reglage('gadgetsParPartie', 3); i++) { ctx.beginPath(); ctx.arc(G.x + (i - 1) * 10 * u, G.y + G.r + 8 * u, 3.5 * u, 0, 7); ctx.fillStyle = i < moi.gadgets ? '#ffe14a' : 'rgba(255,255,255,.25)'; ctx.fill(); }
+    hudBoutons.push({ ...G, f: () => lancerGadget(moi) }); }
   if (!joyD.actif) { // 🎯 bouton d'attaque principale (le joystick d'attaque part de son centre)
     ctx.beginPath(); ctx.arc(T.x, T.y + 5 * u, T.r, 0, 7); ctx.fillStyle = 'rgba(11,6,32,.45)'; ctx.fill();
     const g = ctx.createRadialGradient(T.x - T.r * 0.3, T.y - T.r * 0.4, 2, T.x, T.y, T.r); g.addColorStop(0, 'rgba(255,140,110,.9)'); g.addColorStop(1, 'rgba(200,30,60,.75)');
@@ -1934,8 +1950,8 @@ const bossBase = d => (d && Object.values(CONFIG.bosses).find(b => b.nom === d.n
 
 
 // ---------- ⌨️ COMMANDES CLAVIER (réglables par chaque joueur, onglet Commandes) ----------
-const TOUCHES_DEF = { haut: 'z', bas: 's', gauche: 'q', droite: 'd', auto: ' ', action: 'e', super: 'r' };
-const NOM_TOUCHE = { haut: 'Avancer', bas: 'Reculer', gauche: 'Aller à gauche', droite: 'Aller à droite', auto: 'Tir automatique', action: 'Action d\'élément', super: 'Super (vers la souris)' };
+const TOUCHES_DEF = { haut: 'z', bas: 's', gauche: 'q', droite: 'd', auto: ' ', action: 'e', super: 'r', gadget: 'g' };
+const NOM_TOUCHE = { haut: 'Avancer', bas: 'Reculer', gauche: 'Aller à gauche', droite: 'Aller à droite', auto: 'Tir automatique', action: 'Action d\'élément', super: 'Super (vers la souris)', gadget: 'Gadget (3 par partie)' };
 const FLECHES = { haut: 'arrowup', bas: 'arrowdown', gauche: 'arrowleft', droite: 'arrowright' };
 let mesTouches = { ...TOUCHES_DEF }, toucheAttendue = null, souris = null;
 try { Object.assign(mesTouches, JSON.parse(localStorage.getItem('bastoryTouches') || '{}')); } catch (e) {}
@@ -2334,7 +2350,7 @@ function fissures(tx, ty, px, py) {
 function aura(j) { // anneau coloré pour chaque super pouvoir actif
   const l = j === moi ? bonusActifs(moi) : (j.bo || []);
   l.forEach((id, i) => {
-    const p = CONFIG.pouvoirs[id]; if (!p) return;
+    const p = defPouvoir(id); if (!p) return;
     ctx.strokeStyle = p.couleur || '#fff'; ctx.lineWidth = 4; ctx.globalAlpha = 0.5 + 0.3 * Math.sin(temps * 0.2 + i);
     ctx.beginPath(); ctx.ellipse(j.x, j.y + j.r * 0.45, j.r * (1.3 + i * 0.25), j.r * (0.75 + i * 0.15), 0, 0, 7); ctx.stroke();
   });
@@ -2425,7 +2441,7 @@ function dessinerHUD() {
   texte(moi.nom, 74, 26, 16, '#fff', 'left', 150);
   texte(Math.ceil(moi.pv) + ' PV', 74, 48, 13, '#8fd3ff', 'left');
   bonusActifs(moi).forEach((id, i) => { // super pouvoirs actifs + temps restant
-    const p = CONFIG.pouvoirs[id], x = 14 + i * 50;
+    const p = defPouvoir(id) || {}, x = 14 + i * 50;
     rect(x, 74, 44, 44, 10, p.couleur || '#fff', '#1a1030', 3);
     ctx.font = '22px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.icone || '✨', x + 22, 92);
     texte(Math.ceil((moi.bonus[id] - temps) / 60) + 's', x + 22, 112, 11, '#fff');
