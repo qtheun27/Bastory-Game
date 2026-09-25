@@ -1437,13 +1437,15 @@ function bossPourIntro() {
 function preparerIntro() {
   if (intro) intro.vedettes.forEach(v => v.vue && v.vue.liberer());
   const tous = [moi, ...Object.values(autres)], amis = tous.filter(j => j.eq === moi.eq), ennemis = tous.filter(j => j.eq !== moi.eq);
-  const fiche = (j, cote) => ({ p: baseDe(j.perso), im: carteDe(j.perso), nom: j.nom, sous: (baseDe(j.perso) || {}).nom || '', c: cote < 0 ? (j === moi ? '#1e90ff' : '#1fc46b') : '#ff2d55', cote, vue: null, sk: skinDe(j) });
+  const fiche = (j, cote) => ({ p: baseDe(j.perso), im: carteDe(j.perso), nom: j.nom, sous: (baseDe(j.perso) || {}).nom || '', c: cote < 0 ? (j === moi ? '#1e90ff' : '#1fc46b') : '#ff2d55', cote, vue: null, sk: skinDe(j), eq: j.eq });
   const liste = [fiche(moi, -1), ...amis.filter(j => j !== moi).map(j => fiche(j, -1)), ...ennemis.map(j => fiche(j, 1))];
   if (mode.boss && mode.nbBoss > 0) { const d = bossBase(bossPourIntro()); liste.push({ p: d.modele ? d : null, im: carteDe(d), nom: d.nom || 'BOSS', sous: 'BOSS', c: '#ff8a00', cote: 1 }); }
   const G = liste.filter(v => v.cote < 0), D = liste.filter(v => v.cote > 0); // une apparition par équipe (tout le monde côte à côte)
   const vedettes = [G.length && { ...G[0], membres: G, cote: -1 }, D.length && { ...D[0], membres: D, cote: 1 }].filter(Boolean);
   intro = { cle: introT, vedettes, gauche: [...amis.map(j => fiche(j, -1))], droite: liste.filter(v => v.cote > 0) };
   intro.total = Math.round((vedettes.length * SHOW + VS + CD) * KI()); // même durée chez tous les joueurs (ne dépend que de la partie)
+  [...intro.gauche, ...intro.droite].slice(0, 10).forEach(c => { if (c.p && c.p.modele && ok3D()) Modele3D.vitrine(c.p).then(v => { // 🎬 poses d'attaque en 3D pour l'écran VS
+    if (!v) return; if (!intro || ![...intro.gauche, ...intro.droite].includes(c)) return v.liberer(); if (v.teinte) v.teinte(skinParCle(c.sk)); c.vue3 = v; }).catch(() => {}); });
   vedettes.forEach(v => { if (v.membres.length === 1 && v.p && v.p.modele && ok3D()) Modele3D.vitrine(v.p).then(x => { if (x && x.teinte) x.teinte(skinParCle(v.sk)); if (intro && intro.vedettes.includes(v)) v.vue = x; else if (x) x.liberer(); }).catch(() => {}); }); // 🎨 skin équipé aussi dans l'intro
 }
 const PHRASES = ['DOGOGOGO', 'ZUDOOON!!', 'BAKOOM!!', 'GOGOGO…'];
@@ -1488,6 +1490,29 @@ function introVS(l) {
   ctx.save(); zig(1); ctx.fillStyle = '#ff2d55'; ctx.fill(); ctx.clip(); rayons(W * 0.75, H / 2, -temps * 0.01, '#fff', 0.16); trame(0.12, '#000'); ctx.restore();
   zig(1); ctx.strokeStyle = '#fff'; ctx.lineWidth = 10 * u; ctx.stroke(); ctx.strokeStyle = NOIR; ctx.lineWidth = 4 * u; ctx.stroke(); // éclair central
   titre(mode.nom, W / 2, 34 * u, 30 * u, '#ffe14a', 'center', W - 40);
+  const poser = (c, cote) => { // 📸 une seule photo 3D par perso, figée en pleine attaque (fluide sur téléphone)
+    if (c.pose || !c.vue3) return; const v = c.vue3, anim = v.a && v.a('attaque') ? 'attaque' : 'repos', src = v.rendre(Math.PI / 2 - cote * 0.55, 360, 0.42, anim);
+    const cv = document.createElement('canvas'); cv.width = src.width; cv.height = src.height; cv.getContext('2d').drawImage(src, 0, 0); c.pose = cv; c.poseB = v.bas || 0.95; c.poseH = v.haut || 0.05; v.liberer(); c.vue3 = null; };
+  const equipe3D = (l2, cote) => { // 💥 les persos eux-mêmes, style manga, regroupés par équipe (plusieurs équipes adverses = plusieurs groupes)
+    const grp = []; l2.forEach(c => { let g = grp.find(x => x.eq === c.eq); if (!g) grp.push(g = { eq: c.eq, l: [] }); g.l.push(c); });
+    const n = l2.length, zw = W * 0.44, cx0 = W / 2 + cote * (W * 0.26 + dx), ecart = grp.length > 1 ? 18 * u : 0, pas = Math.min(zw / Math.max(1, n + (grp.length - 1) * 0.3), H * 0.34), h = Math.min(H * 0.6, pas * 1.85);
+    let k2 = 0; const tot = n * pas + (grp.length - 1) * ecart, xs = cx0 - tot / 2 + pas / 2;
+    grp.forEach((g, gi) => {
+      const col = grp.length > 1 || cote > 0 ? EQ_COUL[(g.eq % 4 + 4) % 4] || '#ff2d55' : '#1e90ff', gx0 = xs + k2 * pas + gi * ecart;
+      if (grp.length > 1) { rect(gx0 - pas / 2 + 4 * u, H * 0.9, g.l.length * pas - 8 * u, 8 * u, 4 * u, col, NOIR, 2 * u); } // bande de couleur de l'équipe
+      g.l.forEach((c, i) => {
+        const x = gx0 + i * pas, pied = H * 0.88 - ((k2 + i) % 2) * 14 * u, t = elastique(Math.min(1, Math.max(0, (l - 4 - (k2 + i) * 4) / 16))), coul = /^#[0-9a-f]{6}$/i.test(c.c) ? c.c : col;
+        poser(c, cote);
+        ctx.save(); ctx.translate(x, pied); ctx.scale(t, t); ctx.rotate(-0.05 * cote + Math.sin(temps * 0.1 + i) * 0.015);
+        ctx.save(); ctx.globalAlpha = 0.5; ctx.lineWidth = 3 * u; ctx.strokeStyle = '#fff'; for (let r = 0; r < 14; r++) { const a = r / 14 * Math.PI * 2 + temps * 0.01 * cote; ctx.beginPath(); ctx.moveTo(Math.cos(a) * h * 0.22, -h * 0.45 + Math.sin(a) * h * 0.22); ctx.lineTo(Math.cos(a) * h * 0.55, -h * 0.45 + Math.sin(a) * h * 0.55); ctx.stroke(); } ctx.restore(); // traits de vitesse
+        const im = c.pose || c.im;
+        if (pret(im)) { const s = c.pose ? h / Math.max(0.3, c.poseB - c.poseH) : h * 0.95, y0 = c.pose ? -c.poseB * s : -s;
+          ctx.save(); ctx.filter = 'brightness(0)'; ctx.globalAlpha = 0.45; ctx.drawImage(im, -s / 2 + 9 * u * cote * -1, y0 + 9 * u, s, s); ctx.restore(); // ombre noire décalée (effet BD)
+          ctx.drawImage(im, -s / 2, y0, s, s); }
+        ctx.restore();
+        ctx.save(); ctx.globalAlpha = t; titre(c.nom, x, pied + 16 * u, 17 * u, '#fff', 'center', pas + 20 * u); texte(c.sous, x, pied + 32 * u, 11 * u, coul); ctx.restore();
+      }); k2 += g.l.length; });
+  };
   const equipe = (l2, cote) => { // une case de BD inclinée par perso, qui arrive en rebondissant
     const n = l2.length, zw = W * 0.42, pw = Math.min(zw / Math.max(1, n), H * 0.46), ph = H * 0.6, x0 = W / 2 + cote * (W * 0.26 + dx) - (n * pw) / 2, y0 = H * 0.2;
     l2.forEach((c, i) => {
@@ -1504,7 +1529,7 @@ function introVS(l) {
       ctx.restore();
     });
   };
-  equipe(intro.gauche, -1); if (intro.droite.length) equipe(intro.droite, 1);
+  equipe3D(intro.gauche, -1); if (intro.droite.length) equipe3D(intro.droite, 1); // les persos en grand, en pose d'attaque (plus de cartes)
   ctx.save(); ctx.translate(W / 2 + (Math.random() - 0.5) * 6 * (1 - k * 0.7), H / 2 + 12 * u); ctx.scale(k, k);
   eclat(0, 0, 62 * u, 12, '#ffe14a', 2, NOIR, 5 * u); bd('VS', 0, 4 * u, 78 * u, '#ff2d55', -0.08); ctx.restore();
   if (l > 30) bd('BAKOOOM!!', W / 2, H - 34 * u, 34 * u * elastique(Math.min(1, (l - 30) / 14)), '#fff', -0.05);
@@ -1539,7 +1564,7 @@ function pasDeJeu() { // ⏱ une étape de jeu = 1/60 s, quel que soit l'écran 
     if (persoIndex !== persoSauve && user) { persoSauve = persoIndex; try { localStorage.setItem('bastoryPerso', persoIndex); } catch (e) {} if (db) db.collection('joueurs').doc(user.uid).set({ perso: persoIndex }, { merge: true }).catch(() => {}); } }
   else if (etat === 'ATTENTE') { temps++; rafraichirAttente(); }
   else if (etat === 'INTRO') { temps++; majEffets();
-    if (intro && intro.cle === introT && temps - introT > intro.total) { etat = 'JEU'; son('go'); debutJeu = temps; intro.vedettes.forEach(v => { if (v.vue) v.vue.liberer(); v.vue = null; }); ono('FIGHT!!', moi.x, moi.y - 60, 1.6, '#ffe14a'); } }
+    if (intro && intro.cle === introT && temps - introT > intro.total) { etat = 'JEU'; son('go'); debutJeu = temps; intro.vedettes.forEach(v => { if (v.vue) v.vue.liberer(); v.vue = null; }); [...intro.gauche, ...intro.droite].forEach(c => { if (c.vue3) c.vue3.liberer(); c.vue3 = null; }); ono('FIGHT!!', moi.x, moi.y - 60, 1.6, '#ffe14a'); } }
   else if (etat === 'JEU') maj();
   else temps++;
 }
@@ -2171,7 +2196,7 @@ async function reclamerPalier(i) {
 }
 let pass0 = -1;
 function menuPass() {
-  const u = U(), top = barreHaut('PASS DE SAISON', true), P = PASS(), l = P.paliers || [], pas = +P.xpPalier || 250, xp = xpPass(), pr = prisPass(), niv = Math.min(l.length, Math.floor(xp / pas));
+  const u = U(), top = ongletsRec(u), P = PASS(), l = P.paliers || [], pas = +P.xpPalier || 250, xp = xpPass(), pr = prisPass(), niv = Math.min(l.length, Math.floor(xp / pas));
   titre('⭐ ' + nomSaison() + '  •  palier ' + niv + ' / ' + l.length, W / 2, top + 18 * u, 20 * u, '#ffe14a');
   const bw = Math.min(560 * u, W - 60 * u), bx = (W - bw) / 2, by = top + 38 * u, f = niv >= l.length ? 1 : (xp % pas) / pas; // barre du palier en cours
   rect(bx, by, bw, 16 * u, 8 * u, 'rgba(11,6,32,.6)', NOIR, 2 * u); rect(bx, by, Math.max(16 * u, bw * f), 16 * u, 8 * u, '#ffe14a');
@@ -2204,8 +2229,17 @@ async function reclamer(i) {
   catch (e) { notif('Impossible : ' + e.message); }
 }
 const nbRecompenses = () => (CONFIG.recompenses || []).filter((r, i) => (mesStats.victoires || 0) >= r.victoires && !(mesStats.recompenses || []).includes(i)).length;
+let ongletRec = 'saison';
+function ongletsRec(u) { // 🎁 un seul écran de récompenses : ⭐ saison (pass) • 🏆 carrière (paliers de victoires)
+  const top = barreHaut('RÉCOMPENSES', true), ow = 150 * u;
+  [['saison', '⭐ Saison', nbPaliersPrets()], ['carriere', '🏆 Carrière', nbRecompenses()]].forEach(([v, t, n], m) => { const on = ongletRec === v, ox = 14 * u + m * (ow + 8 * u), oy = top + 4 * u;
+    bouton3D(ox, oy, ow, 30 * u, on ? '#ffe14a' : '#8e7bff', on ? '#ff8a1f' : '#5b3fd6', () => { if (ongletRec !== v) { ongletRec = v; pageMenu = 0; transT = temps; } }); texte(t, ox + ow / 2, oy + 14 * u, 13 * u, on ? '#1f1300' : '#fff');
+    if (n) { ctx.save(); ctx.translate(ox + ow - 4 * u, oy + 2 * u); eclat(0, 0, 10 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(n), ox + ow - 4 * u, oy + 3 * u, 10 * u, '#fff'); } });
+  return top + 40 * u;
+}
 function menuRecompenses() {
-  const u = U(), top = barreHaut('RÉCOMPENSES', true), l = CONFIG.recompenses || [], v = mesStats.victoires || 0, pris = mesStats.recompenses || [];
+  if (ongletRec === 'saison') return menuPass();
+  const u = U(), top = ongletsRec(u), l = CONFIG.recompenses || [], v = mesStats.victoires || 0, pris = mesStats.recompenses || [];
   const par = Math.max(1, Math.min(5, Math.floor((W - 40 * u) / (150 * u)))), pages = Math.max(1, Math.ceil(l.length / par)); pageMenu = Math.min(pageMenu, pages - 1);
   const cw = (W - 40 * u) / par - 14 * u, ch = Math.min(H - top - 110 * u, cw * 1.5), y = top + 44 * u;
   titre(v + ' victoires au total', W / 2, top + 20 * u, 24 * u, '#ffe14a');
@@ -2980,15 +3014,14 @@ function menuAccueil() {
   const u = U(), p = selPerso(), a = CONFIG.armes[p.arme] || {}, m = modeChoisi(), [, c1, c2, lab] = modesStyle(m), multi = m.type === 'multi';
   const top = barreHaut();
   // navigation à gauche
-  const nav = [['perso', 'Persos', 'persos', '#5ac8fa', '#2f6bff'], ['amis', 'Amis', 'amis', '#4ade80', '#059669'], ['classement', 'Classement', 'classement', '#ffc24b', '#ff7a00'], ['eclair', 'Pouvoirs', 'pouvoirs', '#ff7ac0', '#b43cff'], ['trophee', 'Récompenses', 'recompenses', '#ffe14a', '#ff8a1f'], ['check', 'Quêtes', 'quetes', '#b6ff4a', '#1fc46b'], ['eclair', 'Pass', 'pass', '#ffd23f', '#b44dff'], ['reglages', 'Commandes', 'commandes', '#5ff0ff', '#1e7bff']];
+  const nav = [['perso', 'Persos', 'persos', '#5ac8fa', '#2f6bff'], ['amis', 'Amis', 'amis', '#4ade80', '#059669'], ['classement', 'Classement', 'classement', '#ffc24b', '#ff7a00'], ['eclair', 'Pouvoirs', 'pouvoirs', '#ff7ac0', '#b43cff'], ['trophee', 'Récompenses', 'recompenses', '#ffe14a', '#ff8a1f'], ['check', 'Quêtes', 'quetes', '#b6ff4a', '#1fc46b'], ['reglages', 'Commandes', 'commandes', '#5ff0ff', '#1e7bff']];
   nav.forEach(([ic, t, e, a1, a2], k) => {
     const pas = Math.min(52 * u, (H - top - 24 * u) / nav.length), y = top + 14 * u + k * pas, w = 158 * u, bh = Math.min(42 * u, pas - 6 * u), fz = Math.min(20 * u, bh * 0.5);
     boutonJeu(14 * u, y, w, bh, a1, a2, () => allerA(e));
     icone(ic, 40 * u, y + bh / 2, fz, '#fff'); titre(t, 58 * u, y + bh / 2 + 1 * u, fz, '#fff', 'left', w - 80 * u);
     if (e === 'amis' && Object.keys(demandesAmis).length) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(Object.keys(demandesAmis).length), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
-    if (e === 'pass' && nbPaliersPrets()) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(nbPaliersPrets()), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
     if (e === 'quetes' && nbQuetesPretes()) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(nbQuetesPretes()), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
-    if (e === 'recompenses' && nbRecompenses()) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(nbRecompenses()), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
+    if (e === 'recompenses' && (nbRecompenses() + nbPaliersPrets())) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String((nbRecompenses() + nbPaliersPrets())), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
     if (k === 1 && Object.keys(groupe.membres).length) { ctx.beginPath(); ctx.arc(14 * u + w - 22 * u, y + 23 * u, 10 * u, 0, 7); ctx.fillStyle = '#34d399'; ctx.fill(); texte(String(Object.keys(groupe.membres).length + 1), 14 * u + w - 22 * u, y + 24 * u, 11 * u, '#fff'); }
   });
   // héros au centre, sous un projecteur
@@ -3332,7 +3365,8 @@ function genererPlanche() {
   bulle(666, 718, 330, 64, Q[Math.floor(temps / 7) % Q.length], 30, 690, 662);
   // case 4 : ton perso
   cadre(24, 792, 852, 444, '#b6ff4a'); trameC(24, 792, 852, 444, 'rgba(0,120,40,.2)');
-  const im = carteDe(moi.perso); if (pret(im)) x.drawImage(im, 60, 820, 380, 380);
+  const av = monAvatar(); x.save(); x.beginPath(); x.arc(250, 1010, 170, 0, 7); x.closePath(); x.fillStyle = '#fff'; x.fill(); x.clip(); if (av && (pret(av) || av.getContext)) x.drawImage(av, 80, 840, 340, 340); x.restore(); // 🖼️ photo de profil (le perso est déjà dans la case du résultat)
+  x.beginPath(); x.arc(250, 1010, 170, 0, 7); x.lineWidth = 9; x.strokeStyle = '#111'; x.stroke(); const pi = carteDe(moi.perso); if (pret(pi)) { x.save(); x.beginPath(); x.arc(385, 1140, 62, 0, 7); x.fillStyle = '#ffe14a'; x.fill(); x.lineWidth = 6; x.stroke(); x.clip(); x.drawImage(pi, 323, 1078, 124, 124); x.restore(); } // petit médaillon du perso
   const pts = mesStats.saisonId === saisonId() ? mesStats.saisonPts : 0, rg = rangDe(pts);
   txt(moi.nom || nomJoueur(), 660, 880, 54, '#fff', 'center', true, '#111', 9);
   txt('avec ' + ((baseDe(moi.perso) || {}).nom || ''), 660, 945, 34, '#111', 'center');
