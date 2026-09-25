@@ -287,13 +287,14 @@ const Rendu3D = (() => {
       const fin = e.finAnim && etat !== 'JEU' && (e.def || p), nomFin = fin && (e.finAnim === 'victoire' ? fin.animVictoire || fin.animSuper : fin.animDefaite);
       if (fin) anim = nomFin && (o.parNom || {})[nomFin] ? nomFin : e.finAnim === 'victoire' && o.anims.saut ? 'saut' : 'repos'; // 🕺 fin de partie : danse du gagnant, pose du perdant (debout, même s'il était KO)
       else if (e.pv <= 0) anim = 'mort';
+      else if (ck > 0.01 && o.anims.chute) anim = 'chute'; // 🪂 en train de tomber en parachute
       else if (saut) anim = o.anims.saut ? 'saut' : 'marche';
       else if (e.anim && temps - e.anim.t < (DUREE_ANIM[e.anim.n] || 40) && (o.anims[e.anim.n] || (o.parNom || {})[e.anim.n])) anim = e.anim.n;
       else if (temps - (o.marcheT || -99) < 12) anim = 'marche'; // garde la marche entre deux positions reçues du réseau (plus de saccades)
       o.marcheP = e.marche;
       const clip = o.anims[anim] || (o.parNom || {})[anim] || o.anims.repos || Object.values(o.parNom || {})[0]; // jamais de pose en T : au pire la 1re animation du modèle
       if (clip && o.clip !== clip) {
-        const a = o.mixer.clipAction(clip); a.reset(); a.setLoop(anim === 'repos' || anim === 'marche' || fin ? THREE.LoopRepeat : THREE.LoopOnce); a.clampWhenFinished = true;
+        const a = o.mixer.clipAction(clip); a.reset(); a.setLoop(anim === 'repos' || anim === 'marche' || anim === 'chute' || fin ? THREE.LoopRepeat : THREE.LoopOnce); a.clampWhenFinished = true;
         if (o.action && o.action !== a) a.crossFadeFrom(o.action, 0.12, false); a.play(); o.action = a; o.clip = clip;
       }
       const fl = (e.flash || 0) > 0 || (e.touche && temps - e.touche < 6); if (fl !== o.flash) { o.flash = fl; o.racine.traverse(x => { if (x.material && x.material.emissive) x.material.emissive.setRGB(fl ? 0.6 : 0, fl ? 0.6 : 0, fl ? 0.6 : 0); }); } // éclair blanc du coup reçu

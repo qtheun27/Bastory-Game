@@ -7,7 +7,7 @@ Fichier de référence à compléter à chaque nouveau perso ou boss.
 
 1. **Texte → Image** : colle le « Préfixe commun » puis le prompt du perso.
 2. **Image → 3D** : style **Cartoon**, **sans PBR**.
-3. **Rig**, puis **Animate** : Idle, Walk, Attack (adaptée à l'arme), Hit Reaction, Dead, Stand Up, Jump et **une danse de victoire** (Dance / Victory / Cheer). Dans l'admin, choisis-la dans « 🕺 Animation de victoire ». Sans danse, le perso saute sur place à la fin du match.
+3. **Rig**, puis **Animate** : Idle, Walk, Attack (adaptée à l'arme), Hit Reaction, Dead, Stand Up, Jump, **une danse de victoire** (Dance / Victory / Cheer) et **une chute dans le vide** (Fall / Falling : jouée pendant le parachute du début des parties Royaume ; reconnue toute seule si son nom contient « fall », sinon à choisir dans « 🪂 Animation de chute »). Dans l'admin, choisis-la dans « 🕺 Animation de victoire ». Sans danse, le perso saute sur place à la fin du match.
 4. **Export .glb** et nommage :
    - perso : `element-nom.glb` (par exemple `terre-bouldo.glb`) ;
    - boss : `boss-nom.glb`.

@@ -1362,6 +1362,12 @@ function migrerConfig(c) {
       gazDebut: 45, gazDuree: 180, gazDegats: 6, gazRayonMin: 4, construction: true, butin: true, atterrissage: true, bossMondial: true, bossMondialApres: 90, meteo: true });
     c.version = Math.max(c.version || 0, 23);
   }
+  if ((c.version || 0) < 24) { // v24 : NIMBUS (air, éventail de vent, danse de victoire) — modèle modeles/nimbus.glb
+    if (!c.persos.some(p => p.nom === 'NIMBUS')) c.persos.push({ nom: 'NIMBUS', element: 'air', modele: 'modeles/nimbus.glb', image: '', imageCarte: '', couleur: '#b6f0ff', deBase: false, coutJetons: 3,
+      pvMax: 4200, vitesse: 3.4, degats: 1100, portee: 420, delaiTir: 26, munitions: 3, recharge: 55, modeleEchelle: 1, modeleRotation: 0, animVictoire: 'Bubble_Dance', animChute: 'Fall1', arme: 'eventail' });
+    c.version = Math.max(c.version || 0, 24);
+  }
+
 
 
 

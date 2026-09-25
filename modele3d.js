@@ -68,7 +68,8 @@ const Modele3D = (() => {
       touche: trouver(p.animTouche, /hit|hurt|react|damage|impact/i),
       mort: trouver(p.animMort, /dead|death|dying|die/i),
       saut: trouver(p.animSaut, /jump|leap|hop|saut/i),
-      releve: trouver(p.animReleve, /stand.?up|get.?up|revive|rise|power.?up/i)
+      releve: trouver(p.animReleve, /stand.?up|get.?up|revive|rise|power.?up/i),
+      chute: trouver(p.animChute, /fall|skydiv|parachut|chute/i) // 🪂 animation de chute (parachute du début de partie)
     };
     if (!anims.attaque) anims.attaque = clips.find(c => c !== anims.repos && c !== anims.marche && !/idle|walk|run|dead|death|die|hit|hurt|react|stand|breath|t-?pose|fly|hover/i.test(c.name)); // repli : 1re animation « d'action »
     let hanches = null; obj.traverse(o => { if (!hanches && o.isBone && /hips|pelvis/i.test(o.name)) hanches = o; });
