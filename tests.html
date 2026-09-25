@@ -33,7 +33,7 @@ async function lancer() {
   const test = async (nom, f) => { try { const r = await f(); noter(nom, r === true || (r && r.ok), r && r.detail); } catch (e) { noter(nom, false, 'Erreur : ' + e.message); } };
 
   // --- config
-  await test('La config se met à jour sans perte (migration)', () => { const c = E('migrerConfig(JSON.parse(JSON.stringify(CONFIG_PAR_DEFAUT)))'); return { ok: c.version >= 20 && !!c.roles && !!c.gadgets && Array.isArray(c.quetes) && c.modes.some(m => m.objectif === 'survie'), detail: 'version ' + c.version }; });
+  await test('La config se met à jour sans perte (migration)', () => { const c = E('migrerConfig(JSON.parse(JSON.stringify(CONFIG_PAR_DEFAUT)))'); return { ok: c.version >= 22 && !!c.roles && !!c.gadgets && Array.isArray(c.quetes) && c.modes.some(m => m.objectif === 'survie'), detail: 'version ' + c.version }; });
   await test('Aucune mention d\'un autre jeu dans la config', () => !/brawl/i.test(JSON.stringify(E('CONFIG'))));
 
   // --- partie de test (solo, sans compte)
@@ -52,6 +52,7 @@ async function lancer() {
   await test("Skins : un skin non acheté n'est jamais porté", () => E(`(() => { mesStats.skins = {}; mesStats.skinChoisi = { [cleP(baseDe(moi.perso))]: 'dore' }; return skinChoisi(moi.perso) === ''; })()`));
   await test('Bots : ils se rapprochent et attaquent', () => { const r = E(`(() => { const b = Object.values(autres)[0]; b.pv = b.pvMax = 1e9; moi.pv = moi.pvMax = 1e9; const d0 = Math.hypot(b.x - moi.x, b.y - moi.y), vus = new Set(); for (let i = 0; i < 1200; i++) { pasDeJeu(); projectiles.forEach(p => { if (p.de === b.uid) vus.add(p); }); } return [Math.round(d0), Math.round(Math.hypot(b.x - moi.x, b.y - moi.y)), 1e9 - moi.pv, vus.size]; })()`); return { ok: r[1] < Math.max(450, r[0]) && (r[3] > 0 || r[2] > 0), detail: 'distance ' + r[0] + ' → ' + r[1] + ' • tirs ' + r[3] + ' • dégâts ' + r[2] }; });
 
+  await test('Régénération : la vie remonte hors combat, pas en combat', () => E(`(() => { moi.pvMax = 10000; moi.pv = 5000; moi.combatT = temps; regenerer(); const a = moi.pv; moi.combatT = temps - 600; regenerer(); return a === 5000 && moi.pv > 5000; })()`));
   // --- mode survie
   E(`resultat = ''; finInfo = null; modeIndex = modes().findIndex(m => m.objectif === 'survie'); demarrer(mapChoisie(modeChoisi()), [{ uid: 'test', nom: 'Test', p: 0, eq: 0 }, { uid: 'bot1', nom: 'Bot', p: 1, eq: 1, bot: true }]); for (let i = 0; i < 400; i++) pasDeJeu(); etat = 'JEU';`);
   await test('Survie : le gaz se referme avec le temps', () => E(`(() => { debutJeu = temps - 25 * 60; const a = gaz().r; debutJeu = temps - 80 * 60; const b = gaz().r; return gaz().actif && b < a; })()`));

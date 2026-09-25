@@ -608,6 +608,7 @@ function clic(x, y) {
 const volA = (x, y) => moi ? Math.max(0, 1 - Math.hypot(x - moi.x, y - moi.y) / 900) : 1; // 🔊 plus c'est loin, moins on l'entend
 const son = (n, v = 1) => { if (typeof Son !== 'undefined') Son.jouer(n, v); };
 function creerProjectile(j, angle, force, x, y, deg) {
+  j.combatT = temps; // ❤️‍🩹 on vient d'attaquer : pas de régénération tout de suite
   { const ty = (j.arme || {}).type; son(ty === 'lob' ? 'lob' : ty === 'frappe' ? 'frappe' : ty === 'retour' ? 'retour' : 'tir', volA(x, y) * (j === moi ? 1 : 0.7)); }
   if (j.perso) j.anim = { n: 'attaque', t: temps }; // 🎬 animation d'attaque
   const a = j.arme, v = a.vitesse || 10;
@@ -737,7 +738,7 @@ function degats(e, de, deg, x, y, ang, a) { // applique les dégâts selon qui a
     if (rA === 'assassin' && dd < P * 0.4) deg *= 1 + RV('assassin', 'valeur', 25) / 100;
     if (rA === 'controle') { e.ralenti = Math.min(e.ralentiT > temps ? e.ralenti || 1 : 1, 1 - RV('controle', 'valeur', 25) / 100); e.ralentiT = Math.max(e.ralentiT || 0, temps + 60); } }
   if (e.perso && roleDe(e.perso) === 'tank') deg *= 1 - RV('tank', 'valeur', 15) / 100; // 🛡️ le tank encaisse
-  deg = Math.round(deg); if (de === moi.uid && moi.st && e !== moi) moi.st.deg += deg; // 📊 stats du match (quêtes)
+  deg = Math.round(deg); e.combatT = temps; if (de === moi.uid && moi.st && e !== moi) moi.st.deg += deg; // 📊 stats du match (quêtes)
   const kb = (a && +a.recul) || (a && a.effet === 'explosion' ? 6 : 3);
   if (pr && pr.perso && (de === moi.uid || (hote && pr.bot))) gagnerSuper(pr, deg); // ⭐ les dégâts chargent le super
   if (e === moi) { if (a && +a.recul && moi.depSpecial !== 'orage') { moi.kx += Math.cos(ang) * a.recul; moi.ky += Math.sin(ang) * a.recul; } return toucherMoi(deg, x, y, de); }
@@ -843,6 +844,14 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     allerVers(j, j.but.x, j.but.y, v);
   }
 }
+function regenerer() { // ❤️‍🩹 la vie remonte doucement quand on ne se bat pas (chacun gère ses PV : moi, bots et boss chez l'hôte)
+  const delai = reglage('regenDelai', 3) * 60, taux = reglage('regenTaux', 4) / 100 / 2; if (taux <= 0) return;
+  const l = [moi, ...(hote ? [...Object.values(autres).filter(j => j.bot), ...bosses.filter(b => !b.def.cristal)] : [])];
+  for (const j of l) { if (!j || j.pv <= 0 || j.pv >= j.pvMax || temps - (j.combatT || -9999) < delai) continue;
+    const k = j.def ? reglage('regenBoss', 0.5) : RV(roleDe(j.perso) || '', 'regen', 1); if (k <= 0) continue;
+    j.pv = Math.min(j.pvMax, j.pv + j.pvMax * taux * k);
+    if (j === moi || visible(j)) for (let i = 0; i < 2; i++) particules.push({ x: j.x + (Math.random() - 0.5) * j.r * 1.6, y: j.y - Math.random() * 20, vx: 0, vy: -1.2, c: '#6dff8a', t: 5, vie: 1, forme: 'rond' }); } // petites bulles vertes
+}
 function soinsSoutien() { // 💚 le soutien soigne ses alliés proches (chacun gère ses PV : moi, et les bots chez l'hôte)
   const sou = joueurs().filter(j => j.pv > 0 && roleDe(j.perso) === 'soutien'); if (!sou.length) return;
   const R = RV('soutien', 'rayon', 220), k = RV('soutien', 'valeur', 3) / 100 / 2;
@@ -860,6 +869,7 @@ function toucherMoi(deg, x, y, de) {
   if (moi.pv === 0) mourir(moi);
 }
 function blesserBoss(b, deg, de) {
+  b.combatT = temps;
   if (b.pv <= 0) return; b.pv = Math.max(0, b.pv - deg); b.flash = 8;
   if (b.pv === 0) { mortBoss(b); if (b.def.cristal && hote) { const e = entite(de); cristalCasse(b.eq, e ? e.eq : (joueurs().find(j => j.eq !== b.eq) || {}).eq); } }
 }
@@ -993,7 +1003,7 @@ function maj() {
   if (joyD.actif) { const v = vec(joyD); if (v.d > 15) tourner(moi, v.a, 0.4); }
   if (moi.recharge > 0) moi.recharge--;
   if (temps % 30 === 0) soinsSoutien();
-  majGaz();
+  majGaz(); if (temps % 30 === 15) regenerer();
   if (moi.tirAttente && moi.recharge <= 0) { const q = moi.tirAttente; moi.tirAttente = null; if (temps - q.t < reglage('tamponTir', 15)) tirer(q.a, q.f); } // tir mémorisé (clic un peu trop tôt)
   if (moi.flash > 0) moi.flash--;
   if (moi.recharge <= 0) moi.mun = Math.min(+moi.perso.munitions || 3, moi.mun + 1 / (+moi.perso.recharge || 60)); // recharge des munitions
@@ -1849,7 +1859,7 @@ function gaz() { // → { x, y, r, rMax, actif, dans (s avant fermeture) } ou nu
 function majGaz() { // dégâts dans le gaz (chacun gère ses PV : moi, et les bots chez l'hôte)
   const g = gaz(); if (!g || !g.actif || temps % 30) return;
   for (const j of joueurs()) if (j.pv > 0 && (j === moi || (hote && j.bot)) && Math.hypot(j.x - g.x, j.y - g.y) > g.r) {
-    const d = Math.round(j.pvMax * (+mode.gazDegats || 8) / 100 / 2); j.pv = Math.max(0, j.pv - d); j.flash = 6;
+    j.combatT = temps; const d = Math.round(j.pvMax * (+mode.gazDegats || 8) / 100 / 2); j.pv = Math.max(0, j.pv - d); j.flash = 6;
     if (j === moi || visible(j)) texteFlottant('-' + d + ' ☠️', j.x, j.y - 40, '#b67aff', 0.9); if (j.pv === 0) mourir(j); }
 }
 function dessinerGaz() { // brume violette hors du cercle + bord lumineux (dessiné au sol, en 2D comme en 3D)

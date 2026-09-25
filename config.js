@@ -1025,6 +1025,9 @@ const CONFIG_PAR_DEFAUT = {
     "tailleDegats": 1,
     "esquiveBots": 1,
     "quetesParJour": 3,
+    "regenDelai": 3,
+    "regenTaux": 4,
+    "regenBoss": 0.5,
     "volumeSons": 1,
     "volumeMusique": 1,
     "musiqueMenu": "",
@@ -1064,11 +1067,11 @@ const CONFIG_PAR_DEFAUT = {
     "fantome": { "nom": "Fantôme", "icone": "👻", "couleur": "#b67aff", "effet": "invisible", "valeur": 1, "duree": 3 }
   },
   "roles": {
-    "tank": { "nom": "🛡️ Tank", "valeur": 15, "description": "Encaisse : reçoit 15 % de dégâts en moins" },
-    "tireur": { "nom": "🎯 Tireur", "valeur": 20, "description": "De loin : +20 % de dégâts sur les cibles éloignées" },
-    "assassin": { "nom": "🗡️ Assassin", "valeur": 25, "vitesse": 10, "description": "De près : +25 % de dégâts au contact, +10 % de vitesse" },
-    "soutien": { "nom": "💚 Soutien", "valeur": 3, "rayon": 220, "description": "Soigne les alliés proches (3 % de leur vie par seconde)" },
-    "controle": { "nom": "🌀 Contrôle", "valeur": 25, "description": "Ralentit de 25 % les ennemis touchés" }
+    "tank": { "nom": "🛡️ Tank", "valeur": 15, "regen": 1.4, "description": "Encaisse : reçoit 15 % de dégâts en moins" },
+    "tireur": { "nom": "🎯 Tireur", "valeur": 20, "regen": 0.8, "description": "De loin : +20 % de dégâts sur les cibles éloignées" },
+    "assassin": { "nom": "🗡️ Assassin", "valeur": 25, "vitesse": 10, "regen": 1.1, "description": "De près : +25 % de dégâts au contact, +10 % de vitesse" },
+    "soutien": { "nom": "💚 Soutien", "valeur": 3, "rayon": 220, "regen": 1.2, "description": "Soigne les alliés proches (3 % de leur vie par seconde)" },
+    "controle": { "nom": "🌀 Contrôle", "valeur": 25, "regen": 1, "description": "Ralentit de 25 % les ennemis touchés" }
   },
   "elements": {
     "terre": {
@@ -1293,6 +1296,10 @@ function migrerConfig(c) {
     const D2 = D.skins || []; if (!Array.isArray(c.skins)) c.skins = []; D2.forEach(d => { const x = c.skins.find(s => s.cle === d.cle); if (!x) c.skins.push(JSON.parse(JSON.stringify(d))); else if (!x.style) Object.assign(x, d, { cout: x.cout ?? d.cout }); });
     (c.quetes || []).forEach(q => { if (!q.recompense) { q.recompense = 'jetons'; q.quantite = q.jetons ?? 1; q.element = 'tous'; } }); // quêtes : récompense au choix
     c.version = Math.max(c.version || 0, 21);
+  }
+  if ((c.version || 0) < 22) { // v22 : régénération de la vie hors combat (vitesse par rôle)
+    for (const k in (D.roles || {})) if (c.roles && c.roles[k] && c.roles[k].regen === undefined) c.roles[k].regen = D.roles[k].regen;
+    c.version = Math.max(c.version || 0, 22);
   }
 
 

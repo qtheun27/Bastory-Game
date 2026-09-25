@@ -144,6 +144,8 @@ var CH_JEU = [['vitesseJeu','🏃 Vitesse générale de tous les persos (multipl
   ['esquiveBots','🤖 Réflexes des bots pour esquiver (0 = jamais, 1 = normal, 2 = très réactifs)','number'],
   ['volumeSons','🔊 Volume des sons (0 = coupé, 1 = normal, 2 = fort)','number'],['volumeMusique','🎵 Volume de la musique (0 = coupée, 1 = normal)','number'],
   ['musiqueMenu','🎧 Ta musique des menus (fichier MP3, ex : musique/menu.mp3 — vide = musique du jeu)','text'],['musiqueJeu','🎧 Ta musique en partie (fichier MP3, ex : musique/combat.mp3 — vide = musique du jeu)','text'],
+  ['—','❤️‍🩹 Régénération (la vie remonte quand on ne se bat pas)','titre'],
+  ['regenDelai','Délai sans attaquer ni être touché avant de régénérer (s)','number'],['regenTaux','Vitesse de base (% de la vie par seconde, 0 = aucune)','number'],['regenBoss','Boss : × la vitesse de base (0 = pas de régénération)','number'],
   ['quetesParJour','📜 Quêtes par jour','number'],
   ['gadgetsParPartie','🧰 Gadgets : utilisations par partie','number'],
   ['—','💥 Effets manga','titre'],
@@ -479,7 +481,7 @@ const VUES = {
     }).catch(e => box.append(el('p', { className: 'aide', textContent: 'Lecture impossible : ' + e.message })));
   },
   app(z) {
-    const CH_ROLE = [['nom','Nom affiché','text'],['valeur','Bonus principal (% — dégâts, réduction, ralenti ou soin/s)','number'],['description','Explication (visible dans le menu des persos)','text']];
+    const CH_ROLE = [['nom','Nom affiché','text'],['valeur','Bonus principal (% — dégâts, réduction, ralenti ou soin/s)','number'],['regen','❤️‍🩹 Régénération (× la vitesse de base : 1 = normal, 1.5 = plus vite)','number'],['description','Explication (visible dans le menu des persos)','text']];
     const roles = el('div', { className: 'grille-cartes' }, ...Object.entries(cfg.roles || {}).map(([k, r]) => carte(r.nom || k, formulaire(r, [...CH_ROLE, ...(k === 'assassin' ? [['vitesse','Bonus de vitesse (%)','number']] : k === 'soutien' ? [['rayon','Rayon du soin (px)','number',null,AIDE.portee]] : [])]))));
     z.append(el('div', { className: 'grille-cartes' }, carte('🎮 Sensations de jeu', formulaire(cfg.app, CH_JEU), null, true), carte('📱 Appli installable', formulaire(cfg.app, CH_APP.filter(c => c[0] !== 'vitesseJeu')), null, true)),
       el('p', { className: 'aide', textContent: '🎮 Ces réglages s\'appliquent en direct dans le jeu dès que tu cliques sur « Publier » (même pendant une partie). Survole un nombre pour voir sa traduction en clair.' }),
