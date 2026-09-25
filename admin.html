@@ -470,18 +470,32 @@ const VUES = {
         if (!confirm('Remettre à zéro les compteurs de TOUS les joueurs ?')) return;
         try { const snap = await FS.collection('joueurs').get(), b = FS.batch(); snap.docs.forEach(d => b.update(d.ref, { points: 0, victoires: 0, parties: 0, persos: {}, essences: {} })); await b.commit(); toast('Tous les compteurs sont à zéro'); afficher(); }
         catch (e) { alert('Refusé : ' + e.message + '\nVérifie les règles Firestore (joueurs).'); } } })),
-      el('p', { className: 'aide', textContent: 'Modifie les points, victoires et parties (et les points par perso), puis « Enregistrer ». Les changements sont immédiats.' }), box);
+      el('p', { className: 'aide', textContent: 'Tout le profil de chaque joueur : compteurs, jetons, saison et pass, essences, persos débloqués, skins, niveaux. Modifie puis « Enregistrer » : c\'est immédiat dans le jeu.' }), box);
     FS.collection('joueurs').orderBy('points', 'desc').get().then(snap => {
       if (!snap.docs.length) box.append(el('p', { className: 'aide', textContent: 'Aucun joueur pour l\'instant.' }));
       snap.docs.forEach(d => {
-        const j = d.data(), o = { points: j.points || 0, victoires: j.victoires || 0, parties: j.parties || 0 }, persos = JSON.parse(JSON.stringify(j.persos || {})), essences = Object.assign({}, j.essences || {});
-        const f = formulaire(o, [['points', 'Points', 'number'], ['victoires', 'Victoires', 'number'], ['parties', 'Parties', 'number']]);
-        f.append(formulaire(essences, Object.entries(cfg.elements || {}).map(([k, e]) => [k, 'Essence ' + e.icone + ' ' + e.nom, 'number'])));
-        for (const [nom, st] of Object.entries(persos)) { st.niveau = st.niveau || 1; f.append(formulaire(st, [['niveau', 'Niveau de ' + nom, 'number'], ['points', 'Points avec ' + nom, 'number']])); }
+        const j = d.data(), saison = new Date().toLocaleDateString('fr-CA').slice(0, 7), cleP = p => String(p.nom || 'perso').replace(/[.~*/\[\]`]/g, '_');
+        const o = { points: j.points || 0, victoires: j.victoires || 0, parties: j.parties || 0, jetons: j.jetons || 0,
+          saisonPts: j.saisonId === saison ? j.saisonPts || 0 : 0, passXP: j.passId === saison ? j.passXP || 0 : 0 };
+        const persos = JSON.parse(JSON.stringify(j.persos || {})), essences = Object.assign({}, j.essences || {}), deb = { l: [...(j.persosDebloques || [])] }, skins = JSON.parse(JSON.stringify(j.skins || {}));
+        const f = formulaire(o, [['—', '📊 Compteurs', 'titre'], ['points', '🏆 Points (total)', 'number'], ['victoires', '⭐ Victoires', 'number'], ['parties', '🎮 Parties', 'number'], ['jetons', '🎟️ Jetons perso', 'number'],
+          ['—', '📅 Saison en cours (' + saison + ')', 'titre'], ['saisonPts', '🏅 Points de la saison (rang)', 'number'], ['passXP', '⭐ XP du pass de saison', 'number']]);
+        f.append(formulaire(essences, [['—', '💎 Essences', 'titre'], ...Object.entries(cfg.elements || {}).map(([k, e]) => [k, 'Essence ' + e.icone + ' ' + e.nom, 'number'])]));
+        const aDeb = cfg.persos.filter(p => p.deBase === false); // 🔓 persos à débloquer
+        if (aDeb.length) f.append(formulaire(deb, [['—', '🔓 Persos débloqués', 'titre'], ['l', 'Coche les persos débloqués pour ce joueur', 'multi', () => aDeb.map(p => [cleP(p), p.nom])]]));
+        const sk = {}; // 🎨 skins possédés, perso par perso
+        if ((cfg.skins || []).length) { f.append(formulaire({}, [['—', '🎨 Skins possédés', 'titre']]));
+          cfg.persos.forEach(p => { const c = cleP(p); sk[c] = { l: [...(skins[c] || [])] }; f.append(formulaire(sk[c], [['l', p.nom, 'multi', () => cfg.skins.map(s => [s.cle, (s.icone || '') + ' ' + s.nom])]])); }); }
+        f.append(formulaire({}, [['—', '📈 Niveau et points par perso', 'titre']]));
+        cfg.persos.forEach(p => { const c = cleP(p), st = persos[c] = persos[c] || {}; st.niveau = st.niveau || 1; st.points = st.points || 0; f.append(formulaire(st, [['niveau', 'Niveau de ' + p.nom, 'number'], ['points', 'Points avec ' + p.nom, 'number']])); });
         f.append(el('div', { className: 'outils' },
-          el('button', { textContent: '💾 Enregistrer', onclick: async () => { try { await d.ref.update({ ...o, persos, essences }); toast('Compteurs enregistrés'); } catch (e) { alert('Refusé : ' + e.message); } } }),
-          el('button', { className: 'danger', textContent: '♻️ Remettre à zéro', onclick: async () => { if (!confirm('Remettre ' + (j.pseudo || 'ce joueur') + ' à zéro ?')) return;
-            try { await d.ref.update({ points: 0, victoires: 0, parties: 0, persos: {}, essences: {} }); toast('Remis à zéro'); afficher(); } catch (e) { alert('Refusé : ' + e.message); } } })));
+          el('button', { textContent: '💾 Enregistrer', onclick: async () => { try {
+            const sk2 = {}; for (const [c, v] of Object.entries(sk)) if (v.l.length) sk2[c] = v.l;
+            await d.ref.update({ points: o.points, victoires: o.victoires, parties: o.parties, jetons: o.jetons, saisonId: saison, saisonPts: o.saisonPts, passId: saison, passXP: o.passXP,
+              ...(j.passId === saison ? {} : { passPris: [] }), persos, essences, persosDebloques: deb.l, skins: { ...skins, ...sk2, ...Object.fromEntries(Object.keys(sk).filter(c => !sk[c].l.length).map(c => [c, []])) } });
+            toast('Joueur enregistré'); } catch (e) { alert('Refusé : ' + e.message); } } }),
+          el('button', { className: 'danger', textContent: '♻️ Remettre à zéro', onclick: async () => { if (!confirm('Remettre ' + (j.pseudo || 'ce joueur') + ' à zéro (points, victoires, parties, essences, jetons, saison, pass) ?')) return;
+            try { await d.ref.update({ points: 0, victoires: 0, parties: 0, persos: {}, essences: {}, jetons: 0, saisonPts: 0, passXP: 0, passPris: [] }); toast('Remis à zéro'); afficher(); } catch (e) { alert('Refusé : ' + e.message); } } })));
         box.append(carte('👤 ' + (j.pseudo || 'Joueur'), f));
       });
     }).catch(e => box.append(el('p', { className: 'aide', textContent: 'Lecture impossible : ' + e.message })));
