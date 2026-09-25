@@ -328,6 +328,7 @@ function dessinerMeteo() { // effets à l'écran (au-dessus du monde, sous l'int
   ctx.restore();
 }
 function demarrer(mapIdx, liste) {
+  plancheVue = false; plancheBD = null;
   mode = modeChoisi(); atterri = !mode.atterrissage; meteo = choisirMeteo(liste, mapIdx); bossMondialFait = !mode.bossMondial;
   map = chargerMap(CONFIG.maps[mapIdx] || CONFIG.maps[0]);
   liste = liste || [{ uid: user.uid, nom: nomJoueur(), p: persoIndex }];
@@ -968,7 +969,7 @@ function construireMur(j = moi) {
   if (c !== '.' && c !== 'S') return; // seulement sur du sol libre
   const cx = (tx + 0.5) * TUILE, cy = (ty + 0.5) * TUILE;
   if ([...joueurs(), ...bosses].some(e => e.pv > 0 && Math.abs(e.x - cx) < TUILE / 2 + e.r && Math.abs(e.y - cy) < TUILE / 2 + e.r)) return; // pas sur quelqu'un
-  j.mat -= cout; j.murT = temps + 12; poserMur(tx, ty); envoyer({ t: 'mu', tx, ty });
+  j.mat -= cout; j.murT = temps + 12; if (j === moi && moi.st) moi.st.murs = (moi.st.murs || 0) + 1; poserMur(tx, ty); envoyer({ t: 'mu', tx, ty });
 }
 function poserMur(tx, ty) {
   setTuile(tx, ty, '#'); degatsTuiles[tx + ',' + ty] = (+map.def.pvBloc || 3000) * (1 - reglage('solideMur', 60) / 100); // un mur construit est moins solide
@@ -3263,8 +3264,62 @@ function dessinerAttente() {
   if (info) { verre(cx - 150 * u, cy + 128 * u, 300 * u, 30 * u, 15 * u); texte(info, cx, cy + 143 * u, 12 * u, '#fff', 'center', 280 * u); }
   boutonJeu(cx - 90 * u, H - 64 * u, 180 * u, 44 * u, '#ff7a6b', '#ff2d55', () => { quitterSalle(); etat = 'MENU'; }); titre('Annuler', cx, H - 42 * u, 20 * u, '#fff');
 }
+// ---------- 📖 PLANCHE MANGA DE FIN : résumé du match en 4 cases, à partager ----------
+let plancheBD = null, plancheVue = false;
+function genererPlanche() {
+  const c = document.createElement('canvas'); c.width = 900; c.height = 1260; const x = c.getContext('2d'), st = (moi && moi.st) || {}, vic = etat === 'VICTOIRE', nul = etat === 'EGALITE';
+  const F = (t, n) => (t ? '400 ' : '800 ') + n + 'px ' + (t ? 'Bangers, Impact, sans-serif' : 'Fredoka, system-ui, sans-serif');
+  const txt = (t, px, py, taille, coul = '#111', al = 'center', titreBD = true, contour = '#fff', ep = 0) => { x.font = F(titreBD, taille); x.textAlign = al; x.textBaseline = 'middle'; if (ep) { x.lineWidth = ep; x.strokeStyle = contour; x.lineJoin = 'round'; x.strokeText(t, px, py); } x.fillStyle = coul; x.fillText(t, px, py); };
+  const trameC = (px, py, w, h, coul, pas = 14) => { x.save(); x.beginPath(); x.rect(px, py, w, h); x.clip(); x.fillStyle = coul; for (let j = 0; j < h / pas + 1; j++) for (let i = 0; i < w / pas + 1; i++) { x.beginPath(); x.arc(px + i * pas + (j % 2) * pas / 2, py + j * pas, pas * 0.22, 0, 7); x.fill(); } x.restore(); };
+  const cadre = (px, py, w, h, fond) => { x.fillStyle = fond; x.fillRect(px, py, w, h); x.lineWidth = 9; x.strokeStyle = '#111'; x.strokeRect(px, py, w, h); };
+  const bulle = (px, py, w, h, t, taille, qx, qy) => { x.fillStyle = '#fff'; x.strokeStyle = '#111'; x.lineWidth = 5; x.beginPath(); x.ellipse(px, py, w / 2, h / 2, 0, 0, 7); x.fill(); x.stroke();
+    const hautB = qy < py, by0 = hautB ? py - h / 2 + 6 : py + h / 2 - 6; x.beginPath(); x.moveTo(px - 20, by0); x.lineTo(qx, qy); x.lineTo(px + 16, by0); x.fill(); x.stroke();
+    x.beginPath(); x.ellipse(px, py, w / 2 - 3, h / 2 - 3, 0, 0, 7); x.fill(); txt(t, px, py, taille, '#111'); }; // pointe de la bulle vers le perso, sans couper le texte
+  x.fillStyle = '#fbf7ee'; x.fillRect(0, 0, 900, 1260); // papier
+  // case 1 : titre du chapitre
+  cadre(24, 24, 852, 250, '#ffe14a'); trameC(24, 24, 852, 250, 'rgba(255,140,0,.25)');
+  txt('BASTORY', 60, 70, 40, '#111', 'left'); txt('Chapitre du ' + new Date().toLocaleDateString('fr-FR'), 840, 70, 26, '#111', 'right', false);
+  txt((mode && mode.nom) || 'Combat', 450, 150, 84, '#ff2d55', 'center', true, '#111', 10);
+  txt('🗺️ ' + ((map && map.def && map.def.nom) || '') + (meteo ? '   ' + (meteo.icone || '') + ' ' + meteo.nom : ''), 450, 230, 28, '#111', 'center', false);
+  // case 2 : tes exploits
+  cadre(24, 298, 420, 470, '#5ac8fa'); trameC(24, 298, 420, 470, 'rgba(255,255,255,.35)', 18);
+  txt('TES EXPLOITS', 234, 345, 46, '#fff', 'center', true, '#111', 8);
+  [['💥', 'Dégâts', Math.round(st.deg || 0).toLocaleString('fr')], ['💀', 'K.O.', st.ko || 0], ['⚡', 'Combos', st.combo || 0], ['⭐', 'Supers', st.sup || 0], ['🧰', 'Gadgets', st.gad || 0], ['🧱', 'Murs posés', st.murs || 0]]
+    .forEach(([ic, l, v], i) => { const y = 415 + i * 58; x.fillStyle = 'rgba(255,255,255,.85)'; x.fillRect(48, y - 24, 372, 48); x.lineWidth = 3; x.strokeStyle = '#111'; x.strokeRect(48, y - 24, 372, 48); txt(ic + ' ' + l, 64, y, 26, '#111', 'left', false); txt(String(v), 404, y, 34, '#ff2d55', 'right'); });
+  // case 3 : le résultat
+  cadre(456, 298, 420, 470, vic ? '#ff5ab4' : nul ? '#9aa5b8' : '#3b2d7a');
+  x.save(); x.beginPath(); x.rect(456, 298, 420, 470); x.clip(); x.strokeStyle = vic ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.25)'; x.lineWidth = 3; for (let i = 0; i < 60; i++) { const a = i / 60 * Math.PI * 2; x.beginPath(); x.moveTo(666 + Math.cos(a) * 90, 560 + Math.sin(a) * 90); x.lineTo(666 + Math.cos(a) * 520, 560 + Math.sin(a) * 520); x.stroke(); } x.restore(); // lignes de vitesse
+  const G = finInfo && finInfo.gagnants && finInfo.gagnants[0]; if (G && pret(G.im)) x.drawImage(G.im, 536, 425, 260, 260);
+  txt(vic ? 'VICTOIRE!' : nul ? 'ÉGALITÉ!' : 'DÉFAITE…', 666, 380, 66, vic ? '#ffe14a' : '#fff', 'center', true, '#111', 10);
+  const Q = vic ? ['YATTAAA!!', 'Trop facile !', 'Qui est le boss ?'] : nul ? ['Hein ?!', 'Match nul…'] : ['GAAAN…', 'La revanche !', 'Je reviendrai…'];
+  bulle(666, 718, 330, 64, Q[Math.floor(temps / 7) % Q.length], 30, 690, 662);
+  // case 4 : ton perso
+  cadre(24, 792, 852, 444, '#b6ff4a'); trameC(24, 792, 852, 444, 'rgba(0,120,40,.2)');
+  const im = carteDe(moi.perso); if (pret(im)) x.drawImage(im, 60, 820, 380, 380);
+  const pts = mesStats.saisonId === saisonId() ? mesStats.saisonPts : 0, rg = rangDe(pts);
+  txt(moi.nom || nomJoueur(), 660, 880, 54, '#fff', 'center', true, '#111', 9);
+  txt('avec ' + ((baseDe(moi.perso) || {}).nom || ''), 660, 945, 34, '#111', 'center');
+  txt((rg.icone || '') + ' Rang ' + rg.nom + ' • ' + nomSaison(), 660, 1015, 28, '#111', 'center', false);
+  if (finInfo) txt('+' + finInfo.points + ' 🏆', 660, 1100, 64, '#ff2d55', 'center', true, '#111', 9);
+  txt('bastory', 860, 1222, 22, 'rgba(0,0,0,.45)', 'right');
+  return c;
+}
+async function partagerPlanche() {
+  if (!plancheBD) return; const blob = await new Promise(r => plancheBD.toBlob(r, 'image/png')); if (!blob) return;
+  const f = new File([blob], 'bastory-planche.png', { type: 'image/png' });
+  try { if (navigator.canShare && navigator.canShare({ files: [f] })) return await navigator.share({ files: [f], title: 'Ma planche Bastory' }); } catch (e) { if (e && e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'bastory-planche.png'; document.body.append(a); a.click(); a.remove(); notif('📖 Planche enregistrée');
+}
+function dessinerPlanche() {
+  const u = U(); ctx.fillStyle = 'rgba(8,4,24,.82)'; ctx.fillRect(0, 0, W, H); zones = [];
+  const h = H - 90 * u, w = h * 900 / 1260, px = (W - w) / 2, py = 14 * u; ctx.save(); ctx.translate(px + w / 2, py + h / 2); ctx.rotate(-0.012); ctx.drawImage(plancheBD, -w / 2, -h / 2, w, h); ctx.restore();
+  const bw = 150 * u, by = H - 64 * u;
+  boutonJeu(W / 2 - bw - 8 * u, by, bw, 48 * u, '#ffe14a', '#ff8a00', partagerPlanche); titre('Partager', W / 2 - bw / 2 - 8 * u, by + 22 * u, 20 * u, '#1f1300');
+  bouton3D(W / 2 + 8 * u, by, bw, 48 * u, '#8e7bff', '#5b3fd6', () => plancheVue = false); titre('Fermer', W / 2 + bw / 2 + 8 * u, by + 22 * u, 20 * u, '#fff');
+}
 function dessinerFin() { // animation de victoire / défaite avec les gagnants et les perdants
   ecran();
+  if (plancheVue && plancheBD) return dessinerPlanche();
   const t = Math.max(0, temps - (finInfo ? finInfo.t0 : temps)), vic = etat === 'VICTOIRE', G = finInfo ? finInfo.gagnants : [], P = finInfo ? finInfo.perdants : [];
   zones = [];
   ctx.fillStyle = aff3 ? 'rgba(20,0,50,.25)' : 'rgba(0,0,0,.75)'; ctx.fillRect(-100, -100, W + 200, H + 200);
@@ -3303,6 +3358,7 @@ function dessinerFin() { // animation de victoire / défaite avec les gagnants e
     const u = U(), bw = 170 * u, bh = 50 * u, y = H - bh - 14 * u;
     const ey = y + (1 - elastique(Math.min(1, (t - 40) / 20))) * 90 * u; // les boutons arrivent en rebondissant
     boutonJeu(W / 2 - bw - 12 * u, ey, bw, bh, '#b6ff4a', '#1fc46b', () => { quitterSalle(); etat = 'MENU'; lancerPartie(); }); icone('retour', W / 2 - bw + 18 * u, ey + bh / 2, 18 * u, '#fff'); titre('Rejouer', W / 2 - bw / 2 - 2 * u, ey + bh / 2, 22 * u, '#fff');
+    bouton3D(W / 2 - bw / 2, ey - bh - 10 * u, bw, bh * 0.8, '#ff7ac0', '#b43cff', () => { plancheBD = genererPlanche(); plancheVue = true; }); titre('📖 Ma planche', W / 2, ey - bh * 0.6 - 10 * u, 17 * u, '#fff', 'center', bw - 10 * u);
     bouton3D(W / 2 + 12 * u, ey, bw, bh, '#8e7bff', '#5b3fd6', () => { quitterSalle(); etat = 'MENU'; allerA('accueil'); }); icone('carte', W / 2 + 42 * u, ey + bh / 2, 18 * u, '#fff'); titre('Menu', W / 2 + bw / 2 + 22 * u, ey + bh / 2, 22 * u, '#fff');
   }
   finManga();
