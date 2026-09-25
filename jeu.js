@@ -288,7 +288,7 @@ function creerBoss(id, x, y, i) {
 }
 // liste = joueurs de la partie [{uid, nom, p}] (le 1er est l'hôte) ; null = solo
 function demarrer(mapIdx, liste) {
-  mode = modeChoisi(); marqueursKO = [];
+  mode = modeChoisi();
   map = chargerMap(CONFIG.maps[mapIdx] || CONFIG.maps[0]);
   liste = liste || [{ uid: user.uid, nom: nomJoueur(), p: persoIndex }];
   const c = t => (t + 0.5) * TUILE, places = [];
@@ -465,7 +465,8 @@ function presence() { // compteur de joueurs connectés
 }
 function envoyerEtat(force) {
   if (!salle || !moi || (!force && temps % 4)) return;
-  salle.ref.child('joueurs/' + user.uid).update({ x: Math.round(moi.x), y: Math.round(moi.y), a: +moi.angle.toFixed(2), pv: Math.round(moi.pv), c: moi.cache, m: Math.round(moi.marche), bo: bonusActifs(moi).join(',') });
+  const e = { x: Math.round(moi.x), y: Math.round(moi.y), a: +moi.angle.toFixed(2), pv: Math.round(moi.pv), c: moi.cache, m: Math.round(moi.marche), bo: bonusActifs(moi).join(',') }, cle = JSON.stringify(e);
+  if (force || cle !== envoyerEtat.dernier || temps - (envoyerEtat.t || 0) > 60) { envoyerEtat.dernier = cle; envoyerEtat.t = temps; salle.ref.child('joueurs/' + user.uid).update(e); } // 📡 n'envoie que si quelque chose a changé
   const bots = Object.values(autres).filter(j => j.bot);
   if (hote && bots.length) salle.ref.child('bots').set(Object.fromEntries(bots.map(j => [j.uid, { x: Math.round(j.x), y: Math.round(j.y), a: +j.angle.toFixed(2), pv: Math.round(j.pv), c: j.cache, m: Math.round(j.marche), bo: bonusActifs(j).join(',') }])));
   if (hote && bosses.length) salle.ref.child('boss').set(bosses.map(b => ({ id: b.id, x: Math.round(b.x), y: Math.round(b.y), a: +b.angle.toFixed(2), pv: b.pv, ch: b.charge, cm: b.chargeMax, fx: Math.round(b.fx), fy: Math.round(b.fy), rg: b.rage, e: b.eq })));
@@ -2043,16 +2044,6 @@ function dessinerZone() { // 🎯 zone carrée (celle des cases) : remplissage a
   if (zoneControle === 'conteste') bd('CONTESTÉE!', z.x, y - 22, 26, '#ffd23f', Math.sin(temps * 0.2) * 0.05);
   else if (eqC !== null) bd(eqC === moi.eq ? 'À NOUS!' : 'À EUX!', z.x, y - 22, 22, col, 0);
 }
-let marqueursKO = []; // 💀 petites têtes de mort au sol là où quelqu'un est tombé (lisibilité du combat)
-function dessinerMarqueursKO() {
-  const duree = reglage('marqueursKO', 1) * 600; marqueursKO = marqueursKO.filter(m => temps - m.t < duree);
-  for (const m of marqueursKO) { const age = temps - m.t, a = Math.min(1, age / 10) * Math.min(1, (duree - age) / 60), s = 1 + Math.max(0, 1 - age / 12) * 0.6;
-    ctx.save(); ctx.globalAlpha = a * 0.9; ctx.translate(m.x, m.y); ctx.scale(s, s * 0.8);
-    ctx.beginPath(); ctx.arc(0, 0, 17, 0, 7); ctx.fillStyle = m.c; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = NOIR; ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, -2, 9, 0, 7); ctx.fill(); ctx.fillRect(-5, 3, 10, 6);
-    ctx.fillStyle = NOIR; ctx.beginPath(); ctx.arc(-3.5, -2, 2.6, 0, 7); ctx.arc(3.5, -2, 2.6, 0, 7); ctx.fill(); ctx.fillRect(-1, 5, 2, 4);
-    ctx.restore(); }
-}
 let fissuresSol = []; // 🔨 craquelures laissées au sol par le marteau
 function dessinerFissuresSol() {
   fissuresSol = fissuresSol.filter(f => temps - f.t < 150);
@@ -2285,7 +2276,7 @@ function dessinerJeu() {
     ellipse(b.fx, b.fy, R, R * 0.8, 'rgba(255,40,40,.2)');
     ellipse(b.fx, b.fy, R * k, R * 0.8 * k, 'rgba(255,40,40,.45)');
   }
-  dessinerZone(); dessinerFissuresSol(); dessinerMarqueursKO(); dessinerTresors();
+  dessinerZone(); dessinerFissuresSol(); dessinerTresors();
   const objs = []; // tri par profondeur = effet 3D
   if (!v3) tuiles((c, x, y, px, py) => { if (c === '#') objs.push([(y + 1) * T - 1, () => { // les murs qui sortent du sol montent
                                    const f = levees[x + ',' + y] !== undefined ? Math.min(1, (temps - levees[x + ',' + y]) / 12) : 1;
@@ -2731,59 +2722,77 @@ function menuAccueil() {
   texte(membre ? 'du chef du groupe' : multi ? 'EN LIGNE' : 'SOLO', mx + colD / 2 - 6 * u, jy + jh - 16 * u, 11 * u, membre ? '#fff' : 'rgba(40,24,0,.75)');
 }
 
-// --- Persos : grille + fiche détaillée
+// --- Persos : vue d'ensemble (grille) + fiche du perso choisi (description, modèle 3D animé, stats)
+const TYPES_ARME = { lob: '🤾 Cloche', retour: '🪃 Retour', droit: '🎯 Tir droit', terrain: '🌋 Terrain', frappe: '🔨 Frappe' };
 function menuPersos() {
   const u = U(), top = barreHaut('PERSOS', true), n = CONFIG.persos.length;
-  const panW = Math.min(360 * u, W * 0.42), zoneW = W - panW - 36 * u, x0 = 14 * u, y0 = top + 14 * u, zoneH = H - y0 - 14 * u;
-  heroZone = null; persoVue = persoVue % n;
-  { // grand perso au centre
-  const p = CONFIG.persos[persoVue], el = elemDe(p), c = (el && el.couleur) || p.couleur || '#5a4dff', cx = x0 + zoneW / 2, sol = y0 + zoneH - 84 * u, taille = Math.min(zoneH * 0.9, zoneW * 0.75);
-  const off = (1 - sortir(Math.min(1, (temps - persoAnim.t) / 14))) * persoAnim.d * 140 * u;
-  ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, zoneW, zoneH); ctx.clip(); rayons(cx, sol - taille * 0.45, temps * 0.004, ombrer(c, 0.35), 0.3, 16);
-  const hg = ctx.createRadialGradient(cx, sol - taille * 0.4, 0, cx, sol - taille * 0.4, taille * 0.6); hg.addColorStop(0, c + '88'); hg.addColorStop(1, c + '00'); ctx.fillStyle = hg; ctx.fillRect(x0, y0, zoneW, zoneH); ctx.restore();
-  ctx.save(); ctx.translate(cx, sol); ctx.scale(1, 0.26); const og = ctx.createRadialGradient(0, 0, 0, 0, 0, taille * 0.4); og.addColorStop(0, 'rgba(0,0,0,.5)'); og.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = og; ctx.beginPath(); ctx.arc(0, 0, taille * 0.4, 0, 7); ctx.fill(); ctx.restore();
-  const vh = vitrineHero(p), gris = !estDebloque(p); if (gris) ctx.filter = 'grayscale(1) brightness(.55)';
-  if (vh) { const T = Math.round(Math.min(720, taille * 1.3 * dpr)), im3 = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = taille * 0.95 * Math.min(1, 0.72 + 0.2 * Math.min(1.4, +p.modeleEchelle || 1)) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
-    ctx.drawImage(im3, cx - D / 2 + off, sol - 4 * u - vh.bas * D, D, D); }
-  else { const im = carteDe(p); if (pret(im)) ctx.drawImage(im, cx - taille / 2 + off, sol - taille, taille, taille); }
-  ctx.filter = 'none'; if (gris) { titre('🔒 ' + (+p.coutJetons || 3) + ' 🎟️', cx, sol - taille * 0.45, 34 * u, '#ffe14a'); texte('Tu as ' + (mesStats.jetons || 0) + ' 🎟️ jetons perso', cx, sol - taille * 0.45 + 30 * u, 13 * u, '#fff'); }
-  titre(p.nom, cx + off * 0.5, sol + 24 * u, 40 * u, '#fff', 'center', zoneW - 120 * u);
-  elementsDe(p).forEach((k, n) => iconeElement(k, cx - 70 * u - n * 24 * u, sol + 56 * u, 20 * u)); // tous ses éléments
-  if (p.description) texte(p.description, cx, sol - taille * 0.95 + 8 * u, 13 * u, '#fff', 'center', zoneW - 140 * u); // 📝 description du perso et de ses attaques
-  texte('Niveau ' + niveauDe(p) + (persoVue === persoIndex ? '  •  ✔ Choisi' : ''), cx + 10 * u, sol + 56 * u, 13 * u, persoVue === persoIndex ? '#b6ff4a' : '#ffe14a');
-  [[-1, 'retour', x0 + 34 * u], [1, 'suite', x0 + zoneW - 34 * u]].forEach(([d, ic, fx]) => { bouton3D(fx - 26 * u, y0 + zoneH / 2 - 26 * u, 52 * u, 52 * u, '#ffe14a', '#ff8a1f', () => changerPerso(d), 26 * u); icone(ic, fx, y0 + zoneH / 2 - 2 * u, 24 * u); });
-  CONFIG.persos.forEach((_, k) => { ctx.beginPath(); ctx.arc(cx + (k - (n - 1) / 2) * 16 * u, y0 + 30 * u, (k === persoVue ? 5 : 3.5) * u, 0, 7); ctx.fillStyle = k === persoVue ? '#ffe14a' : 'rgba(255,255,255,.55)'; ctx.fill(); });
-  }
+  const panW = Math.min(380 * u, W * 0.4), x0 = 14 * u, y0 = top + 12 * u, zoneW = W - panW - 40 * u, zoneH = H - y0 - 14 * u;
+  heroZone = null; persoVue = ((persoVue % n) + n) % n;
+  // 🗂️ grille de tous les persos
+  const gap = 10 * u, cols = Math.max(2, Math.min(n, Math.floor((zoneW + gap) / (150 * u)))), rows = Math.ceil(n / cols);
+  const cw = (zoneW - gap * (cols - 1)) / cols, ch = Math.min(cw * 1.2, (zoneH - gap * (rows - 1)) / rows), k = Math.min(1, ch / (170 * u));
+  CONFIG.persos.forEach((p, i) => {
+    const cx = x0 + (i % cols) * (cw + gap), cy = y0 + Math.floor(i / cols) * (ch + gap), el = elemDe(p), c = (el && el.couleur) || p.couleur || '#5a4dff';
+    const sel = i === persoVue, verrou = !estDebloque(p), a = CONFIG.armes[p.arme] || {}, pop = sel ? 1 + Math.sin(temps * 0.12) * 0.012 : 1;
+    ctx.save(); ctx.translate(cx + cw / 2, cy + ch / 2); ctx.scale(pop, pop); ctx.translate(-cx - cw / 2, -cy - ch / 2);
+    const g = ctx.createLinearGradient(cx, cy, cx, cy + ch); g.addColorStop(0, ombrer(c, 0.25)); g.addColorStop(1, ombrer(c, -0.45));
+    rect(cx, cy, cw, ch, 14 * u, g, sel ? '#ffe14a' : 'rgba(11,6,32,.8)', sel ? 4 * u : 2.5 * u);
+    const im = carteDe(p), is = Math.min(cw * 0.62, ch * 0.5); if (verrou) ctx.filter = 'grayscale(1) brightness(.6)';
+    if (pret(im)) ctx.drawImage(im, cx + (cw - is) / 2, cy + 8 * k * u, is, is); ctx.filter = 'none';
+    if (verrou) texte('🔒 ' + (+p.coutJetons || 3) + ' 🎟️', cx + cw / 2, cy + is * 0.55, 13 * k * u, '#ffe14a');
+    rect(cx + 6 * u, cy + 6 * u, 40 * k * u, 18 * k * u, 9 * k * u, 'rgba(11,6,32,.75)'); texte('Nv ' + niveauDe(p), cx + 6 * u + 20 * k * u, cy + 15 * k * u, 10 * k * u, '#ffe14a'); // niveau
+    elementsDe(p).forEach((e, m) => iconeElement(e, cx + cw - 14 * u - m * 20 * k * u, cy + 16 * k * u, 16 * k * u)); // élément(s)
+    if (i === persoIndex) texte('✔', cx + cw - 14 * u, cy + is - 2 * u, 15 * k * u, '#b6ff4a');
+    const ty = cy + 10 * k * u + is;
+    titre(p.nom, cx + cw / 2, ty + 10 * k * u, 17 * k * u, '#fff', 'center', cw - 10 * u);
+    texte(TYPES_ARME[a.type] || '', cx + cw / 2, ty + 27 * k * u, 10 * k * u, '#ffe8a3', 'center', cw - 8 * u);
+    const mini = [['❤', p.pvMax / 9000, '#ff5a6e'], ['💥', p.degats / 3000, '#ff9f43'], ['🏃', p.vitesse / 5, '#4cd964'], ['🎯', p.portee / 600, '#5ac8fa']], bw = (cw - 20 * u) / 2 - 16 * k * u;
+    mini.forEach(([ic, f, col], m) => { const bx = cx + 8 * u + (m % 2) * (cw / 2 - 4 * u), by = ty + (40 + Math.floor(m / 2) * 13) * k * u; // résumé des stats
+      texte(ic, bx + 6 * k * u, by, 9 * k * u, '#fff'); rect(bx + 14 * k * u, by - 3 * k * u, bw, 6 * k * u, 3 * k * u, 'rgba(11,6,32,.6)'); rect(bx + 14 * k * u, by - 3 * k * u, Math.max(3, bw * Math.min(1, f)), 6 * k * u, 3 * k * u, col); });
+    ctx.restore();
+    zones.push({ x: cx, y: cy, w: cw, h: ch, action: () => { if (persoVue !== i) persoAnim = { t: temps, d: i > persoVue ? 1 : -1 }; persoVue = i; } });
+  });
 
-  // fiche du perso
-  const p = CONFIG.persos[persoVue] || selPerso(), a = CONFIG.armes[p.arme] || {}, px = W - panW - 14 * u, py = y0, ph = H - py - 14 * u;
-  verre(px, py, panW, ph, 18 * u); rect(px, py, panW, 6 * u, 3 * u, p.couleur);
-  const is = Math.min(panW * 0.42, ph * 0.3), im = carteDe(p);
-  if (pret(im)) ctx.drawImage(im, px + 12 * u, py + 10 * u + Math.sin(temps * 0.05) * 3 * u, is, is);
-  texte(p.nom, px + 24 * u + is, py + 24 * u, 22 * u, '#fff', 'left');
-  const ai = img(a.image); if (pret(ai)) ctx.drawImage(ai, px + 24 * u + is, py + 40 * u, 26 * u, 26 * u);
-  texte(a.nom || p.arme, px + 56 * u + is, py + 53 * u, 13 * u, '#ffe8a3', 'left');
-  const types = { lob: 'Lancer en cloche', retour: 'Aller-retour', droit: 'Tir droit', terrain: 'Fait surgir le sol' };
-  const extra = [types[a.type], a.rebonds > 0 ? a.rebonds + ' ricochets' : '', a.chaine > 0 ? 'chercheur ×' + a.chaine : ''].filter(Boolean).join(' • ');
-  lignes(extra, panW - is - 36 * u, 10 * u).slice(0, 2).forEach((l, k) => texte(l, px + 24 * u + is, py + 78 * u + k * 14 * u, 10 * u, '#cfd8ff', 'left'));
-  const st = [['❤️', 'Vie', p.pvMax / 8000, p.pvMax, '#ff5a6e'], ['💥', 'Dégâts', p.degats / 3000, p.degats, '#ff9f43'], ['🏃', 'Vitesse', p.vitesse / 8, p.vitesse, '#4cd964'],
+  // 📋 fiche du perso sélectionné : description en haut, modèle animé, stats en dessous
+  const p = CONFIG.persos[persoVue], a = CONFIG.armes[p.arme] || {}, el = elemDe(p), c = (el && el.couleur) || p.couleur || '#5a4dff';
+  const px = W - panW - 14 * u, py = y0, ph = H - py - 14 * u, cx = px + panW / 2;
+  verre(px, py, panW, ph, 18 * u); rect(px, py, panW, 6 * u, 3 * u, c);
+  titre(p.nom, cx, py + 30 * u, 28 * u, '#fff', 'center', panW - 90 * u);
+  elementsDe(p).forEach((e, m) => iconeElement(e, px + 22 * u + m * 22 * u, py + 28 * u, 18 * u));
+  texte('Nv ' + niveauDe(p), px + panW - 30 * u, py + 29 * u, 13 * u, '#ffe14a');
+  const desc = lignes(p.description || '', panW - 30 * u, 11 * u).slice(0, 3);
+  desc.forEach((l, m) => texte(l, cx, py + 56 * u + m * 15 * u, 11 * u, 'rgba(255,255,255,.9)', 'center'));
+  const bh = 42 * u, by = py + ph - bh - 12 * u, eY = by - 34 * u, hy = py + 60 * u + desc.length * 15 * u, libre = eY - hy - 40 * u; // place pour le modèle + les stats
+  const compact = libre - 7 * 17 * u < 110 * u, hh = Math.max(64 * u, Math.min(ph * 0.36, libre - (compact ? 4 * 15 : 7 * 17) * u)), sol = hy + hh; // petit écran : stats sur 2 colonnes
+  ctx.save(); ctx.beginPath(); ctx.rect(px, hy, panW, hh); ctx.clip(); rayons(cx, sol - hh * 0.45, temps * 0.004, ombrer(c, 0.35), 0.3, 14);
+  const hg = ctx.createRadialGradient(cx, sol - hh * 0.45, 0, cx, sol - hh * 0.45, hh * 0.7); hg.addColorStop(0, c + '88'); hg.addColorStop(1, c + '00'); ctx.fillStyle = hg; ctx.fillRect(px, hy, panW, hh); ctx.restore();
+  ctx.save(); ctx.translate(cx, sol - 4 * u); ctx.scale(1, 0.26); const og = ctx.createRadialGradient(0, 0, 0, 0, 0, hh * 0.35); og.addColorStop(0, 'rgba(0,0,0,.5)'); og.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = og; ctx.beginPath(); ctx.arc(0, 0, hh * 0.35, 0, 7); ctx.fill(); ctx.restore();
+  const off = (1 - sortir(Math.min(1, (temps - persoAnim.t) / 14))) * persoAnim.d * 60 * u, vh = vitrineHero(p), gris = !estDebloque(p); if (gris) ctx.filter = 'grayscale(1) brightness(.55)';
+  if (vh) { const T = Math.round(Math.min(640, hh * 1.3 * dpr)), im3 = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = hh * 0.95 * Math.min(1, 0.72 + 0.2 * Math.min(1.4, +p.modeleEchelle || 1)) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
+    ctx.drawImage(im3, cx - D / 2 + off, sol - 6 * u - vh.bas * D, D, D); }
+  else { const im = carteDe(p); if (pret(im)) ctx.drawImage(im, cx - hh * 0.45 + off, sol - hh * 0.9, hh * 0.9, hh * 0.9); }
+  ctx.filter = 'none';
+  // arme + super / action
+  let y = sol + 16 * u;
+  texte((TYPES_ARME[a.type] ? TYPES_ARME[a.type] + ' • ' : '') + (a.nom || p.arme) + (a.rebonds > 0 ? ' • ' + a.rebonds + ' ricochets' : '') + (a.chaine > 0 ? ' • chercheur ×' + a.chaine : ''), cx, y, 12 * u, '#ffe8a3', 'center', panW - 20 * u);
+  const ie = ELEM_DEF[cleElem(p)] && { ...ELEM_DEF[cleElem(p)], ...el }; if (ie) { y += 16 * u; texte(`⭐ ${ie.superNom}  •  🎮 ${ie.actionNom}`, cx, y, 11 * u, '#ffe14a', 'center', panW - 20 * u); }
+  // stats
+  const st = [['❤️', 'Vie', p.pvMax / 8000, p.pvMax, '#ff5a6e'], ['💥', 'Dégâts', p.degats / 3000, p.degats, '#ff9f43'], ['🏃', 'Vitesse', p.vitesse / 5, p.vitesse, '#4cd964'],
     ['🎯', 'Portée', p.portee / 600, p.portee, '#5ac8fa'], ['🔋', 'Munitions', (p.munitions || 3) / 6, p.munitions || 3, '#ffd23f'],
     ['⚡', 'Cadence', 1 - (p.delaiTir || 30) / 90, ((p.delaiTir || 30) / 60).toFixed(2) + 's', '#b57bff'], ['♻️', 'Recharge', 1 - (p.recharge || 60) / 150, ((p.recharge || 60) / 60).toFixed(1) + 's', '#ff7ab6']];
-  const sp = (mesStats.persos || {})[cleP(p)] || {}, epF = elemDe(p);
-  if (epF) texte(`${epF.icone} ${epF.nom} • Niveau ${niveauDe(p)} • ${({ vol: 'vole au-dessus des blocs', saut: 'saute par-dessus les murs', nage: 'se déplace sur l\'eau', feu: 'laisse une traînée de feu', brise: 'brise les blocs', sol: '' })[epF.capacite] || ''}`, px + panW / 2, py + is + 2 * u, 11 * u, epF.couleur, 'center', panW - 20 * u);
-  const ie = ELEM_DEF[cleElem(p)] && { ...ELEM_DEF[cleElem(p)], ...epF }; if (ie) texte(`⭐ Super : ${ie.superNom}  •  🎮 Action : ${ie.actionNom}`, px + panW / 2, py + is + 16 * u, 11 * u, '#ffe14a', 'center', panW - 20 * u);
-  texte(`🏆 ${sp.points || 0} pts  •  ⭐ ${sp.victoires || 0} victoires  •  🎮 ${sp.parties || 0} parties`, px + panW / 2, py + is + 30 * u, 11 * u, '#ffe8a3');
-  const sy = py + is + 46 * u, pas = Math.min(24 * u, (ph - is - 162 * u) / st.length);
-  st.forEach((s, k) => statBarre(px + 12 * u, sy + k * pas, panW - 24 * u, ...s));
-  const choisi = persoVue === persoIndex, bh = 44 * u, bw = (panW - 50 * u) / 2, by = py + ph - bh - 12 * u, ep = elemDe(p), nvP = niveauDe(p), maxN = +(CONFIG.progression || {}).niveauMax || 10;
+  const sy = y + 14 * u, nl = compact ? 4 : st.length, pas = Math.max(12 * u, Math.min(22 * u, (eY - sy - 6 * u) / nl)), cw2 = compact ? (panW - 30 * u) / 2 : panW - 24 * u;
+  st.forEach((s2, m) => { const col = compact ? Math.floor(m / 4) : 0, row = compact ? m % 4 : m; const bx = px + 12 * u + col * (cw2 + 6 * u), yy = sy + row * pas; if (yy >= eY - 8 * u) return;
+    if (!compact) return statBarre(bx, yy, cw2, ...s2);
+    const [ic, lab, f, v, colr] = s2; texte(ic + ' ' + lab, bx, yy - 3 * u, 10 * u, '#fff', 'left'); texte(String(v), bx + cw2, yy - 3 * u, 10 * u, '#fff', 'right'); // petit écran : nom + valeur, barre fine dessous
+    rect(bx, yy + 4 * u, cw2, 4 * u, 2 * u, 'rgba(11,6,32,.6)'); rect(bx, yy + 4 * u, Math.max(3, cw2 * Math.max(0, Math.min(1, f))), 4 * u, 2 * u, colr); });
+  // essences + boutons
+  const els = Object.entries(CONFIG.elements || {}), pw = (panW - 40 * u - (els.length - 1) * 6 * u) / Math.max(1, els.length);
+  els.forEach(([k2, e2], m) => { const ex = px + 20 * u + m * (pw + 6 * u); verre(ex, eY, pw, 26 * u, 13 * u); texte(e2.icone + ' ' + ((mesStats.essences || {})[k2] || 0), ex + pw / 2, eY + 13 * u, 12 * u, '#fff', 'center', pw - 8 * u); });
+  const choisi = persoVue === persoIndex, bw = (panW - 50 * u) / 2, ep = el, nvP = niveauDe(p), maxN = +(CONFIG.progression || {}).niveauMax || 10, verrou = !estDebloque(p);
   if (ep) { bouton3D(px + 20 * u, by, bw, bh, nvP >= maxN ? '#9aa5b8' : ep.couleur, nvP >= maxN ? '#5d6778' : ombrer(ep.couleur, -0.35), () => evoluer(p));
     texte(nvP >= maxN ? 'Niveau max' : `Évoluer • ${coutNiveau(nvP)} ${ep.icone}`, px + 20 * u + bw / 2, by + bh / 2, 13 * u, '#fff', 'center', bw - 12 * u); }
-  const verrou = !estDebloque(p);
   bouton3D(ep ? px + 30 * u + bw : px + 20 * u, by, ep ? bw : panW - 40 * u, bh, verrou ? '#ffd23f' : choisi ? '#9aa5b8' : '#4cd964', verrou ? '#ff8a1f' : choisi ? '#5d6778' : '#1f9d3a', verrou ? () => debloquerPerso(p) : choisi ? null : () => { persoIndex = persoVue; allerA('accueil'); });
-  texte(verrou ? '🔓 ' + (+p.coutJetons || 3) + ' 🎟️' : choisi ? '✔ Choisi' : 'Choisir', (ep ? px + 30 * u + bw * 1.5 : px + panW / 2), by + bh / 2, 15 * u, '#fff');
-  // porte-monnaie d'essences
-  const els = Object.entries(CONFIG.elements || {}), pw = (panW - 40 * u - (els.length - 1) * 6 * u) / Math.max(1, els.length);
-  els.forEach(([k, e2], n) => { const ex = px + 20 * u + n * (pw + 6 * u); verre(ex, by - 36 * u, pw, 26 * u, 13 * u); texte(e2.icone + ' ' + ((mesStats.essences || {})[k] || 0), ex + pw / 2, by - 23 * u, 12 * u, '#fff', 'center', pw - 8 * u); }); // essences
+  texte(verrou ? '🔓 ' + (+p.coutJetons || 3) + ' 🎟️' : choisi ? '✔ Choisi' : 'Choisir', (ep ? px + 30 * u + bw * 1.5 : cx), by + bh / 2, 15 * u, '#fff');
 }
 
 // --- Modes de jeu + choix de la map
@@ -2972,7 +2981,6 @@ function dessinerFin() { // animation de victoire / défaite avec les gagnants e
 let introT = 0, debutJeu = 0, kills = {}, nuages = [], dots = [], fantomes = [], suivi = null;
 function animMort(e, im) {
   if (e.tresors && obj() === 'tresor' && moiOuBot(e)) lacherTresors(e);
-  if (reglage('marqueursKO', 1) > 0) { if (marqueursKO.length > 20) marqueursKO.shift(); marqueursKO.push({ x: e.x, y: e.y, t: temps, c: e === moi || (moi && e.eq === moi.eq) ? '#5ac8fa' : '#ff5a6e' }); } // 💀 marqueur au sol
   ono('K.O. !!', e.x, e.y - 30, 1.8, '#ff2d55'); choc = 1.3; flash = 0.6; // le perso tourne, rétrécit et s'envole en fondu
   fantomes.push({ im: im || img(e.perso ? e.perso.image : ''), x: e.x, y: e.y, a: e.angle || 0, t: temps, taille: e.r * 2.9 });
   for (let i = 0; i < 20; i++) particule(e.x, e.y, i % 2 ? '#ffffff' : '#9aa0ff', 6, 6, 1.4, 'rond');

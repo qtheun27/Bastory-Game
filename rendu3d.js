@@ -92,40 +92,44 @@ const Rendu3D = (() => {
       m.visible = vis > 0.02; m.scale.setScalar(0.4 + 0.6 * vis); m.position.set(t.x, 4 + Math.abs(Math.sin(temps * 0.08 + t.x)) * 6 * vis, t.y); m.rotation.y = Math.sin(temps * 0.03 + t.y) * 0.4;
       m.userData.lu.material.opacity = 0.12 + 0.15 * Math.sin(temps * 0.15 + t.x); }
   }
+  const MATS = new Map(), mat = (cle, f) => { let m = MATS.get(cle); if (!m) MATS.set(cle, m = f()); return m; }; // ⚡ matériaux partagés (réutilisés à chaque tir : plus de lag à 6 joueurs)
+  const add = (c, o) => new THREE.MeshBasicMaterial({ color: c, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, ...o });
+  let ANNEAU = null;
   function majTirs() { // 🎯 projectiles en vraie 3D : flèche, rocher, bulle, boule de feu… + éclair de départ
     if (!geoTir) geoTir = { fleche: new THREE.ConeGeometry(6, 36, 6), rocher: new THREE.DodecahedronGeometry(13, 0), bulle: new THREE.SphereGeometry(14, 16, 12), feu: new THREE.SphereGeometry(13, 14, 10), base: new THREE.SphereGeometry(10, 12, 8), eclat: new THREE.SphereGeometry(1, 10, 8),
       etoile: new THREE.OctahedronGeometry(13, 0), lame: new THREE.TorusGeometry(13, 3.5, 6, 18), cristal: new THREE.OctahedronGeometry(10, 0).scale(0.7, 1.6, 0.7) };
     const vus = new Set(projectiles);
     for (const [p, m] of tirs) if (!vus.has(p)) { // 💥 impact : éclat 3D qui grossit et s'efface
-      scene.remove(m); tirs.delete(p); (m.userData.trainee || []).forEach(t => { scene.remove(t); t.material.dispose(); });
-      if (reglage('impact3D', 1) > 0 && gerbes.length < 12) { const g = { t0: temps, mat: new THREE.MeshBasicMaterial({ color: m.userData.c, transparent: true, depthWrite: false }), l: [] }; // ✨ gerbe d'éclats
-        for (let i = 0; i < 10; i++) { const s = new THREE.Mesh(geoTir.etoile, g.mat), a = Math.random() * 6.28, v = 2 + Math.random() * 4; s.position.copy(m.position); s.scale.setScalar(0.25 + Math.random() * 0.25); s.userData.v = new THREE.Vector3(Math.cos(a) * v, 3 + Math.random() * 4, Math.sin(a) * v); scene.add(s); g.l.push(s); }
-        const o = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 32), new THREE.MeshBasicMaterial({ color: m.userData.c, transparent: true, depthWrite: false, side: THREE.DoubleSide })); o.rotation.x = -Math.PI / 2; o.position.set(m.position.x, 2, m.position.z); scene.add(o); g.onde = o; gerbes.push(g); }
+      scene.remove(m); tirs.delete(p); (m.userData.trainee || []).forEach(t => scene.remove(t)); if (m.userData.flash) scene.remove(m.userData.flash);
+      if (reglage('impact3D', 1) > 0 && gerbes.length < 10) { const g = { t0: temps, l: [] }, gm = mat('g' + m.userData.cs, () => new THREE.MeshBasicMaterial({ color: m.userData.c })); // ✨ gerbe d'éclats
+        for (let i = 0; i < 8; i++) { const s = new THREE.Mesh(geoTir.etoile, gm), a = Math.random() * 6.28, v = 2 + Math.random() * 4; s.position.copy(m.position); s.scale.setScalar(0.25 + Math.random() * 0.25); s.userData.v = new THREE.Vector3(Math.cos(a) * v, 3 + Math.random() * 4, Math.sin(a) * v); scene.add(s); g.l.push(s); }
+        if (!ANNEAU) ANNEAU = new THREE.RingGeometry(0.8, 1, 32);
+        const o = new THREE.Mesh(ANNEAU, new THREE.MeshBasicMaterial({ color: m.userData.c, transparent: true, depthWrite: false, side: THREE.DoubleSide })); o.rotation.x = -Math.PI / 2; o.position.set(m.position.x, 2, m.position.z); scene.add(o); g.onde = o; gerbes.push(g); }
       if (reglage('impact3D', 1) > 0 && eclats.length < 30) { const b = new THREE.Mesh(geoTir.eclat, new THREE.MeshBasicMaterial({ color: m.userData.c, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })); b.position.copy(m.position); b.userData.t0 = temps; scene.add(b); eclats.push(b); }
     }
     for (let i = gerbes.length - 1; i >= 0; i--) { const g = gerbes[i], k = (temps - g.t0) / 26;
-      if (k >= 1) { g.l.forEach(s => scene.remove(s)); scene.remove(g.onde); g.onde.material.dispose(); g.onde.geometry.dispose(); g.mat.dispose(); gerbes.splice(i, 1); continue; }
+      if (k >= 1) { g.l.forEach(s => scene.remove(s)); scene.remove(g.onde); g.onde.material.dispose(); gerbes.splice(i, 1); continue; }
       g.l.forEach(s => { s.position.add(s.userData.v); s.userData.v.y -= 0.45; if (s.position.y < 2) { s.position.y = 2; s.userData.v.multiplyScalar(0.5); } s.rotation.x += 0.3; s.rotation.y += 0.2; });
-      g.mat.opacity = 1 - k * k; g.onde.scale.setScalar((8 + k * 50) * reglage('impact3D', 1)); g.onde.material.opacity = 0.8 * (1 - k); }
+      g.l.forEach(s => s.scale.multiplyScalar(0.96)); g.onde.scale.setScalar((8 + k * 50) * reglage('impact3D', 1)); g.onde.material.opacity = 0.8 * (1 - k); }
     for (let i = eclats.length - 1; i >= 0; i--) { const b = eclats[i], k = (temps - b.userData.t0) / 12; if (k >= 1) { scene.remove(b); b.material.dispose(); eclats.splice(i, 1); } else { b.scale.setScalar((10 + k * 40) * reglage('impact3D', 1)); b.material.opacity = 0.9 * (1 - k); } }
     for (const p of projectiles) {
       const a = p.arme || {}; if (a.forme === 'onde') continue; // l'onde du marteau reste dessinée au sol
       const f = geoTir[a.forme] ? a.forme : 'base'; let m = tirs.get(p);
       if (!m) { const c = p.sombre ? '#6a00a8' : a.couleur || '#ffffff'; m = new THREE.Group();
-        const coeur = new THREE.Mesh(geoTir[f], f === 'bulle' ? toon(c, { transparent: true, opacity: 0.65 }) : toon(c, { emissive: lin(c), emissiveIntensity: f === 'feu' ? 1 : 0.4 })); coeur.castShadow = true; m.add(coeur);
-        const e = new THREE.Mesh(geoTir[f], encre()); e.scale.setScalar(1.2); m.add(e);
-        if (reglage('haloTirs', 1) > 0) { const g = new THREE.Mesh(geoTir.base, new THREE.MeshBasicMaterial({ color: lin(c).lerp(new THREE.Color(1, 1, 1), 0.3), transparent: true, opacity: 0.35 * reglage('haloTirs', 1), blending: THREE.AdditiveBlending, depthWrite: false })); g.scale.setScalar(2.2); g.userData.halo = true; m.add(g); } // ✨ halo lumineux
-        if (f === 'feu') { const h = new THREE.Mesh(geoTir.feu, new THREE.MeshBasicMaterial({ color: 0xfff3b0 })); h.scale.setScalar(0.55); m.add(h); }
-        const fl = new THREE.Mesh(geoTir.eclat, new THREE.MeshBasicMaterial({ color: lin(c).lerp(new THREE.Color(1, 1, 1), 0.6), transparent: true, opacity: 1, depthWrite: false })); fl.userData.t0 = temps; m.userData.flash = fl; scene.add(fl);
-        m.userData.c = lin(c).lerp(new THREE.Color(1, 1, 1), 0.4); m.userData.trainee = []; m.userData.hist = [];
-        for (let i = 0, n = Math.round(reglage('traineeTirs', 6)); i < n; i++) { const t = new THREE.Mesh(geoTir.base, new THREE.MeshBasicMaterial({ color: m.userData.c, transparent: true, opacity: 0.5 * (1 - i / n), blending: THREE.AdditiveBlending, depthWrite: false })); t.visible = false; scene.add(t); m.userData.trainee.push(t); } // ☄️ traînée
+        const coeur = new THREE.Mesh(geoTir[f], mat('c' + c + f, () => f === 'bulle' ? toon(c, { transparent: true, opacity: 0.65 }) : toon(c, { emissive: lin(c), emissiveIntensity: f === 'feu' ? 1 : 0.4 }))); m.add(coeur);
+        const e = new THREE.Mesh(geoTir[f], mat('encre', () => encre())); e.scale.setScalar(1.2); m.add(e);
+        const hv = reglage('haloTirs', 1); if (hv > 0) { const g = new THREE.Mesh(geoTir.base, mat('h' + c + hv, () => add(lin(c).lerp(new THREE.Color(1, 1, 1), 0.3), { opacity: 0.35 * hv }))); g.scale.setScalar(2.2); m.add(g); } // ✨ halo lumineux
+        if (f === 'feu') { const h = new THREE.Mesh(geoTir.feu, mat('feu', () => new THREE.MeshBasicMaterial({ color: 0xfff3b0 }))); h.scale.setScalar(0.55); m.add(h); }
+        const fl = new THREE.Mesh(geoTir.eclat, mat('f' + c, () => add(lin(c).lerp(new THREE.Color(1, 1, 1), 0.6), { opacity: 0.7 }))); fl.userData.t0 = temps; m.userData.flash = fl; scene.add(fl);
+        m.userData.cs = c; m.userData.c = lin(c).lerp(new THREE.Color(1, 1, 1), 0.4); m.userData.trainee = []; m.userData.hist = [];
+        for (let i = 0, n = Math.round(reglage('traineeTirs', 6)); i < n; i++) { const t = new THREE.Mesh(geoTir.base, mat('t' + c + i + '/' + n, () => add(m.userData.c, { opacity: 0.5 * (1 - i / n) }))); t.visible = false; scene.add(t); m.userData.trainee.push(t); } // ☄️ traînée
         fl.position.set(p.x, 30, p.y); m.scale.setScalar(Math.max(0.7, (a.taille || 16) / 16)); scene.add(m); tirs.set(p, m); }
       const ang = Math.atan2(p.vy || 0, p.vx || 1); m.position.set(p.x, 26 + (p.z || 0), p.y);
       if (f === 'fleche' || f === 'cristal') m.rotation.set(0, -ang, -Math.PI / 2); else if (f === 'lame') m.rotation.set(Math.PI / 2, 0, temps * 0.7); else if (f === 'etoile') m.rotation.set(temps * 0.1, temps * 0.35, 0); else m.rotation.set(temps * 0.2, temps * 0.15, 0);
       const H = m.userData.hist, T = m.userData.trainee; H.unshift(m.position.clone()); if (H.length > T.length * 2 + 2) H.pop();
       T.forEach((t, i) => { const q = H[(i + 1) * 2]; t.visible = !!q; if (q) { t.position.copy(q); t.scale.setScalar(m.scale.x * (1 - i / T.length) * 0.9); } });
       if (f === 'bulle' || f === 'feu') m.children[0].scale.setScalar(1 + Math.sin(temps * 0.4) * 0.08);
-      const fl = m.userData.flash; if (fl) { const k = temps - fl.userData.t0; if (k > 8) { scene.remove(fl); m.userData.flash = null; } else { fl.scale.setScalar(8 + k * 5); fl.material.opacity = 1 - k / 8; } } // 💥 éclair de tir
+      const fl = m.userData.flash; if (fl) { const k = temps - fl.userData.t0; if (k > 8) { scene.remove(fl); m.userData.flash = null; } else fl.scale.setScalar((8 + k * 5) * (1 - k / 10)); } // 💥 éclair de tir
     }
   }
   function decorAutour(T, th) { // 🌳 décor 3D hors du terrain (selon l'ambiance) : la map est posée dans un vrai monde
