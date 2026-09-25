@@ -1019,7 +1019,8 @@ const CONFIG_PAR_DEFAUT = {
     "haloTirs": 1,
     "traineeTirs": 6,
     "impact3D": 1,
-    "styleAnneau": "arcade"
+    "styleAnneau": "arcade",
+    "marqueursKO": 1
   },
   "elements": {
     "terre": {

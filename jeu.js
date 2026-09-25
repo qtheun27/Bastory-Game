@@ -288,7 +288,7 @@ function creerBoss(id, x, y, i) {
 }
 // liste = joueurs de la partie [{uid, nom, p}] (le 1er est l'hôte) ; null = solo
 function demarrer(mapIdx, liste) {
-  mode = modeChoisi();
+  mode = modeChoisi(); marqueursKO = [];
   map = chargerMap(CONFIG.maps[mapIdx] || CONFIG.maps[0]);
   liste = liste || [{ uid: user.uid, nom: nomJoueur(), p: persoIndex }];
   const c = t => (t + 0.5) * TUILE, places = [];
@@ -2043,6 +2043,16 @@ function dessinerZone() { // 🎯 zone carrée (celle des cases) : remplissage a
   if (zoneControle === 'conteste') bd('CONTESTÉE!', z.x, y - 22, 26, '#ffd23f', Math.sin(temps * 0.2) * 0.05);
   else if (eqC !== null) bd(eqC === moi.eq ? 'À NOUS!' : 'À EUX!', z.x, y - 22, 22, col, 0);
 }
+let marqueursKO = []; // 💀 petites têtes de mort au sol là où quelqu'un est tombé (lisibilité du combat)
+function dessinerMarqueursKO() {
+  const duree = reglage('marqueursKO', 1) * 600; marqueursKO = marqueursKO.filter(m => temps - m.t < duree);
+  for (const m of marqueursKO) { const age = temps - m.t, a = Math.min(1, age / 10) * Math.min(1, (duree - age) / 60), s = 1 + Math.max(0, 1 - age / 12) * 0.6;
+    ctx.save(); ctx.globalAlpha = a * 0.9; ctx.translate(m.x, m.y); ctx.scale(s, s * 0.8);
+    ctx.beginPath(); ctx.arc(0, 0, 17, 0, 7); ctx.fillStyle = m.c; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = NOIR; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, -2, 9, 0, 7); ctx.fill(); ctx.fillRect(-5, 3, 10, 6);
+    ctx.fillStyle = NOIR; ctx.beginPath(); ctx.arc(-3.5, -2, 2.6, 0, 7); ctx.arc(3.5, -2, 2.6, 0, 7); ctx.fill(); ctx.fillRect(-1, 5, 2, 4);
+    ctx.restore(); }
+}
 let fissuresSol = []; // 🔨 craquelures laissées au sol par le marteau
 function dessinerFissuresSol() {
   fissuresSol = fissuresSol.filter(f => temps - f.t < 150);
@@ -2275,7 +2285,7 @@ function dessinerJeu() {
     ellipse(b.fx, b.fy, R, R * 0.8, 'rgba(255,40,40,.2)');
     ellipse(b.fx, b.fy, R * k, R * 0.8 * k, 'rgba(255,40,40,.45)');
   }
-  dessinerZone(); dessinerFissuresSol(); dessinerTresors();
+  dessinerZone(); dessinerFissuresSol(); dessinerMarqueursKO(); dessinerTresors();
   const objs = []; // tri par profondeur = effet 3D
   if (!v3) tuiles((c, x, y, px, py) => { if (c === '#') objs.push([(y + 1) * T - 1, () => { // les murs qui sortent du sol montent
                                    const f = levees[x + ',' + y] !== undefined ? Math.min(1, (temps - levees[x + ',' + y]) / 12) : 1;
@@ -2336,16 +2346,20 @@ function dessinerVisee() {
   else if (!mobile && souris) { const m = versMonde(souris.x, souris.y); a = Math.atan2(m.y - moi.y, m.x - moi.x); f = Math.min(1, Math.hypot(m.x - moi.x, m.y - moi.y) / moi.perso.portee); }
   else return;
   const A = moi.arme || {}, fr = A.type === 'frappe', P = fr ? +A.distanceFrappe || 110 : moi.perso.portee, lob = A.type === 'lob' || fr; if (fr) f = 1; // 🔨 frappe : zone fixe devant soi, on ne choisit que la direction pul = 0.5 + 0.5 * Math.sin(temps * 0.15);
-  if (aff3) { visee3D = { a, f, lob, P, R: +A.rayon || 70, c: A.couleur || '#ffe14a' }; return; } // 🎯 visée en 3D
+  const larg = Math.max(26, (+A.taille || 12) * 2), Lmur = lob ? P : porteeLibre(moi.x, moi.y, a, P); // 🎯 visée précise : largeur réelle du projectile, arrêtée au 1er mur
+  if (aff3) { visee3D = { a, f, lob, P, L: Lmur, w: larg, R: +A.rayon || 70, c: A.couleur || '#ffe14a' }; return; } // 🎯 visée en 3D
   ctx.save(); ctx.translate(moi.x, moi.y); ctx.rotate(a); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   if (lob) { const d = Math.max(60, P * f), R = +A.rayon || 70;
     ctx.setLineDash([10, 12]); ctx.lineDashOffset = -temps; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(moi.r, 0); ctx.lineTo(d - R, 0); ctx.stroke(); ctx.setLineDash([]);
     ctx.beginPath(); ctx.arc(d, 0, R, 0, 7); ctx.fillStyle = `rgba(255,225,74,${0.18 + 0.1 * pul})`; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.lineWidth = 1.5; ctx.strokeStyle = NOIR; ctx.stroke();
     ctx.beginPath(); ctx.arc(d, 0, R * (0.3 + 0.2 * pul), 0, 7); ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 3; ctx.stroke(); }
-  else { const L = P, g = ctx.createLinearGradient(moi.r, 0, L, 0); g.addColorStop(0, 'rgba(255,255,255,.55)'); g.addColorStop(1, 'rgba(255,255,255,.08)');
-    ctx.beginPath(); ctx.moveTo(moi.r, -10); ctx.lineTo(L, -16); ctx.lineTo(L, 16); ctx.lineTo(moi.r, 10); ctx.closePath(); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(11,6,32,.55)'; ctx.stroke();
-    ctx.fillStyle = '#ffe14a'; for (let i = 0; i < 4; i++) { const x = moi.r + 30 + ((temps * 3 + i * (L / 4)) % (L - moi.r - 30)); ctx.beginPath(); ctx.moveTo(x, -8); ctx.lineTo(x + 12, 0); ctx.lineTo(x, 8); ctx.lineTo(x + 5, 0); ctx.closePath(); ctx.fill(); } }
+  else { const L = Lmur, h = larg / 2, g = ctx.createLinearGradient(moi.r, 0, L, 0); g.addColorStop(0, 'rgba(255,255,255,.55)'); g.addColorStop(1, 'rgba(255,255,255,.25)');
+    ctx.beginPath(); ctx.moveTo(moi.r, -h); ctx.lineTo(L, -h); ctx.arc(L, 0, h, -Math.PI / 2, Math.PI / 2); ctx.lineTo(moi.r, h); ctx.closePath(); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(11,6,32,.55)'; ctx.stroke();
+    ctx.fillStyle = '#ffe14a'; if (L > moi.r + 50) for (let i = 0; i < 4; i++) { const x = moi.r + 30 + ((temps * 3 + i * (L / 4)) % (L - moi.r - 30)); ctx.beginPath(); ctx.moveTo(x, -8); ctx.lineTo(x + 12, 0); ctx.lineTo(x, 8); ctx.lineTo(x + 5, 0); ctx.closePath(); ctx.fill(); } }
   ctx.restore();
+}
+function porteeLibre(x, y, a, P) { // distance jusqu'au 1er mur (les tirs droits s'y arrêtent)
+  const dx = Math.cos(a), dy = Math.sin(a); for (let d = 0; d < P; d += 8) if (bloqueTir(tuileA(x + dx * d, y + dy * d))) return Math.max(0, d - 4); return P;
 }
 function barreVie(e, couleur, nom) { // pastille nom + barre de vie + munitions, toujours AU-DESSUS du perso
   const w = Math.max(64, e.r * 2.3), top = e.topT >= temps - 1 ? e.topY : e.y - e.r * 1.7, x = e.x - w / 2, y = top - 14;
@@ -2939,6 +2953,7 @@ function dessinerFin() { // animation de victoire / défaite avec les gagnants e
 let introT = 0, debutJeu = 0, kills = {}, nuages = [], dots = [], fantomes = [], suivi = null;
 function animMort(e, im) {
   if (e.tresors && obj() === 'tresor' && moiOuBot(e)) lacherTresors(e);
+  if (reglage('marqueursKO', 1) > 0) { if (marqueursKO.length > 20) marqueursKO.shift(); marqueursKO.push({ x: e.x, y: e.y, t: temps, c: e === moi || (moi && e.eq === moi.eq) ? '#5ac8fa' : '#ff5a6e' }); } // 💀 marqueur au sol
   ono('K.O. !!', e.x, e.y - 30, 1.8, '#ff2d55'); choc = 1.3; flash = 0.6; // le perso tourne, rétrécit et s'envole en fondu
   fantomes.push({ im: im || img(e.perso ? e.perso.image : ''), x: e.x, y: e.y, a: e.angle || 0, t: temps, taille: e.r * 2.9 });
   for (let i = 0; i < 20; i++) particule(e.x, e.y, i % 2 ? '#ffffff' : '#9aa0ff', 6, 6, 1.4, 'rond');

@@ -57,9 +57,10 @@ const Rendu3D = (() => {
     const v = typeof visee3D !== 'undefined' && visee3D; viseeG.visible = !!v && !!moi && moi.pv > 0; if (!viseeG.visible) return;
     const [fais, an, pl] = viseeG.children, c = lin(v.c), pulse = 0.5 + 0.5 * Math.sin(temps * 0.15), d = v.lob ? Math.max(60, v.P * v.f) : v.P;
     viseeG.position.set(moi.x, 0, moi.y); viseeG.rotation.y = -v.a;
-    fais.material.color = c; fais.scale.set(v.lob ? Math.max(20, d - v.R) : d, v.lob ? 26 : 74, 1); fais.position.set(v.lob ? (moi.r + d - v.R) / 2 : (moi.r + d) / 2, 3, 0);
+    fais.material.color = c; const L = v.lob ? d : Math.max(moi.r + 4, v.L ?? d), w = v.w || 40; // tir droit : largeur réelle du projectile, coupé au 1er mur
+    fais.scale.set(v.lob ? Math.max(20, d - v.R) : L - moi.r, v.lob ? 26 : w, 1); fais.position.set(v.lob ? (moi.r + d - v.R) / 2 : (moi.r + L) / 2, 3, 0);
     fais.material.opacity = 0.35 + 0.2 * pulse;
-    const R2 = v.lob ? v.R : 40; an.material.color = c; an.scale.setScalar(R2 * (v.lob ? 1 : 0.6) * (1 + pulse * 0.06)); an.position.set(v.lob ? d : d, 4, 0);
+    const R2 = v.lob ? v.R : w * 0.75; an.material.color = c; an.scale.setScalar(R2 * (v.lob ? 1 : 0.6) * (1 + pulse * 0.06)); an.position.set(v.lob ? d : L, 4, 0);
     pl.material.color = c; pl.scale.setScalar(R2 * (v.lob ? 0.95 : 0.55)); pl.position.copy(an.position); pl.position.y = 3.5;
   }
   let balises = null, balisesCle = '', coffres = new Map();
