@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bastory — Tests</title>
+<style>
+  :root { --fond: #1d1558; --carte: #2a2080; --texte: #fff; --ok: #4cd964; --ko: #ff5a6e; }
+  body { margin: 0; padding: 16px; background: var(--fond); color: var(--texte); font: 15px/1.5 system-ui, sans-serif; }
+  h1 { margin: 0 0 4px; } p { margin: 0 0 12px; opacity: .8; }
+  #resume { font-size: 20px; font-weight: 700; margin: 12px 0; }
+  li { background: var(--carte); margin: 6px 0; padding: 8px 12px; border-radius: 10px; list-style: none; }
+  .ok b { color: var(--ok); } .ko b { color: var(--ko); } small { opacity: .75; display: block; }
+  iframe { width: 800px; height: 450px; border: 0; position: absolute; left: -9999px; }
+</style>
+</head>
+<body>
+<h1>🧪 Tests automatiques de Bastory</h1>
+<p>Ouvre cette page (même adresse que le jeu, en remplaçant index.html par tests.html). Le jeu est chargé dans un cadre invisible, puis les règles importantes sont vérifiées.</p>
+<div id="resume">⏳ Chargement du jeu…</div>
+<ul id="liste"></ul>
+<iframe id="jeu" src="index.html"></iframe>
+<script>
+const liste = document.getElementById('liste'), resume = document.getElementById('resume');
+const res = [];
+function noter(nom, ok, detail) { res.push(ok); const li = document.createElement('li'); li.className = ok ? 'ok' : 'ko'; li.innerHTML = `<b>${ok ? '✅' : '❌'}</b> ${nom}${detail ? '<small>' + detail + '</small>' : ''}`; liste.append(li); }
+const attendre = ms => new Promise(r => setTimeout(r, ms));
+async function lancer() {
+  const w = document.getElementById('jeu').contentWindow, E = s => w.eval(s);
+  for (let i = 0; i < 100 && !(w.demarrer && E('typeof CONFIG') === 'object'); i++) await attendre(200); // le jeu se charge après la config en ligne
+  if (!w.demarrer) { resume.textContent = '❌ Le jeu ne s\'est pas chargé'; return; }
+  resume.textContent = '⏳ Tests en cours…';
+  const test = async (nom, f) => { try { const r = await f(); noter(nom, r === true || (r && r.ok), r && r.detail); } catch (e) { noter(nom, false, 'Erreur : ' + e.message); } };
+
+  // --- config
+  await test('La config se met à jour sans perte (migration)', () => { const c = E('migrerConfig(JSON.parse(JSON.stringify(CONFIG_PAR_DEFAUT)))'); return { ok: c.version >= 20 && !!c.roles && !!c.gadgets && Array.isArray(c.quetes) && c.modes.some(m => m.objectif === 'survie'), detail: 'version ' + c.version }; });
+  await test('Aucune mention d\'un autre jeu dans la config', () => !/brawl/i.test(JSON.stringify(E('CONFIG'))));
+
+  // --- partie de test (solo, sans compte)
+  E(`document.getElementById('auth').style.display = 'none'; user = { uid: 'test', displayName: 'Test' }; db = null; modeIndex = Math.max(0, modes().findIndex(m => m.type === 'multi' && (m.objectif || 'standard') === 'standard' && !m.boss));
+     demarrer(mapChoisie(modeChoisi()), [{ uid: 'test', nom: 'Test', p: 0, eq: 0 }, { uid: 'bot1', nom: 'Bot', p: 1, eq: 1, bot: true }]); for (let i = 0; i < 400; i++) pasDeJeu(); etat = 'JEU';`);
+  await test('Une partie démarre avec un joueur et un bot', () => E('!!moi && Object.keys(autres).length === 1 && etat === "JEU"'));
+
+  await test('Tir mémorisé : un clic pendant la recharge part ensuite', () => E(`moi.mun = 3; moi.recharge = 5; tirer(0, 1); const a = !!moi.tirAttente; for (let i = 0; i < 6; i++) pasDeJeu(); a && !moi.tirAttente`));
+  await test('Rôle tank : reçoit moins de dégâts', () => { const r = E(`(() => { const b = Object.values(autres)[0], r0 = b.perso.role; b.perso.role = 'tank'; b.perso.base = { ...(b.perso.base || {}), role: 'tank' }; b.pv = b.pvMax = 1e6; b.invuln = 0;
+      degats(b, moi.uid, 1000, b.x, b.y, 0, {}); const perte = 1e6 - b.pv; b.perso.base.role = r0; return perte; })()`); return { ok: r > 0 && r < 1000, detail: '1000 → ' + r }; });
+  await test('Gadget : 3 utilisations, 5 s entre deux', () => E(`(() => { moi.gadgets = 3; moi.gadgetT = 0; moi.perso.base = { ...(moi.perso.base || moi.perso), gadget: 'soin' }; lancerGadget(moi); const a = moi.gadgets; lancerGadget(moi); return a === 2 && moi.gadgets === 2; })()`));
+  await test('Visée avec rebonds : la trajectoire rebondit sur les murs', () => { const n = E(`(() => { let best = 0; for (let k = 0; k < 16; k++) best = Math.max(best, trajetRebonds(moi.x, moi.y, k / 16 * 6.283, 2000, 3, 10).length); return best; })()`); return { ok: n >= 3 && n <= 5, detail: n + ' points' }; });
+  await test('Visée : la portée s\'arrête au premier mur', () => E(`(() => { for (let k = 0; k < 16; k++) { const a = k / 16 * 6.283, d = porteeLibre(moi.x, moi.y, a, 3000); if (d < 3000) return bloqueTir(tuileA(moi.x + Math.cos(a) * (d + 12), moi.y + Math.sin(a) * (d + 12))); } return false; })()`));
+  await test('Quêtes du jour : identiques pour tout le monde et bien comptées', () => E(`(() => { const a = JSON.stringify(quetesDuJour()); quetesDuJour.l = null; return a === JSON.stringify(quetesDuJour()) && quetesDuJour().length === Math.min(reglage('quetesParJour', 3), CONFIG.quetes.filter(q => q.actif !== false).length); })()`));
+  await test('Rangs de saison dans le bon ordre', () => E(`rangDe(0).nom === 'Bronze' && rangDe(1e9).nom === 'Légende' && rangDe(400).min <= 400`));
+  await test("Skins : un skin non acheté n'est jamais porté", () => E(`(() => { mesStats.skins = {}; mesStats.skinChoisi = { [cleP(baseDe(moi.perso))]: 'dore' }; return skinChoisi(moi.perso) === ''; })()`));
+  await test('Bots : ils se rapprochent et attaquent', () => { const r = E(`(() => { const b = Object.values(autres)[0]; b.pv = b.pvMax = 1e9; moi.pv = moi.pvMax = 1e9; const d0 = Math.hypot(b.x - moi.x, b.y - moi.y); for (let i = 0; i < 900; i++) pasDeJeu(); return [Math.round(d0), Math.round(Math.hypot(b.x - moi.x, b.y - moi.y)), 1e9 - moi.pv]; })()`); return { ok: r[1] < Math.max(450, r[0]) && r[2] > 0, detail: 'distance ' + r[0] + ' → ' + r[1] + ' • dégâts ' + r[2] }; });
+
+  // --- mode survie
+  E(`resultat = ''; finInfo = null; modeIndex = modes().findIndex(m => m.objectif === 'survie'); demarrer(mapChoisie(modeChoisi()), [{ uid: 'test', nom: 'Test', p: 0, eq: 0 }, { uid: 'bot1', nom: 'Bot', p: 1, eq: 1, bot: true }]); for (let i = 0; i < 400; i++) pasDeJeu(); etat = 'JEU';`);
+  await test('Survie : le gaz se referme avec le temps', () => E(`(() => { debutJeu = temps - 25 * 60; const a = gaz().r; debutJeu = temps - 80 * 60; const b = gaz().r; return gaz().actif && b < a; })()`));
+  await test('Survie : le gaz blesse hors de la zone', () => E(`(() => { const g = gaz(); moi.pv = moi.pvMax = 1e6; moi.invuln = 0; moi.x = g.x + g.r + 200; moi.y = g.y; temps += 30 - (temps % 30); majGaz(); return moi.pv < 1e6; })()`));
+
+  const ok = res.filter(Boolean).length;
+  resume.textContent = (ok === res.length ? '✅ ' : '❌ ') + ok + ' / ' + res.length + ' tests réussis';
+  document.title = 'Tests : ' + ok + '/' + res.length;
+}
+document.getElementById('jeu').addEventListener('load', () => setTimeout(lancer, 1500));
+</script>
+</body>
+</html>

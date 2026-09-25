@@ -1299,7 +1299,7 @@ function migrerConfig(c) {
   Object.values(c.bosses).forEach(b => def(b, { imageCarte: '', arme: '', porteeTir: 400, degatsTir: 1500, cadenceTir: 90, modele: '', modeleEchelle: 1, modeleRotation: 0, animRepos: '', animMarche: '', animAttaque: '', animTouche: '', animMort: '' }));
   Object.values(c.armes).forEach(a => def(a, { ralenti: 0, rebonds: 0, bonusRebond: 1.2, chaine: 0, perteChaine: 0.7, porteeChaine: 350, onde: 0, recul: 0, forme: '', retard: 0, poisonDuree: 0, nuage: 0, rayonNuage: 90, degatsNuage: 150 }));
   c.maps.forEach(m => def(m, { casseMurs: true, casseBuissons: true, pvBloc: 3000, chanceObjet: 10, chanceCoffre: 100, sable: '#f4d68e' }));
-  if (c.app && c.app.styleAnneau === 'arcade') c.app.styleAnneau = 'arcade';
+  if (c.app && c.app.styleAnneau && !['arcade', 'simple'].includes(c.app.styleAnneau)) c.app.styleAnneau = 'arcade'; // ancien nom du style → arcade
   def(c.app, D.app); // ⚙️ nouveaux réglages de l'appli (sensations de jeu) : valeurs par défaut si absents
   return c;
 }
