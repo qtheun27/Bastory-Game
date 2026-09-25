@@ -75,7 +75,13 @@ function redim() {
   canvas.width = W * dpr; canvas.height = H * dpr;
   canvas.style.width = W + 'px'; canvas.style.height = H + 'px'; document.body.style.width = W + 'px'; document.body.style.height = H + 'px'; // plus de bande de fond visible
   zoom = Math.max(0.55, Math.min(1.3, Math.min(W, H * 1.7) / (TUILE * 22)));
+  recaler();
 }
+function recaler() { // 📱 iPhone : après une rotation, Safari garde un défilement ou un dézoom → image décalée + bande noire. On remet tout en place.
+  if (scrollX || scrollY) scrollTo(0, 0);
+  document.documentElement.scrollTop = document.body.scrollTop = document.documentElement.scrollLeft = document.body.scrollLeft = 0;
+}
+addEventListener('scroll', recaler, { passive: true });
 addEventListener('resize', redim); redim();
 let ox = 0, oy = 0; const sa = { l: 0, r: 0, t: 0, b: 0 };     // décalage de l'interface (encoche / zone sûre)
 const ecran = () => ctx.setTransform(dpr, 0, 0, dpr, ox * dpr, oy * dpr);
