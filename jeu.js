@@ -516,6 +516,7 @@ function recevoir(e) {
   const j = entite(e.de);
   if (e.t === 'tir' && j) { j.angle = e.a; creerProjectile(j, e.a, e.f, e.x, e.y, e.d); }
   else if (e.t === 'db' && hote && bosses[e.i]) blesserBoss(bosses[e.i], e.deg, e.de);
+  else if (e.t === 'mu') { if (tuile(e.tx, e.ty) !== '#') poserMur(e.tx, e.ty); }
   else if (e.t === 'gd' && j && j !== moi) { activerPouvoir('g_' + e.g, j); const g = (CONFIG.gadgets || {})[e.g] || {}; ondes.push({ x: j.x, y: j.y, r: 10, max: 80, c: g.couleur || '#fff', vie: 1, ep: 8 }); } // 🧰 gadget d'un autre joueur
   else if (e.t === 'fr') frappe(e, false);
   else if (e.t === 'ca') casser(e.tx, e.ty, e.o);
@@ -544,6 +545,7 @@ addEventListener('keydown', e => {
     if (k === mesTouches.auto) { e.preventDefault(); tirerAuto(); }
     if (k === mesTouches.action) lancerAction(moi);            // 🎮 action d'élément
     if (k === (mesTouches.gadget || 'g')) lancerGadget(moi);      // 🧰 gadget
+    if (k === (mesTouches.construire || 'f')) construireMur(moi); // 🧱 construire
     if (k === mesTouches.super) lancerSuper(moi, angleSouris()); // ⭐ super, vers la souris
   }
   if (k === 'escape' && etat !== 'MENU') { quitterSalle(); etat = 'MENU'; }
@@ -682,7 +684,7 @@ function majProjectiles() {
       (p.tr = p.tr || []).push({ x: p.x, y: p.y }); if (p.tr.length > 8) p.tr.shift(); // traînée
       if (p.type === 'retour') p.rot += 0.45;
       const mur = bloqueTir(tuileA(p.x, p.y));
-      if (mur && mien && !p.retour) abimerA(p.x, p.y, p.deg);
+      if (mur && mien && !p.retour) { coupDe = p.de; abimerA(p.x, p.y, p.deg); coupDe = null; }
       if (p.type === 'retour') {
         if (!p.retour && (p.dist >= p.perso.portee || mur)) { p.retour = true; if (mur) effet('etincelle', p.x, p.y, '#ddd'); }
         if (p.retour && Math.hypot(p.x - proprio.x, p.y - proprio.y) < proprio.r) fini = true;
@@ -712,7 +714,7 @@ function exploser(p) {
   effet(p.arme.effet || 'explosion', p.x, p.y, p.arme.couleur, r);
   for (const c of cibles(p)) if (Math.hypot(p.x - c.e.x, p.y - c.e.y) < r + c.e.r * 0.6) impact(c.e, p, p.x, p.y, false);
   if (p.sombre) effetSombre(p.x, p.y);
-  if (auteur(p)) abimerZone(p.x, p.y, r, p.deg);
+  if (auteur(p)) { coupDe = p.de; abimerZone(p.x, p.y, r, p.deg); coupDe = null; }
   if (+p.arme.onde) { // 🌍 onde de choc au sol autour de l'impact (marteau de Rokh)
     if (ondes.length > 14) ondes.shift();
     ondes.push({ x: p.x, y: p.y, r, max: +p.arme.onde, c: '#fff3c4', vie: 1, ep: 12 }); ono('KRAKOOM!', p.x, p.y, 1.3, '#ffe14a');
@@ -837,6 +839,7 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     j.marche += v; tourner(j, a, 0.2);
     if (av > 0 && Math.hypot(j.x - ax, j.y - ay) < v * 0.35 && (j.coince = (j.coince || 0) + 1) > 8) { allerVers(j, c.x, c.y, v); j.coince = 0; } // bloqué par un mur : il contourne
     if (!libre) { allerVers(j, c.x, c.y, v * 0.6); } // 🧱 ligne de tir bouchée par un mur : il contourne pour retrouver un angle de tir
+    if (construction() && (j.mat || 0) >= reglage('coutMur', 10) && j.pv < j.pvMax * 0.5 && dm < 300 && Math.random() < 0.03) { j.angle = a; construireMur(j); } // 🤖 se met à l'abri
     if (libre && dm < j.perso.portee && j.recharge <= 0 && j.mun >= 1 && Math.random() < 0.05 * (j.niv || 1)) {
       const ang = a + (Math.random() - 0.5) * 0.35 / (j.niv || 1), f = Math.min(1, dm / j.perso.portee);
       j.mun -= 1; j.recharge = j.perso.delaiTir;
@@ -902,6 +905,29 @@ function abimer(tx, ty, deg) { // appelé seulement par l'auteur du coup, le ré
   const chance = c === 'C' ? map.def.chanceCoffre : map.def.chanceObjet;
   const o = Math.random() * 100 < (+chance || 0) ? tirerPouvoir() : null;
   casser(tx, ty, o); envoyer({ t: 'ca', tx, ty, o });
+  const qui = coupDe ? entite(coupDe) : moi; if (qui && qui.perso) gagnerMat(qui, c); // 🧱 matériaux pour construire
+}
+// ---------- 🧱 CONSTRUCTION : casser rapporte des matériaux, un bouton pose un mur devant soi ----------
+let coupDe = null;
+const construction = () => !!(mode && mode.construction);
+function gagnerMat(j, c) {
+  if (!construction()) return; const g = c === 'B' ? reglage('matBuisson', 4) : c === 'C' ? 0 : reglage('matMur', 10); if (!g) return;
+  j.mat = Math.min(reglage('matMax', 200), (j.mat || 0) + g); if (j === moi) texteFlottant('+' + g + ' 🧱', moi.x, moi.y - 60, '#e8c38a', 0.8);
+}
+function construireMur(j = moi) {
+  if (!construction() || !j || j.pv <= 0 || resultat) return; const cout = reglage('coutMur', 10);
+  if ((j.mat || 0) < cout) { if (j === moi) notif('🧱 Il faut ' + cout + ' matériaux : casse des murs et des buissons'); return; }
+  if (temps < (j.murT || 0)) return;
+  const a = j.angle || 0, d = TUILE * 1.15, tx = Math.floor((j.x + Math.cos(a) * d) / TUILE), ty = Math.floor((j.y + Math.sin(a) * d) / TUILE), c = tuile(tx, ty);
+  if (c !== '.' && c !== 'S') return; // seulement sur du sol libre
+  const cx = (tx + 0.5) * TUILE, cy = (ty + 0.5) * TUILE;
+  if ([...joueurs(), ...bosses].some(e => e.pv > 0 && Math.abs(e.x - cx) < TUILE / 2 + e.r && Math.abs(e.y - cy) < TUILE / 2 + e.r)) return; // pas sur quelqu'un
+  j.mat -= cout; j.murT = temps + 12; poserMur(tx, ty); envoyer({ t: 'mu', tx, ty });
+}
+function poserMur(tx, ty) {
+  setTuile(tx, ty, '#'); degatsTuiles[tx + ',' + ty] = (+map.def.pvBloc || 3000) * (1 - reglage('solideMur', 60) / 100); // un mur construit est moins solide
+  const x = (tx + 0.5) * TUILE, y = (ty + 0.5) * TUILE; ondes.push({ x, y, r: 8, max: 46, c: '#e8c38a', vie: 1, ep: 6 }); for (let i = 0; i < 8; i++) particule(x, y, '#e8c38a', 5, 6, 1, 'fumee');
+  son('frappe', volA(x, y) * 0.5);
 }
 const abimerA = (x, y, deg) => abimer(Math.floor(x / TUILE), Math.floor(y / TUILE), deg);
 function abimerZone(x, y, r, deg) {
@@ -1726,7 +1752,7 @@ function hudElem() { // 🎮 boutons ronds façon arcade : SUPER (anneau de char
   const e = infoElem(moi); if (!e || moi.pv <= 0 || etat !== 'JEU') return;
   const u = U(), tact = true, { S, A, T } = posHUD();
   const gk = gadgetDe(moi), gg = gk && CONFIG.gadgets[gk];
-  if (!mobile) { texte(libTouche(mesTouches.action) + ' : ' + e.actionNom + '  •  ' + libTouche(mesTouches.super) + ' : ' + e.superNom + (gg ? '  •  ' + libTouche(mesTouches.gadget || 'g') + ' : ' + gg.icone + ' ' + gg.nom + ' (' + (moi.gadgets || 0) + ')' : ''), W / 2, H - 36, 12, '#ffe14a'); return; }
+  if (!mobile) { texte(libTouche(mesTouches.action) + ' : ' + e.actionNom + '  •  ' + libTouche(mesTouches.super) + ' : ' + e.superNom + (gg ? '  •  ' + libTouche(mesTouches.gadget || 'g') + ' : ' + gg.icone + ' ' + gg.nom + ' (' + (moi.gadgets || 0) + ')' : '') + (construction() ? '  •  ' + libTouche(mesTouches.construire || 'f') + ' : 🧱 mur (' + (moi.mat || 0) + ')' : ''), W / 2, H - 36, 12, '#ffe14a'); return; }
   const rond = (b, c1, c2, halo) => { // ombre portée, dégradé bombé, contour épais, reflet
     ctx.beginPath(); ctx.arc(b.x, b.y + 5 * u, b.r, 0, 7); ctx.fillStyle = 'rgba(11,6,32,.55)'; ctx.fill();
     if (halo) { ctx.save(); ctx.globalAlpha = 0.45 + 0.3 * Math.sin(temps * 0.2); ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 1.4, 0, 7); ctx.fillStyle = halo; ctx.fill(); ctx.restore(); }
@@ -1752,6 +1778,9 @@ function hudElem() { // 🎮 boutons ronds façon arcade : SUPER (anneau de char
     ctx.save(); ctx.globalAlpha = pret2 ? 1 : 0.5; ctx.font = Math.round(G.r * 1.05) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(gg.icone || '🧰', G.x, G.y + 1); ctx.restore();
     for (let i = 0; i < reglage('gadgetsParPartie', 3); i++) { ctx.beginPath(); ctx.arc(G.x + (i - 1) * 10 * u, G.y + G.r + 8 * u, 3.5 * u, 0, 7); ctx.fillStyle = i < moi.gadgets ? '#ffe14a' : 'rgba(255,255,255,.25)'; ctx.fill(); }
     hudBoutons.push({ ...G, f: () => lancerGadget(moi) }); }
+  if (construction()) { const Bm = { x: A.x - A.r * 2.5, y: A.y, r: A.r * 0.78 }, ok = (moi.mat || 0) >= reglage('coutMur', 10); // 🧱 bouton construire
+    rond(Bm, ok ? '#f0d4a0' : '#5d6778', ok ? '#9b6a3a' : '#2a2f40'); ctx.save(); ctx.globalAlpha = ok ? 1 : 0.5; ctx.font = Math.round(Bm.r * 0.95) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🧱', Bm.x, Bm.y - 2 * u); ctx.restore();
+    texte(String(moi.mat || 0), Bm.x, Bm.y + Bm.r + 9 * u, 11 * u, '#fff'); hudBoutons.push({ ...Bm, f: () => construireMur(moi) }); }
   if (!joyD.actif) { // 🎯 bouton d'attaque principale (le joystick d'attaque part de son centre)
     ctx.beginPath(); ctx.arc(T.x, T.y + 5 * u, T.r, 0, 7); ctx.fillStyle = 'rgba(11,6,32,.45)'; ctx.fill();
     const g = ctx.createRadialGradient(T.x - T.r * 0.3, T.y - T.r * 0.4, 2, T.x, T.y, T.r); g.addColorStop(0, 'rgba(255,140,110,.9)'); g.addColorStop(1, 'rgba(200,30,60,.75)');
@@ -2099,8 +2128,8 @@ const bossBase = d => (d && Object.values(CONFIG.bosses).find(b => b.nom === d.n
 
 
 // ---------- ⌨️ COMMANDES CLAVIER (réglables par chaque joueur, onglet Commandes) ----------
-const TOUCHES_DEF = { haut: 'z', bas: 's', gauche: 'q', droite: 'd', auto: ' ', action: 'e', super: 'r', gadget: 'g' };
-const NOM_TOUCHE = { haut: 'Avancer', bas: 'Reculer', gauche: 'Aller à gauche', droite: 'Aller à droite', auto: 'Tir automatique', action: 'Action d\'élément', super: 'Super (vers la souris)', gadget: 'Gadget (3 par partie)' };
+const TOUCHES_DEF = { haut: 'z', bas: 's', gauche: 'q', droite: 'd', auto: ' ', action: 'e', super: 'r', gadget: 'g', construire: 'f' };
+const NOM_TOUCHE = { haut: 'Avancer', bas: 'Reculer', gauche: 'Aller à gauche', droite: 'Aller à droite', auto: 'Tir automatique', action: 'Action d\'élément', super: 'Super (vers la souris)', gadget: 'Gadget (3 par partie)', construire: 'Construire un mur (mode avec construction)' };
 const FLECHES = { haut: 'arrowup', bas: 'arrowdown', gauche: 'arrowleft', droite: 'arrowright' };
 let mesTouches = { ...TOUCHES_DEF }, toucheAttendue = null, souris = null;
 try { Object.assign(mesTouches, JSON.parse(localStorage.getItem('bastoryTouches') || '{}')); } catch (e) {}
