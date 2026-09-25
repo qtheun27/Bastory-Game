@@ -13,7 +13,7 @@ Le propriétaire (Quentin) parle français et n'est pas développeur : répondre
 
 ## Fichiers
 - `index.html` : page du jeu ; charge la config en ligne (Firestore `bastory/config`), puis les scripts avec `?v=Date.now()` (évite les anciennes versions en cache sur téléphone).
-- `config.js` : `CONFIG_PAR_DEFAUT` (persos, armes, modes, maps, rôles, gadgets, quêtes, rangs, skins, `app` = réglages généraux) + `migrerConfig(c)` : mises à jour numérotées (`c.version`, actuellement **22**). Toute nouvelle donnée ⇒ nouveau bloc `if ((c.version || 0) < N)` placé **après** le dernier.
+- `config.js` : `CONFIG_PAR_DEFAUT` (persos, armes, modes, maps, rôles, gadgets, quêtes, rangs, skins, `app` = réglages généraux) + `migrerConfig(c)` : mises à jour numérotées (`c.version`, actuellement **23**). Toute nouvelle donnée ⇒ nouveau bloc `if ((c.version || 0) < N)` placé **après** le dernier.
 - `admin.html` : console admin. Champs définis par des tableaux (`CH.perso`, `CH.arme`, `CH.mode`, `CH_JEU`…) : `[clé, libellé, type, options, aide]`. « Publier » enregistre la config dans Firestore ; le jeu l'écoute en direct (`configEnDirect`).
 - `jeu.js` : tout le jeu (menus, partie, réseau Firebase Realtime DB, bots, HUD). `reglage('cle', défaut)` lit `CONFIG.app`.
 - `rendu3d.js` : rendu 3D en partie (Three.js r128) ; `modele3d.js` : chargement des modèles `.glb`, menus 3D, **skins** (shader ajouté aux matériaux).
@@ -26,4 +26,5 @@ Pas de Node sur le Mac d'origine. Lancer un petit serveur : `python3 -m http.ser
 
 ## Fonctionnalités déjà faites (ne pas refaire)
 Visée précise (largeur réelle, arrêt au mur, rebonds), tir mémorisé, marteau de Rokh en 2 temps, rôles (tank, tireur, assassin, soutien, contrôle), gadgets (3/partie), bots malins (visée anticipée, esquive, se cachent), quêtes du jour (récompense au choix), saisons mensuelles + rangs, skins transformants avec aperçu gratuit, mode Survie (gaz), Assaut des tours, régénération hors combat, menu persos (Collection / Détail), sons + musique, correctifs iPhone (bande noire, son en mode silencieux).
+Grande carte « 🏰 Royaume » (64×64, générée : 6 ambiances en secteurs + place neutre au centre, `map.def.biomes`, `biomeA(tx,ty)`, rendu 3D par ambiance, reconstruction 3D limitée sur les grandes cartes) et mode « Royaume » (survie ; options construction / butin / atterrissage / boss mondial / météo en cours d'ajout).
 Essais abandonnés : animations 3D calculées par le jeu (le propriétaire préfère les animations Meshy).

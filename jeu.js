@@ -250,6 +250,12 @@ function chargerMap(def) {
   m.g = g.map(r => r.replace(/[T1-8NO]/g, '.').replace(obj === 'zone' || obj === 'marathon' ? /$^/ : /Z/g, '.')); // la zone n'existe qu'en mode "zone"
   return m;
 }
+function biomeA(tx, ty) { // 🗺️ ambiance d'une case (grande carte à plusieurs ambiances : place neutre au centre, secteurs autour)
+  const b = map && map.def && map.def.biomes; if (!b) return (map && map.def && map.def.theme) || 'campagne';
+  const cx = (map.l - 1) / 2, cy = (map.h - 1) / 2, dx = tx - cx, dy = ty - cy, l = b.secteurs || [];
+  if (Math.hypot(dx, dy) < (+b.rayon || 7.5) || !l.length) return map.def.theme || 'neutre';
+  const n = l.length, a = (Math.atan2(dy, dx) + Math.PI * 2 + Math.PI / n) % (Math.PI * 2); return l[Math.floor(a / (Math.PI * 2 / n)) % n];
+}
 const tuile = (tx, ty) => (!map || tx < 0 || ty < 0 || tx >= map.l || ty >= map.h) ? '#' : map.g[ty][tx];
 const tuileA = (x, y) => tuile(Math.floor(x / TUILE), Math.floor(y / TUILE));
 const bloque = c => c === '#' || c === 'W' || c === 'C';

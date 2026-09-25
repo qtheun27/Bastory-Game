@@ -92,6 +92,25 @@ const THEMES = {
     "ciel": "#9fe6ff",
     "coffre": "#c98a45"
   },
+  "neutre": {
+    "nom": "🏛️ Place neutre",
+    "sol": "#d9cfbf",
+    "sable": "#e9d9b0",
+    "mur": "#a7a2b8",
+    "palette": [
+      "#9aa0b8",
+      "#b8a98f",
+      "#8fa3a8"
+    ],
+    "murStyle": "pierre",
+    "buisson": "#4bb35a",
+    "buissonStyle": "haie",
+    "eau": "#46b3e6",
+    "ext": "#7aa06a",
+    "ciel": "#b9e3ff",
+    "coffre": "#c98a45",
+    "solStyle": "pave"
+  },
   "volcan": {
     "nom": "🌋 Volcan",
     "sol": "#7a6560",
@@ -1223,6 +1242,7 @@ function armePour(c, p) {
   p.arme = id; p.armeAuto = true; if (p.description === undefined) p.description = '';
 }
 // Met à niveau une config existante (ajoute les nouveaux réglages, retire les anciens)
+const ROYAUME = {"nom": "🏰 Royaume", "actif": true, "theme": "neutre", "grand": true, "biomes": {"rayon": 7.5, "secteurs": ["campagne", "desert", "neige", "volcan", "plage", "ville"]}, "casseMurs": true, "casseBuissons": true, "pvBloc": 2200, "chanceObjet": 12, "chanceCoffre": 100, "grille": ["################################################################", "#S.SSSSSSSSSSSSSS.SS.SSSSSSS.SSS...............................#", "#S###S..#####SS.SSSSSB##..S#S.###.BB###.......##........#......#", "#.##SSS###..S#SSSSSSSBSBSPS#SB#S#..B#.###.....#..........###.###", "#SSS#SSSS###S##.S.SS.SS#S.S######B.#WW##.......#..........######", "#SSS##########SS.SS.SSSS.CS#C#S####WWWW..##........##..........#", "#S###SSSS##S#SS#..S.#SSS.S.SSSSSBB#WWWW..#........##.B#####....#", "#S###SSSSS.S#S##SSSWWSSS#####SSSB..WWWW.........#.##.B#........#", "#S.SSSSS.S###.SWW.S.WWSBBS.#SSS.....WW.#..#....##..............#", "#SSSSSS###SSSSWWWSSSSWSSSSS#SSBBB...##..#.#....##.###.####.....#", "#.SS.SS##SSS.#WWWW.S.WW.SSSSSS#SB.........#...........##.#####.#", "#SBB...SSSSP.SWWWWWSW.W.SSS.....#....P...#.#........P...####...#", "#S###SSSSSSS.SWWWWW...BB...............###........B......##.####", "#S####.SSSS#S##WWWWWSS........................BB..B..BB..####..#", "#.#####S###SS#SBSWWW........................B...#.....###......#", "#...##SS.##SSS.S####..........#..#..........##.###...#######...#", "#....SS###BSSS.S##........C..###...#...........#.....###..#....#", "#......#SSSSSS..#B................BB#..........#..........#....#", "#........###SS###.....#.#.##..C...##..................C....#...#", "#...######S#SSS#.....WW...#..###....#...........##BB.........###", "#..####.#...#S......WWWW......B..................#.B........##.#", "#.....BB.....##....WWWWW...................C.....#..#..C.....###", "#.....BB.###WW....WWWWWWW...B..........##.#.......###....####..#", "#.##....#.BWWW...WWWWWWWWW.B....###...#####.###...#.#BB..####..#", "#.#..P.....WW....WWWWWWWWW......B.#...#..C#..#......CB....B....#", "#.##...####WW...WWWWWWWWW............##C....##......##..P......#", "#...##.####.W...WWWWWWWW..B.....B....##.......##...###....B....#", "#...###.#.WW......WWW##.##B...#..#...................###WW.....#", "#.....#..#WW...B.WWWW#..##.................###..B.....#WWWW##..#", "#.....#...##...B.WWWW#.........C............#..##...##.WWWWW...#", "#......BBBB#...B.WWWW##B...#........#.......BBB#B...##WWWWWW...#", "#..#.#.#.B.....#...W.........................B.......B.W.W.#.#.#", "#..#.B.#.#.....#..........B.....E.C...B..B...........#.W.W.....#", "#....###..##...###..BB###..#..C.....#....B..........#.#..#.....#", "#....#.#..#....####.BB.#................##..BB......#..#....B..#", "#.#...##........####.###................##.##B###...#.WWWW#.B..#", "#.#........B....#.#C..#.......#..#.....S...#.........WWWWWW#...#", "#.#.....B..BB........C................SSSS.........#.WWWWWW....#", "#.##................##CB........B....SSSSSS###.....#.WWWWW###..#", "#...##.P..C.........##..........SSSSSSSSCSSS#......#..#WW......#", "#...B#...B.......#.........B....S#SSSSS...S##SS...B#BB.....P...#", "#......BB..#........BB......B.....#SS.S.SS.###SS..#C#........#.#", "#.##.......#........C....B..###.SSS.SSSSS#SS#..SS###C.BB#...#..#", "#.##..###..#...............B##...SS##SSSS###S.SS.S.S..BB#.###..#", "#......C...#B.............WW##BBSSSS.SS.S##S..SSSSS###.B#.##...#", "#.###.......B.###.........WWWWBBSCSSSSSSSSSSSSSSSS##.SBBB..#.###", "#.#........###.#.........WWWWW...###SSCSS.SS.S.SS.##.SBSB..#.###", "#........###......#......WWWWW#.SSBBS##S.S..SSSS..###S.SSS.....#", "#....##..##.....##.#........W##CSSBSSS.SSSSSSS.###SSSBBBSSS#...#", "#.######........#..B............SSSS..SSSS.SSS.#S###BB##.S##BB.#", "#..#..#.....###....B............SSSSSSS.SSSSSSSSBS#BB.S.S###.#S#", "#..####...........#...####......SS..S.S..#.S.SSSSSSS.SSSSSBSSSS#", "#...###....P......#.........###.SSSSSSSS#SSSSCSSS##.PSBBSSSSS.S#", "#..#..#..............#.....#.#..SS###SSSS#SSSS#####SSSBBSSSSSSS#", "#..#####..#.###.#..........#B...#SS#SSS.S##S.S.####SS##SSS.BBBS#", "#..##.......##......##..######.###S#SSS.S###SSSS###SS##SSSSBSBS#", "#...........#..B.#.###..#.##...WW.S#.S.SSSBBS...SS..SSSSS.SS##S#", "#...........#......#..###.....WWWWS##SS.###SSSS..SSSSSSS.S..S.S#", "#.................##...#.B...CWWWWW#SS.SS#SSSSS.S.S..SS.SSSSS..#", "#........###.........B##......WWWWS#SSSS#.S.SSS#.##S.SSS.SS#SSS#", "#...####.#...........##..P.....WWWSS#.P.SSSSS##.S..SSSS.SBB#SS.#", "#.....##.............#.......####SSS#.SSS...S##SS.SS.S.S.SB#SS.#", "#....................#...#.....#SSSS.SS.S..SSSSSS.SSSSSSS.SSSSS#", "################################################################"]}; // 🏰 grande carte (générée, modifiable dans l'éditeur de maps)
 function migrerConfig(c) {
   const D = CONFIG_PAR_DEFAUT, copie = o => JSON.parse(JSON.stringify(o)), def = (o, d) => { for (const k in d) if (o[k] === undefined) o[k] = d[k]; return o; };
   if (!c.bosses) c.bosses = { troll: c.boss || copie(D.bosses.troll) }; delete c.boss;
@@ -1300,6 +1320,14 @@ function migrerConfig(c) {
   if ((c.version || 0) < 22) { // v22 : régénération de la vie hors combat (vitesse par rôle)
     for (const k in (D.roles || {})) if (c.roles && c.roles[k] && c.roles[k].regen === undefined) c.roles[k].regen = D.roles[k].regen;
     c.version = Math.max(c.version || 0, 22);
+  }
+  if ((c.version || 0) < 23) { // v23 : grande carte « Royaume » (6 ambiances + place neutre) et mode Royaume (survie + construction + butin + atterrissage + boss mondial + météo)
+    if (!c.maps.some(m => m.nom === ROYAUME.nom)) c.maps.push(JSON.parse(JSON.stringify(ROYAUME)));
+    const mi = c.maps.findIndex(m => m.nom === ROYAUME.nom);
+    if (!c.modes.some(m => m.objectif === 'survie' && m.nom === 'Royaume')) c.modes.push({ nom: 'Royaume', description: 'Grande carte, 6 ambiances : atterris, pille, construis… le gaz vous pousse tous vers le centre !', type: 'multi', actif: true, joueursMin: 2, joueursMax: 6,
+      equipes: 'chacun', objectif: 'survie', reapparition: false, bots: true, attenteBots: 10, niveauBots: 2, boss: false, nbBoss: 0, typesBoss: [], map: mi, pointsVictoire: 60, pointsDefaite: 8,
+      gazDebut: 45, gazDuree: 180, gazDegats: 6, gazRayonMin: 4, construction: true, butin: true, atterrissage: true, bossMondial: true, bossMondialApres: 90, meteo: true });
+    c.version = Math.max(c.version || 0, 23);
   }
 
 

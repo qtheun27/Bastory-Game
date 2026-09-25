@@ -149,32 +149,36 @@ const Rendu3D = (() => {
     plante(new THREE.BoxGeometry(36, 36, 36), toon(t.coffre || '#c98a45'), caisses, 18);
   }
   function construire() { // 🧱 la map en 3D (reconstruite seulement si une case change : bloc cassé, buisson brûlé…)
-    const cle = map.g.join(''); if (cle === carteCle) return; carteCle = cle;
+    const cle = map.g.join(''); if (cle === carteCle) return;
+    if (carteCle && map.def.grand && temps - (construire.t || -99) < 12) return; // grande carte : au plus ~5 reconstructions / s (on casse et construit beaucoup)
+    carteCle = cle; construire.t = temps;
     for (const [, m] of cristaux) scene.remove(m); cristaux.clear();
     if (groupe) { scene.remove(groupe); groupe.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
     groupe = new THREE.Group(); scene.add(groupe);
     const T = TUILE, d = map.def, th = themeDe(d), hx = h => /^#[0-9a-f]{6}$/i.test(h || ''), h1 = hx(d.herbe1) ? d.herbe1 : '#5fd14a', sab = hx(d.sable) ? d.sable : '#f4d68e';
     scene.background.set(th.ciel); scene.fog.color.set(th.ciel);
     const k = 16, c = document.createElement('canvas'); c.width = map.l * k; c.height = map.h * k; const x = c.getContext('2d');
+    const TB = {}, thB = (i, j) => { const b = d.biomes ? biomeA(i, j) : ''; return b ? (TB[b] = TB[b] || themeDe({ theme: b })) : th; }; // 🗺️ ambiance de chaque case
     map.g.forEach((r, j) => [...r].forEach((t, i) => { // sol peint case par case (dalles biseautées)
-      x.fillStyle = t === 'S' ? ((i + j) % 2 ? sab : ombrer(sab, 0.05)) : ((i + j) % 2 ? h1 : ombrer(h1, 0.08)); x.fillRect(i * k, j * k, k, k);
-      if (th.solStyle === 'pave' && t !== 'S') { x.fillStyle = ombrer(h1, -0.18); x.fillRect(i * k + k / 2, j * k, 1, k); x.fillRect(i * k, j * k + k / 2, k, 1); } // pavés de ville
+      const tb = thB(i, j), hb = d.biomes ? tb.sol : h1, sb = d.biomes ? tb.sable : sab;
+      x.fillStyle = t === 'S' ? ((i + j) % 2 ? sb : ombrer(sb, 0.05)) : ((i + j) % 2 ? hb : ombrer(hb, 0.08)); x.fillRect(i * k, j * k, k, k);
+      if (tb.solStyle === 'pave' && t !== 'S') { x.fillStyle = ombrer(hb, -0.18); x.fillRect(i * k + k / 2, j * k, 1, k); x.fillRect(i * k, j * k + k / 2, k, 1); } // pavés
       x.fillStyle = 'rgba(255,255,255,.14)'; x.fillRect(i * k, j * k, k, 1); x.fillRect(i * k, j * k, 1, k);
       x.fillStyle = 'rgba(0,0,0,.08)'; x.fillRect(i * k, j * k + k - 1, k, 1); x.fillRect(i * k + k - 1, j * k, 1, k); }));
     const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 4;
     const sol = new THREE.Mesh(new THREE.PlaneGeometry(map.l * T, map.h * T), toon('#ffffff', { map: tex })); sol.rotation.x = -Math.PI / 2; sol.position.set(map.l * T / 2, 0, map.h * T / 2); sol.receiveShadow = true; groupe.add(sol);
     const ext = new THREE.Mesh(new THREE.PlaneGeometry(12000, 12000), toon(th.ext)); ext.rotation.x = -Math.PI / 2; ext.position.set(map.l * T / 2, -3, map.h * T / 2); ext.receiveShadow = true; groupe.add(ext);
     decorAutour(T, th);
-    const murs = {}, buis = [], eau = [], coffres = [];
-    map.g.forEach((r, j) => [...r].forEach((t, i) => { const p = [i * T + T / 2, j * T + T / 2];
-      if (t === '#') { const ci = couleurMur(i * T, j * T); (murs[ci] = murs[ci] || []).push(p); }
-      else if (t === 'C') coffres.push(p); else if (t === 'B') buis.push(p); else if (t === 'W') eau.push(p); }));
+    const murs = {}, buis = [], eau = [], lave = [], coffres = [];
+    map.g.forEach((r, j) => [...r].forEach((t, i) => { const p = [i * T + T / 2, j * T + T / 2], tb = thB(i, j); p.th = tb;
+      if (t === '#') { const ci = (d.biomes ? biomeA(i, j) + '|' : '') + couleurMur(i * T, j * T); (murs[ci] = murs[ci] || []).push(p); }
+      else if (t === 'C') coffres.push(p); else if (t === 'B') buis.push(p); else if (t === 'W') ((d.biomes && tb.lave) ? lave : eau).push(p); }));
     const inst = (geo, mat, l, y, ombre, f) => { if (!l.length) return; const m = new THREE.InstancedMesh(geo, mat, l.length), o = new THREE.Object3D();
       l.forEach((p, n) => { o.position.set(p[0], y, p[1]); o.rotation.set(0, 0, 0); o.scale.set(1, 1, 1); if (f) f(o, p, n); o.updateMatrix(); m.setMatrixAt(n, o.matrix); });
       m.castShadow = ombre; m.receiveShadow = true; groupe.add(m); return m; };
     const PAL = [d.mur || '#c9a27a', ...(d.palette || ['#5ac8fa', '#8e7bff', '#ff9a4a', '#6fd46a'])];
-    Object.entries(murs).forEach(([ci, l]) => { const c0 = PAL[ci % PAL.length];
-      inst(new THREE.BoxGeometry(T, HM, T), toon('#ffffff', { map: texMur(c0, th.murStyle) }), l, HM / 2, true);
+    Object.entries(murs).forEach(([cle2, l]) => { const tb = l[0].th || th, P2 = d.biomes ? [tb.mur, ...(tb.palette || [])] : PAL, ci = +String(cle2).split('|').pop(), c0 = P2[ci % P2.length];
+      inst(new THREE.BoxGeometry(T, HM, T), toon('#ffffff', { map: texMur(c0, tb.murStyle) }), l, HM / 2, true);
       inst(new THREE.BoxGeometry(T - 6, 7, T - 6), toon(ombrer(c0, 0.35)), l, HM + 3, true);     // dalle du dessus
       inst(new THREE.BoxGeometry(T - 22, 3, T - 22), toon(ombrer(c0, 0.55)), l, HM + 7, false);  // reflet
       inst(new THREE.BoxGeometry(T + 5, HM + 5, T + 5), encre(), l, HM / 2, false); });
@@ -193,14 +197,15 @@ const Rendu3D = (() => {
       eauTex = new THREE.CanvasTexture(cv); eauTex.encoding = THREE.sRGBEncoding; eauTex.wrapS = eauTex.wrapT = THREE.RepeatWrapping; }
     eauMat = toon('#ffffff', { map: eauTex, transparent: !th.lave, opacity: th.lave ? 1 : 0.92, emissive: lin(th.lave ? '#ff4a00' : '#000000'), emissiveIntensity: th.lave ? 0.8 : 0 });
     inst(new THREE.BoxGeometry(T, 6, T), eauMat, eau, 1, false); // 🌊 eau (ou lave) qui ondule
+    if (lave.length) { const lm = toon('#ff6a1a', { emissive: lin('#ff4a00'), emissiveIntensity: 0.85 }); inst(new THREE.BoxGeometry(T, 6, T), lm, lave, 1, false); } // 🌋 lave (ambiance volcan d'une grande carte)
     // 🌿 buissons : touffes arrondies + brins + petites fleurs, qui deviennent transparents quand on s'approche
     buissons = []; const vert = d.buisson || '#2fae4a', GS = new THREE.IcosahedronGeometry(1, 1), GC = new THREE.ConeGeometry(1, 1, 5), GF = new THREE.SphereGeometry(4, 6, 4);
     const GB = new THREE.BoxGeometry(1, 1, 1), GY = new THREE.CylinderGeometry(1, 1, 1, 8);
     buis.forEach((p, n) => { // 🌿 buisson selon l'ambiance : touffe, haie taillée, cactus, sapin enneigé
-      const g = new THREE.Group(), m1 = toon(ombrer(vert, -0.15), { transparent: true }), m2 = toon(ombrer(vert, 0.12), { transparent: true }), me = encre({ transparent: true }), mf = toon(n % 2 ? '#ffe14a' : '#ff8ac0', { transparent: true }), neige = toon('#ffffff', { transparent: true });
+      const vertB = d.biomes && p.th ? p.th.buisson : vert, g = new THREE.Group(), m1 = toon(ombrer(vertB, -0.15), { transparent: true }), m2 = toon(ombrer(vertB, 0.12), { transparent: true }), me = encre({ transparent: true }), mf = toon(n % 2 ? '#ffe14a' : '#ff8ac0', { transparent: true }), neige = toon('#ffffff', { transparent: true });
       const ajout = (geo, mat, sx, sy, sz, x, y, z, contour = true) => { const b = new THREE.Mesh(geo, mat); b.scale.set(sx, sy, sz); b.position.set(x, y, z); b.castShadow = true; g.add(b);
         if (contour) { const e = new THREE.Mesh(geo, me); e.scale.set(sx + 3, sy + 3, sz + 3); e.position.copy(b.position); e.rotation.copy(b.rotation); g.add(e); } return b; };
-      const st = th.buissonStyle;
+      const st = (d.biomes && p.th ? p.th : th).buissonStyle;
       if (st === 'haie') { ajout(GB, m1, T - 8, 44, T - 8, 0, 22, 0); for (let i = 0; i < 4; i++) ajout(GS, m2, 12, 9, 12, (i % 2 - 0.5) * 26, 46, (Math.floor(i / 2) - 0.5) * 26, false); if (n % 3 === 0) ajout(GF, mf, 1, 1, 1, 10, 50, 8, false); }
       else if (st === 'cactus') { ajout(GY, m2, 11, 62, 11, 0, 31, 0); ajout(GY, m2, 7, 26, 7, 16, 36, 0).rotation.z = -0.5; ajout(GY, m2, 7, 22, 7, -15, 28, 4).rotation.z = 0.6; ajout(GS, m1, 16, 8, 16, 0, 4, 0, false); if (n % 2) ajout(GF, mf, 1, 1, 1, 0, 64, 0, false); }
       else if (st === 'sapin') { for (let i = 0; i < 3; i++) { ajout(GC, m1, 30 - i * 8, 30, 30 - i * 8, 0, 22 + i * 18, 0); ajout(GC, neige, 12 - i * 3, 10, 12 - i * 3, 0, 34 + i * 18, 0, false); } ajout(GY, toon('#6b4a2b'), 5, 14, 5, 0, 5, 0, false); }
