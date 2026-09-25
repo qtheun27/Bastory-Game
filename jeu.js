@@ -514,7 +514,7 @@ function majBossDistants(liste) {
 }
 function recevoir(e) {
   const j = entite(e.de);
-  if (e.t === 'tir' && j) { j.angle = e.a; creerProjectile(j, e.a, e.f, e.x, e.y, e.d); }
+  if (e.t === 'tir' && j) { j.angle = e.a; if (j.perso) j.arme = (e.ak && CONFIG.armes[e.ak]) || CONFIG.armes[j.perso.arme] || j.arme; creerProjectile(j, e.a, e.f, e.x, e.y, e.d); } // arme de butin visible chez les autres
   else if (e.t === 'db' && hote && bosses[e.i]) blesserBoss(bosses[e.i], e.deg, e.de);
   else if (e.t === 'mu') { if (tuile(e.tx, e.ty) !== '#') poserMur(e.tx, e.ty); }
   else if (e.t === 'gd' && j && j !== moi) { activerPouvoir('g_' + e.g, j); const g = (CONFIG.gadgets || {})[e.g] || {}; ondes.push({ x: j.x, y: j.y, r: 10, max: 80, c: g.couleur || '#fff', vie: 1, ep: 8 }); } // 🧰 gadget d'un autre joueur
@@ -645,9 +645,9 @@ function tirer(angle, force = 1) {
   const cx = moi.x + Math.cos(angle) * moi.r, cy = moi.y + Math.sin(angle) * moi.r, cf = (moi.arme || {}).couleur || '#fff';
   if ((CONFIG.app || {}).eclatCanon !== false) { ondes.push({ x: cx, y: cy, r: 4, max: 26, c: cf, vie: 1, ep: 5 }); for (let i = 0; i < 6; i++) particule(cx, cy, i % 2 ? cf : '#fff', 5, 3, 1, 'trait', { len: 10 }); } // 💥 éclat au canon
   const rc = reglage('reculTir', 1.6); moi.kx -= Math.cos(angle) * rc; moi.ky -= Math.sin(angle) * rc; secousse = Math.max(secousse, reglage('tremblementTir', 2)); // recul
-  const deg = Math.round(moi.perso.degats * bonus(moi, 'degats'));
+  const deg = Math.round(moi.perso.degats * bonus(moi, 'degats') * multButin(moi));
   creerProjectile(moi, angle, force, moi.x, moi.y, deg);
-  envoyer({ t: 'tir', a: +angle.toFixed(3), f: +force.toFixed(2), x: Math.round(moi.x), y: Math.round(moi.y), d: deg });
+  envoyer({ t: 'tir', a: +angle.toFixed(3), f: +force.toFixed(2), x: Math.round(moi.x), y: Math.round(moi.y), d: deg, ak: moi.butin ? moi.butin.cle : '' });
 }
 function tirerAuto() {
   if (!moi) return;
@@ -803,7 +803,7 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
   j.cache = tuileA(j.x, j.y) === 'B' || !!pouvoirActif(j, 'invisible');
   if (mode.botsObjets !== false) for (const o of objets) { // 🤖 ramasse les objets rares
     const d = Math.hypot(o.x - j.x, o.y - j.y);
-    if (d < 42) { objets = objets.filter(x => x !== o); envoyer({ t: 'pr', tx: o.tx, ty: o.ty }); activerPouvoir(o.id, j); break; }
+    if (d < 42) { objets = objets.filter(x => x !== o); envoyer({ t: 'pr', tx: o.tx, ty: o.ty }); ramasser(o.id, j); break; }
     if (d < 260 && !j.objet) j.objet = o;
   }
   if (j.objet && !objets.includes(j.objet)) j.objet = null;
@@ -843,9 +843,9 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     if (libre && dm < j.perso.portee && j.recharge <= 0 && j.mun >= 1 && Math.random() < 0.05 * (j.niv || 1)) {
       const ang = a + (Math.random() - 0.5) * 0.35 / (j.niv || 1), f = Math.min(1, dm / j.perso.portee);
       j.mun -= 1; j.recharge = j.perso.delaiTir;
-      const dg = Math.round(j.perso.degats * bonus(j, 'degats') * (0.8 + 0.2 * (j.niv || 1)));
+      const dg = Math.round(j.perso.degats * bonus(j, 'degats') * (0.8 + 0.2 * (j.niv || 1)) * multButin(j));
       creerProjectile(j, ang, f, j.x, j.y, dg);
-      envoyer({ t: 'tir', de: j.uid, a: +ang.toFixed(3), f: +f.toFixed(2), x: Math.round(j.x), y: Math.round(j.y), d: dg });
+      envoyer({ t: 'tir', de: j.uid, a: +ang.toFixed(3), f: +f.toFixed(2), x: Math.round(j.x), y: Math.round(j.y), d: dg, ak: j.butin ? j.butin.cle : '' });
     }
     if (j.superPret && dm < 320) lancerSuper(j, a); else if (dm < 220 && (j.actionT || 0) < temps && Math.random() < 0.01) lancerAction(j, a);
   } else { // se promène sur la map
@@ -903,7 +903,7 @@ function abimer(tx, ty, deg) { // appelé seulement par l'auteur du coup, le ré
   degatsTuiles[k] = (degatsTuiles[k] || 0) + deg;
   if (degatsTuiles[k] < pv) return;
   const chance = c === 'C' ? map.def.chanceCoffre : map.def.chanceObjet;
-  const o = Math.random() * 100 < (+chance || 0) ? tirerPouvoir() : null;
+  const o = mode.butin && c === 'C' && Math.random() * 100 < reglage('butinArme', 75) ? tirerArme() : Math.random() * 100 < (+chance || 0) ? tirerPouvoir() : null; // 🎁 butin : arme de rareté
   casser(tx, ty, o); envoyer({ t: 'ca', tx, ty, o });
   const qui = coupDe ? entite(coupDe) : moi; if (qui && qui.perso) gagnerMat(qui, c); // 🧱 matériaux pour construire
 }
@@ -944,8 +944,21 @@ function casser(tx, ty, o) {
   for (let i = 0; i < 18; i++) particule(x, y - 10, col[i % 2] || '#a0522d', 7, 9);
   ondes.push({ x, y, r: 6, max: 50, c: '#fff', vie: 1, ep: 6 });
   secousse = Math.max(secousse, 5);
-  if (o && CONFIG.pouvoirs[o]) objets.push({ tx, ty, x, y, id: o });
+  if (o && (CONFIG.pouvoirs[o] || String(o).startsWith('A:'))) objets.push({ tx, ty, x, y, id: o });
 }
+// ---------- 🎁 BUTIN : armes de rareté dans les coffres (gardées jusqu'au K.O.) ----------
+const raretes = () => (CONFIG.raretes && CONFIG.raretes.length ? CONFIG.raretes : [{ cle: 'commun', nom: 'Commune', couleur: '#b0b7c3', mult: 1, poids: 1 }]);
+function tirerArme() { const R = raretes(), tot = R.reduce((t, r) => t + (+r.poids || 0), 0); let x = Math.random() * tot, r = R[0]; for (const q of R) { x -= +q.poids || 0; if (x <= 0) { r = q; break; } }
+  const ks = Object.keys(CONFIG.armes).filter(k => CONFIG.armes[k].type !== 'terrain'); return 'A:' + ks[Math.floor(Math.random() * ks.length)] + ':' + r.cle; }
+const infoButin = id => { const [, k, r] = String(id).split(':'); return { arme: CONFIG.armes[k], cle: k, rar: raretes().find(x => x.cle === r) || raretes()[0] }; };
+function ramasser(id, j) {
+  if (!String(id).startsWith('A:')) return activerPouvoir(id, j);
+  const b = infoButin(id); if (!b.arme) return; j.butin = { cle: b.cle, rar: b.rar.cle, mult: +b.rar.mult || 1 }; j.arme = b.arme; j.mun = +j.perso.munitions || 3;
+  const t = (b.rar.icone || '🎁') + ' ' + b.arme.nom + ' ' + b.rar.nom.toLowerCase(); texteFlottant(t, j.x, j.y - 70, b.rar.couleur || '#fff', 1); if (j === moi) notif('🎁 ' + t + ' (+' + Math.round((b.rar.mult - 1) * 100) + ' % de dégâts)');
+  ondes.push({ x: j.x, y: j.y, r: 10, max: 90, c: b.rar.couleur || '#fff', vie: 1, ep: 9 });
+}
+const multButin = j => (j && j.butin ? +j.butin.mult || 1 : 1);
+function perdreButin(j) { if (!j.butin) return; j.butin = null; j.arme = CONFIG.armes[j.perso.arme] || j.arme; }
 function tirerPouvoir() { // tirage au sort pondéré par la rareté
   const l = Object.entries(CONFIG.pouvoirs); if (!l.length) return null;
   let t = Math.random() * l.reduce((s, [, p]) => s + (+p.rarete || 1), 0);
@@ -1043,7 +1056,7 @@ function maj() {
   for (const j of joueurs()) if (j.dep === 'feu' && j.pv > 0 && j.marche !== j.mFeu) { j.mFeu = j.marche; if (temps % 10 === 0) { const e = elemDe(j.perso) || {}; nuages.push({ x: j.x, y: j.y + 10, r: 28, fin: temps + (+e.duree || 2) * 60, debut: temps, c: '#ff6a00', deg: +e.valeur || 120, de: j.uid, arme: { effet: 'etincelle', couleur: '#ff8a00' }, feu: true }); } } // 🔥 traînée de feu
   if ((moi.dep === 'feu' || moi.depSpecial === 'lave') && moi.pv > 0 && tuileA(moi.x, moi.y) === 'B' && map.def.casseBuissons !== false) abimer(Math.floor(moi.x / TUILE), Math.floor(moi.y / TUILE), 1e6); // 🔥 Pyro brûle les buissons
   for (const o of objets) if (moi.pv > 0 && Math.hypot(o.x - moi.x, o.y - moi.y) < 42) {
-    son('piece'); objets = objets.filter(x => x !== o); envoyer({ t: 'pr', tx: o.tx, ty: o.ty }); activerPouvoir(o.id); break;
+    son('piece'); objets = objets.filter(x => x !== o); envoyer({ t: 'pr', tx: o.tx, ty: o.ty }); ramasser(o.id, moi); break;
   }
   for (const j of Object.values(autres)) {
     if (j.bot && hote) { iaBot(j); if (j.pv > 0 && j.pv < j.pvMax * 0.4 && j.gadgets > 0 && Math.random() < 0.02) lancerGadget(j); } // 🤖 les bots utilisent aussi leur gadget
@@ -2481,7 +2494,8 @@ function dessinerJeu() {
   ombresPortees(tuiles, T); }
   if (!v3) tuiles((c, x, y, px, py) => { if (bloqueTir(c)) ctx.drawImage(spriteOmbre(), px - 6, py - 2); }); // ombres douces
   for (const o of objets) { // objets rares au sol
-    const p = CONFIG.pouvoirs[o.id] || {}, b = Math.sin(temps * 0.1 + o.x) * 5;
+    const bt = String(o.id).startsWith('A:') ? infoButin(o.id) : null, p = bt ? { couleur: bt.rar.couleur, icone: (TYPES_ARME[(bt.arme || {}).type] || '🎁 ').split(' ')[0] } : CONFIG.pouvoirs[o.id] || {}, b = Math.sin(temps * 0.1 + o.x) * 5;
+    if (bt) { ctx.save(); ctx.globalAlpha = 0.35 + 0.2 * Math.sin(temps * 0.12); ctx.fillStyle = bt.rar.couleur; ctx.fillRect(o.x - 3, o.y - 70 + b, 6, 60); ctx.restore(); } // colonne de lumière de la rareté
     ellipse(o.x, o.y + 14, 16, 7, 'rgba(0,0,0,.3)');
     ctx.save(); ctx.shadowColor = p.couleur || '#fff'; ctx.shadowBlur = 20;
     ellipse(o.x, o.y - 8 + b, 20, 20, p.couleur || '#fff'); ctx.restore();
@@ -2624,6 +2638,7 @@ function dessinerHUD() {
   const im = carteDe(moi.perso); if (pret(im)) ctx.drawImage(im, 14, 14, 48, 48);
   texte(moi.nom, 74, 26, 16, '#fff', 'left', 150);
   texte(Math.ceil(moi.pv) + ' PV', 74, 48, 13, '#8fd3ff', 'left');
+  if (moi.butin) { const b = infoButin('A:' + moi.butin.cle + ':' + moi.butin.rar); texte((b.rar.icone || '🎁') + ' ' + (b.arme || {}).nom + ' ' + b.rar.nom.toLowerCase(), 74, 66, 12, b.rar.couleur || '#fff', 'left', 220); } // 🎁 arme de butin équipée
   bonusActifs(moi).forEach((id, i) => { // super pouvoirs actifs + temps restant
     const p = defPouvoir(id) || {}, x = 14 + i * 50;
     rect(x, 74, 44, 44, 10, p.couleur || '#fff', '#1a1030', 3);
@@ -3252,7 +3267,7 @@ function animReap(e) { // colonne de lumière à la réapparition
   fantomes.push({ lumiere: true, x: e.x, y: e.y, t: temps });
 }
 function mourir(j) {
-  effet('explosion', j.x, j.y, '#888', 60); animMort(j); son('ko', j === moi ? 1 : volA(j.x, j.y)); if (j !== moi && j.dernier === moi.uid && moi.st) moi.st.ko++;
+  perdreButin(j); effet('explosion', j.x, j.y, '#888', 60); animMort(j); son('ko', j === moi ? 1 : volA(j.x, j.y)); if (j !== moi && j.dernier === moi.uid && moi.st) moi.st.ko++;
   if (j === moi) {
     envoyerEtat(true);
     if (moi.dernier && moi.dernier !== moi.uid) { kills[moi.dernier] = (kills[moi.dernier] || 0) + 1; envoyer({ t: 'mort', k: moi.dernier }); }
