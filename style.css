@@ -41,4 +41,4 @@ canvas { display: block; background: transparent; }
   #auth::before, #auth::after { font-size: 30px; }
 }
 /* 📱 Mobile : l'appli reste en paysage — si le téléphone est en portrait, tout pivote (sans message) */
-html.tourne body { position: fixed; top: 0; left: 0; transform-origin: top left; transform: rotate(90deg) translateY(-100%); }
+html.tourne body { position: absolute; /* pas « fixed » : sur iPhone (appli écran d'accueil) un élément fixe est coupé sous la barre d'état → bande en bas */ top: 0; left: 0; transform-origin: top left; transform: rotate(90deg) translateY(-100%); }
