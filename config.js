@@ -1036,6 +1036,13 @@ const CONFIG_PAR_DEFAUT = {
     { "texte": "Utilise {n} gadgets", "type": "gad", "min": 3, "max": 5, "jetons": 1, "actif": true },
     { "texte": "Gagne {n} partie(s) avec {perso}", "type": "victoirePerso", "min": 1, "max": 2, "jetons": 3, "actif": true }
   ],
+  "skins": [
+    { "cle": "dore", "nom": "Doré", "icone": "✨", "teinte": "#ffd23f", "force": 0.55, "cout": 5 },
+    { "cle": "ombre", "nom": "Ombre", "icone": "🌑", "teinte": "#3a2d6b", "force": 0.6, "cout": 4 },
+    { "cle": "glace", "nom": "Glace", "icone": "❄️", "teinte": "#9fe3ff", "force": 0.5, "cout": 4 },
+    { "cle": "lave", "nom": "Lave", "icone": "🌋", "teinte": "#ff4a1a", "force": 0.5, "cout": 4 },
+    { "cle": "bonbon", "nom": "Bonbon", "icone": "🍬", "teinte": "#ff7ac0", "force": 0.5, "cout": 3 }
+  ],
   "rangs": [
     { "nom": "Bronze", "min": 0, "icone": "🥉", "couleur": "#cd7f32" },
     { "nom": "Argent", "min": 150, "icone": "🥈", "couleur": "#c0c7d6" },
@@ -1188,19 +1195,19 @@ const ARMES_NEUVES = {
 };
 // fiche complète des persos à débloquer : arme, capacité et action différentes pour chacun
 const NOUVEAUX = {
-  BOULDO:  { arme: 'pioche', capacite: 'brise', action: 'terre', description: 'Tatou mineur. Sa pioche fait jaillir des pics de roche et il brise les blocs en fonçant.' },
-  NIMBUS:  { arme: 'eventail', capacite: 'vol', action: 'tourbillon', description: 'Renard de nuages. Son éventail souffle des tornades qui repoussent, et il vole au-dessus de tout.' },
-  GLOUGLOU:{ arme: 'canonbulles', capacite: 'nage', action: 'gel', description: 'Pingouin pirate. Ses bulles ralentissent les ennemis et il glace tout autour de lui.' },
-  BRAISE:  { arme: 'marteauforge', capacite: 'feu', action: 'feu', description: 'Lutin forgeron. Son marteau-enclume écrase le sol et sème des braises brûlantes.' },
-  MAGMOR:  { arme: 'magma', capacite: 'lave', action: 'terre', description: 'Golem de lave (Terre + Feu). Sa coulée de magma brûle, et il marche sur l\'eau en la durcissant.' },
-  STORMY:  { arme: 'eclair', capacite: 'orage', action: 'tourbillon', description: 'Sirène de tempête (Air + Eau). Son éclair rebondit d\'ennemi en ennemi et elle vole, insensible au recul.' }
+  BOULDO:  { arme: 'pioche', role: 'tank', gadget: 'bouclier', capacite: 'brise', action: 'terre', description: 'Tatou mineur. Sa pioche fait jaillir des pics de roche et il brise les blocs en fonçant.' },
+  NIMBUS:  { arme: 'eventail', role: 'controle', gadget: 'recharge', capacite: 'vol', action: 'tourbillon', description: 'Renard de nuages. Son éventail souffle des tornades qui repoussent, et il vole au-dessus de tout.' },
+  GLOUGLOU:{ arme: 'canonbulles', role: 'soutien', gadget: 'soin', capacite: 'nage', action: 'gel', description: 'Pingouin pirate. Ses bulles ralentissent les ennemis et il glace tout autour de lui.' },
+  BRAISE:  { arme: 'marteauforge', role: 'assassin', gadget: 'fantome', capacite: 'feu', action: 'feu', description: 'Lutin forgeron. Son marteau-enclume écrase le sol et sème des braises brûlantes.' },
+  MAGMOR:  { arme: 'magma', role: 'tank', gadget: 'bouclier', capacite: 'lave', action: 'terre', description: 'Golem de lave (Terre + Feu). Sa coulée de magma brûle, et il marche sur l\'eau en la durcissant.' },
+  STORMY:  { arme: 'eclair', role: 'tireur', gadget: 'sprint', capacite: 'orage', action: 'tourbillon', description: 'Sirène de tempête (Air + Eau). Son éclair rebondit d\'ennemi en ennemi et elle vole, insensible au recul.' }
 };
 // 🗡️ arme propre à un nouveau perso : copie de l'arme de son élément (réglable ensuite dans l'admin → Armes)
 function armePour(c, p) {
   const N = NOUVEAUX[String(p.nom || '').toUpperCase()];
   if (N) { // perso connu : son arme, sa capacité et son action sont déjà prêtes
     if (!c.armes[N.arme]) c.armes[N.arme] = { ...JSON.parse(JSON.stringify(c.armes.rocher || {})), ...ARMES_NEUVES[N.arme] };
-    Object.assign(p, { arme: N.arme, capacite: p.capacite || N.capacite, action: p.action || N.action, description: p.description || N.description, armeAuto: true });
+    Object.assign(p, { arme: N.arme, capacite: p.capacite || N.capacite, action: p.action || N.action, description: p.description || N.description, role: p.role || N.role || '', gadget: p.gadget || N.gadget || '', armeAuto: true });
     return;
   }
   const mod = { terre: 'rocher', air: 'vent', eau: 'trident', feu: 'boulefeu' }[p.element] || Object.keys(c.armes)[0], id = 'arme_' + String(p.nom || 'perso').toLowerCase().replace(/[^a-z0-9]+/g, '_');
@@ -1211,7 +1218,7 @@ function armePour(c, p) {
 function migrerConfig(c) {
   const D = CONFIG_PAR_DEFAUT, copie = o => JSON.parse(JSON.stringify(o)), def = (o, d) => { for (const k in d) if (o[k] === undefined) o[k] = d[k]; return o; };
   if (!c.bosses) c.bosses = { troll: c.boss || copie(D.bosses.troll) }; delete c.boss;
-  ['modes', 'pouvoirs', 'app', 'elements', 'progression', 'recompenses', 'roles', 'gadgets', 'quetes', 'rangs'].forEach(k => { if (!c[k] || (Array.isArray(c[k]) && !c[k].length)) c[k] = copie(D[k]); });
+  ['modes', 'pouvoirs', 'app', 'elements', 'progression', 'recompenses', 'roles', 'gadgets', 'quetes', 'rangs', 'skins'].forEach(k => { if (!c[k] || (Array.isArray(c[k]) && !c[k].length)) c[k] = copie(D[k]); });
   for (const k in D.armes) if (!c.armes[k] && ['seisme', 'ricochet', 'eclair', 'fumigene', 'dard', 'rocher', 'vent', 'trident', 'boulefeu'].includes(k)) c.armes[k] = copie(D.armes[k]);
   if ((c.version || 0) < 8) { // v8 : persos = vrais modèles 3D .glb + éléments ; les anciens persos "assemblés" sont retirés
     c.persos = c.persos.filter(p => p.image || p.modele);

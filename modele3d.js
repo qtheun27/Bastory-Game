@@ -140,7 +140,8 @@ const Modele3D = (() => {
         c.width = c.height = taille; const x = c.getContext('2d'); x.clearRect(0, 0, taille, taille); x.drawImage(contour(photo(m, angle, anim, t % 1, taille, this.z || (this.z = (() => { let z = 1; for (let n = 0; n < 5 && bords(photo(m, Math.PI / 2, 'repos', 0, 200, z, true)); n++) z *= 0.85; return z * 0.93; })()), true), Math.max(2, taille / 90), cache), 0, 0);
         if (!this.haut) { const cad = cadrage(c); this.haut = cad.haut / taille; this.bas = cad.bas / taille; } return c;
       },
-      a: k => !!(m.anims[k] || m.parNom[k]), liberer: () => m.liberer()
+      a: k => !!(m.anims[k] || m.parNom[k]), liberer: () => m.liberer(),
+      teinte(skin) { const c = skin ? skin.cle : ''; if (this.skin !== c) { this.skin = c; teinter(m.racine, skin); this.fait = 0; } }
     };
   }
   async function apercu(p, canvas) { // aperçu admin qu'on fait tourner à la souris / au doigt
@@ -199,6 +200,12 @@ const Modele3D = (() => {
     const res = { murs: PAL.flatMap(c => [1, 2, 3].map(n => bloc(n, false, c))), coffre: bloc(9, true), buissons: [1, 2, 3].map(buisson) };
     return res;
   }
+  function teinter(racine, skin) { // 🎨 skin : les couleurs du modèle tirent vers une teinte (couleurs d'origine gardées)
+    const t = skin && skin.teinte ? new THREE.Color(skin.teinte).convertSRGBToLinear() : null, f = skin ? Math.max(0, Math.min(1, +skin.force || 0.5)) : 0;
+    racine.traverse(o => { const ms = o.isMesh && o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []; for (const m of ms) { if (!m.color || m.side === THREE.BackSide) continue;
+      if (!m.userData.c0) m.userData.c0 = m.color.clone(); m.color.copy(m.userData.c0); if (t) m.color.lerp(t, f);
+      if (m.emissive) { if (!m.userData.e0) m.userData.e0 = m.emissive.clone(); m.emissive.copy(m.userData.e0); if (t) m.emissive.lerp(t, f * 0.45); } } }); // lueur de la teinte : bien visible même sur un modèle texturé
+  }
   async function listeAnims(p) { const m = await charger(p); if (!m) return []; m.liberer(); return m.clips; } // noms des animations d'un modèle (admin)
-  return { dispo, generer, visage, vitrine, apercu, decor, instance: charger, listeAnims }; // instance = modèle animé pour la vraie 3D
+  return { dispo, generer, visage, vitrine, apercu, decor, instance: charger, listeAnims, teinter }; // instance = modèle animé pour la vraie 3D
 })();

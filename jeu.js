@@ -174,6 +174,20 @@ const animMenu = (vh, p) => { // 🎬 animation du perso dans les menus (réglab
   const a = p.animAccueil; if (a === 'fixe') return [0, 'repos']; if (a && vh.a && vh.a(a)) return [(temps / 150) % 1, a];
   const cyc = temps % 420, att = cyc < 80 && vh.a && vh.a('attaque'); return [att ? cyc / 80 : temps / 150, att ? 'attaque' : 'repos']; };
 let heroVue = null, heroP = null, heroAngle = Math.PI / 2, heroZone = null, heroDrag = null;
+// ---------- 🎨 SKINS : variantes de couleur à débloquer avec des jetons ----------
+const skinParCle = k => (CONFIG.skins || []).find(s => s.cle === k) || null;
+const skinsAchetes = p => ((mesStats.skins || {})[cleP(baseDe(p) || {})] || []);
+const skinChoisi = p => { const k = (mesStats.skinChoisi || {})[cleP(baseDe(p) || {})]; return k && skinsAchetes(p).includes(k) && skinParCle(k) ? k : ''; };
+const skinDe = j => j === moi ? skinChoisi(moi.perso) : j.skin || '';
+async function choisirSkin(p, s) {
+  if (!db || !user) return; const cp = cleP(baseDe(p)), k = s ? s.cle : '';
+  if (s && !skinsAchetes(p).includes(k)) { // achat
+    if ((mesStats.jetons || 0) < (+s.cout || 0)) return notif('🎟️ Il te faut ' + s.cout + ' jetons perso');
+    if (!confirm('Acheter le skin ' + s.nom + ' pour ' + p.nom + ' (' + s.cout + ' 🎟️) ?')) return;
+    try { await db.collection('joueurs').doc(user.uid).set({ jetons: firebase.firestore.FieldValue.increment(-(+s.cout || 0)), skins: { [cp]: firebase.firestore.FieldValue.arrayUnion(k) }, skinChoisi: { [cp]: k } }, { merge: true }); notif('🎨 Skin ' + s.nom + ' débloqué !'); } catch (e) { notif('Impossible : ' + e.message); }
+    return; }
+  try { await db.collection('joueurs').doc(user.uid).set({ skinChoisi: { [cp]: k } }, { merge: true }); } catch (e) {}
+}
 function vitrineHero(p) { // modèle du héros de l'accueil : animation de repos, rotation au doigt
   if (heroP === p) return heroVue;
   if (heroVue) heroVue.liberer(); heroP = p; heroVue = null; heroAngle = Math.PI / 2;
@@ -372,7 +386,7 @@ function finir(r, msg) {
       quetes: avancerQuetes(r), ...(mesStats.saisonId === saisonId() ? { saisonPts: inc(finInfo.points) } : { saisonId: saisonId(), saisonPts: finInfo.points }) }, { merge: true }).catch(e => console.warn(e));
   }
 }
-function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; if (!persoCharge && v.perso !== undefined) { persoCharge = true; persoIndex = persoSauve = Math.max(0, Math.min(CONFIG.persos.length - 1, +v.perso)); } if (v.hud) Object.assign(hudPerso, v.hud); mesPoints = v.points || 0; if (v.touches && !toucheAttendue) mesTouches = { ...TOUCHES_DEF, ...v.touches }; mesStats = { quetes: v.quetes || null, saisonId: v.saisonId || '', saisonPts: v.saisonPts || 0, points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {}, essences: v.essences || {}, recompenses: v.recompenses || [], jetons: v.jetons || 0, persosDebloques: v.persosDebloques || [], avatars: v.avatars || [], avatar: v.avatar || null }; }, () => {}); }
+function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; if (!persoCharge && v.perso !== undefined) { persoCharge = true; persoIndex = persoSauve = Math.max(0, Math.min(CONFIG.persos.length - 1, +v.perso)); } if (v.hud) Object.assign(hudPerso, v.hud); mesPoints = v.points || 0; if (v.touches && !toucheAttendue) mesTouches = { ...TOUCHES_DEF, ...v.touches }; mesStats = { skins: v.skins || {}, skinChoisi: v.skinChoisi || {}, quetes: v.quetes || null, saisonId: v.saisonId || '', saisonPts: v.saisonPts || 0, points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {}, essences: v.essences || {}, recompenses: v.recompenses || [], jetons: v.jetons || 0, persosDebloques: v.persosDebloques || [], avatars: v.avatars || [], avatar: v.avatar || null }; }, () => {}); }
 
 // ---------- 8. MULTIJOUEUR (Realtime Database) ----------
 // Salle d'attente → départ quand le max est atteint (ou 10 s après avoir atteint le minimum).
@@ -466,7 +480,7 @@ function presence() { // compteur de joueurs connectés
 }
 function envoyerEtat(force) {
   if (!salle || !moi || (!force && temps % 4)) return;
-  const e = { x: Math.round(moi.x), y: Math.round(moi.y), a: +moi.angle.toFixed(2), pv: Math.round(moi.pv), c: moi.cache, m: Math.round(moi.marche), bo: bonusActifs(moi).join(',') }, cle = JSON.stringify(e);
+  const e = { x: Math.round(moi.x), y: Math.round(moi.y), a: +moi.angle.toFixed(2), pv: Math.round(moi.pv), c: moi.cache, m: Math.round(moi.marche), bo: bonusActifs(moi).join(','), sk: skinDe(moi) || '' }, cle = JSON.stringify(e);
   if (force || cle !== envoyerEtat.dernier || temps - (envoyerEtat.t || 0) > 60) { envoyerEtat.dernier = cle; envoyerEtat.t = temps; salle.ref.child('joueurs/' + user.uid).update(e); } // 📡 n'envoie que si quelque chose a changé
   const bots = Object.values(autres).filter(j => j.bot);
   if (hote && bots.length) salle.ref.child('bots').set(Object.fromEntries(bots.map(j => [j.uid, { x: Math.round(j.x), y: Math.round(j.y), a: +j.angle.toFixed(2), pv: Math.round(j.pv), c: j.cache, m: Math.round(j.marche), bo: bonusActifs(j).join(',') }])));
@@ -479,7 +493,7 @@ function majAutres(js) {
     if (!d) { j.bot = true; j.niv = j.niv || 1; if (j.pv <= 0) j.pv = 1; // déconnecté : son perso continue en bot
       if (!hote) { const humains = [moi, ...Object.values(autres)].filter(x => !x.bot && !String(x.uid).startsWith('bot')).map(x => x.uid).sort(); if (humains[0] === moi.uid) { hote = true; if (salle) salle.hote = true; notif('👑 Tu reprends la partie (l\'hôte est parti)'); } }
       continue; }
-    if (d.x !== undefined) { transitionPV(j, d.pv); Object.assign(j, { tx: d.x, ty: d.y, angle: d.a, pv: d.pv, cache: d.c, marche: d.m, bo: d.bo ? d.bo.split(',') : [] }); }
+    if (d.x !== undefined) { transitionPV(j, d.pv); Object.assign(j, { tx: d.x, ty: d.y, angle: d.a, pv: d.pv, cache: d.c, marche: d.m, bo: d.bo ? d.bo.split(',') : [], skin: d.sk || '' }); }
   }
 }
 function majBossDistants(liste) {
@@ -2874,10 +2888,16 @@ function menuPersos() {
   const hg = ctx.createRadialGradient(cx, sol - hh * 0.45, 0, cx, sol - hh * 0.45, hh * 0.7); hg.addColorStop(0, c + '88'); hg.addColorStop(1, c + '00'); ctx.fillStyle = hg; ctx.fillRect(px, hy, panW, hh); ctx.restore();
   ctx.save(); ctx.translate(cx, sol - 4 * u); ctx.scale(1, 0.26); const og = ctx.createRadialGradient(0, 0, 0, 0, 0, hh * 0.35); og.addColorStop(0, 'rgba(0,0,0,.5)'); og.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = og; ctx.beginPath(); ctx.arc(0, 0, hh * 0.35, 0, 7); ctx.fill(); ctx.restore();
   const off = (1 - sortir(Math.min(1, (temps - persoAnim.t) / 14))) * persoAnim.d * 60 * u, vh = vitrineHero(p), gris = !estDebloque(p); if (gris) ctx.filter = 'grayscale(1) brightness(.55)';
+  if (vh && vh.teinte) vh.teinte(skinParCle(skinChoisi(p)));
   if (vh) { const T = Math.round(Math.min(640, hh * 1.3 * dpr)), im3 = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = hh * 0.95 * Math.min(1, 0.72 + 0.2 * Math.min(1.4, +p.modeleEchelle || 1)) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
     ctx.drawImage(im3, cx - D / 2 + off, sol - 6 * u - vh.bas * D, D, D); }
   else { const im = carteDe(p); if (pret(im)) ctx.drawImage(im, cx - hh * 0.45 + off, sol - hh * 0.9, hh * 0.9, hh * 0.9); }
   ctx.filter = 'none';
+  const SK = [null, ...(CONFIG.skins || [])], sr = 13 * u, sx0 = cx - (SK.length - 1) * (sr * 2 + 6 * u) / 2, choisiSk = skinChoisi(p); // 🎨 skins
+  if (!gris && SK.length > 1) SK.forEach((s, m) => { const x = sx0 + m * (sr * 2 + 6 * u), yS = hy + hh - sr - 4 * u, a = !s || skinsAchetes(p).includes(s.cle), on = (s ? s.cle : '') === choisiSk;
+    ctx.beginPath(); ctx.arc(x, yS, sr, 0, 7); ctx.fillStyle = s ? s.teinte : c; ctx.globalAlpha = a ? 1 : 0.45; ctx.fill(); ctx.globalAlpha = 1; ctx.lineWidth = on ? 3.5 * u : 2 * u; ctx.strokeStyle = on ? '#ffe14a' : NOIR; ctx.stroke();
+    if (!a) texte('🔒', x, yS, 10 * u, '#fff'); else if (s && s.icone) texte(s.icone, x, yS, 10 * u, '#fff');
+    zones.push({ x: x - sr, y: yS - sr, w: sr * 2, h: sr * 2, action: () => choisirSkin(p, s) }); });
   // arme + super / action
   let y = sol + 16 * u;
   texte((TYPES_ARME[a.type] ? TYPES_ARME[a.type] + ' • ' : '') + (a.nom || p.arme) + (a.rebonds > 0 ? ' • ' + a.rebonds + ' ricochets' : '') + (a.chaine > 0 ? ' • chercheur ×' + a.chaine : ''), cx, y, 12 * u, '#ffe8a3', 'center', panW - 20 * u);

@@ -262,6 +262,7 @@ const Rendu3D = (() => {
       const o = persos.get(e); if (!o) { charger(e, p); continue; } if (!o.racine) continue;
       if (e.pv <= 0) o.mortT = o.mortT || temps; else o.mortT = 0;
       o.racine.visible = e.pv > 0 ? (e.def ? true : visible(e)) : true; // un perso mort reste au sol
+      const sk = e.def ? '' : skinDe(e) || ''; if (o.skin !== sk) { o.skin = sk; Modele3D.teinter(o.racine, skinParCle(sk)); } // 🎨 skin du joueur
       const cache = e.pv > 0 && !e.def && tuileA(e.x, e.y) === 'B'; // 🌿 caché dans un buisson : translucide (invisible pour les autres)
       if (cache !== o.cache) { o.cache = cache; o.racine.traverse(x => { if (x.material) { x.material.transparent = cache; x.material.opacity = cache ? 0.45 : 1; } }); }
       const ech = e.r * 1.95 * (+(e.def && e.def.modeleEchelle) || +p.modeleEchelle || 1); // même règle pour tous : taille (rayon) × échelle du modèle
@@ -284,7 +285,7 @@ const Rendu3D = (() => {
         const a = o.mixer.clipAction(clip); a.reset(); a.setLoop(anim === 'repos' || anim === 'marche' || fin ? THREE.LoopRepeat : THREE.LoopOnce); a.clampWhenFinished = true;
         if (o.action && o.action !== a) a.crossFadeFrom(o.action, 0.12, false); a.play(); o.action = a; o.clip = clip;
       }
-      const fl = (e.flash || 0) > 0 || (e.touche && temps - e.touche < 6); if (fl !== o.flash) { o.flash = fl; o.racine.traverse(x => { if (x.material && x.material.emissive) x.material.emissive.setRGB(fl ? 0.6 : 0, fl ? 0.6 : 0, fl ? 0.6 : 0); }); } // éclair blanc du coup reçu
+      const fl = (e.flash || 0) > 0 || (e.touche && temps - e.touche < 6); if (fl !== o.flash) { o.flash = fl; o.racine.traverse(x => { if (x.material && x.material.emissive) x.material.emissive.setRGB(fl ? 0.6 : 0, fl ? 0.6 : 0, fl ? 0.6 : 0); }); if (!fl) o.skin = null; } // éclair blanc du coup reçu (puis la lueur du skin revient)
       if (o.action) o.action.timeScale = anim === 'marche' ? Math.max(0.6, Math.min(1.8, (o.pas || 2.6) / Math.max(0.5, reglage('pasMarche', 2.6)))) : 1; // pas calés sur la vitesse : plus de glissade
       o.mixer.update(dt);
       if (o.hanches && anim === 'marche') { o.hanches.position.x = o.repos.x; o.hanches.position.z = o.repos.z; } // pas de glissade
