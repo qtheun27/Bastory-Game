@@ -40,7 +40,7 @@ const Rendu3D = (() => {
     else for (let r = 0; r < 4; r++) for (let i = -1; i < 3; i++) { const bx = i * 64 + (r % 2) * 32, by = r * 32; x.fillStyle = ombrer(c, (alea(r * 5.3 + i * 2.1) - 0.5) * 0.2); x.beginPath(); x.roundRect(bx + 3, by + 3, 58, 26, 5); x.fill(); clair(bx, by, 64, 32); }
     const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; return texs[k] = t;
   }
-  let eauTex = null, eauMat = null, cristaux = new Map(), geoTir = null; const tirs = new Map(), eclats = [];
+  let eauTex = null, eauMat = null, cristaux = new Map(), geoTir = null; const tirs = new Map(), eclats = [], gerbes = [];
   let viseeG = null;
   function majVisee() { // 🎯 faisceau lumineux au sol + cercle d'impact animé (vue 3D)
     if (!viseeG) { viseeG = new THREE.Group(); viseeG.visible = false;
@@ -98,8 +98,15 @@ const Rendu3D = (() => {
     const vus = new Set(projectiles);
     for (const [p, m] of tirs) if (!vus.has(p)) { // 💥 impact : éclat 3D qui grossit et s'efface
       scene.remove(m); tirs.delete(p); (m.userData.trainee || []).forEach(t => { scene.remove(t); t.material.dispose(); });
+      if (reglage('impact3D', 1) > 0 && gerbes.length < 12) { const g = { t0: temps, mat: new THREE.MeshBasicMaterial({ color: m.userData.c, transparent: true, depthWrite: false }), l: [] }; // ✨ gerbe d'éclats
+        for (let i = 0; i < 10; i++) { const s = new THREE.Mesh(geoTir.etoile, g.mat), a = Math.random() * 6.28, v = 2 + Math.random() * 4; s.position.copy(m.position); s.scale.setScalar(0.25 + Math.random() * 0.25); s.userData.v = new THREE.Vector3(Math.cos(a) * v, 3 + Math.random() * 4, Math.sin(a) * v); scene.add(s); g.l.push(s); }
+        const o = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 32), new THREE.MeshBasicMaterial({ color: m.userData.c, transparent: true, depthWrite: false, side: THREE.DoubleSide })); o.rotation.x = -Math.PI / 2; o.position.set(m.position.x, 2, m.position.z); scene.add(o); g.onde = o; gerbes.push(g); }
       if (reglage('impact3D', 1) > 0 && eclats.length < 30) { const b = new THREE.Mesh(geoTir.eclat, new THREE.MeshBasicMaterial({ color: m.userData.c, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })); b.position.copy(m.position); b.userData.t0 = temps; scene.add(b); eclats.push(b); }
     }
+    for (let i = gerbes.length - 1; i >= 0; i--) { const g = gerbes[i], k = (temps - g.t0) / 26;
+      if (k >= 1) { g.l.forEach(s => scene.remove(s)); scene.remove(g.onde); g.onde.material.dispose(); g.onde.geometry.dispose(); g.mat.dispose(); gerbes.splice(i, 1); continue; }
+      g.l.forEach(s => { s.position.add(s.userData.v); s.userData.v.y -= 0.45; if (s.position.y < 2) { s.position.y = 2; s.userData.v.multiplyScalar(0.5); } s.rotation.x += 0.3; s.rotation.y += 0.2; });
+      g.mat.opacity = 1 - k * k; g.onde.scale.setScalar((8 + k * 50) * reglage('impact3D', 1)); g.onde.material.opacity = 0.8 * (1 - k); }
     for (let i = eclats.length - 1; i >= 0; i--) { const b = eclats[i], k = (temps - b.userData.t0) / 12; if (k >= 1) { scene.remove(b); b.material.dispose(); eclats.splice(i, 1); } else { b.scale.setScalar((10 + k * 40) * reglage('impact3D', 1)); b.material.opacity = 0.9 * (1 - k); } }
     for (const p of projectiles) {
       const a = p.arme || {}; if (a.forme === 'onde') continue; // l'onde du marteau reste dessinée au sol
@@ -121,6 +128,22 @@ const Rendu3D = (() => {
       const fl = m.userData.flash; if (fl) { const k = temps - fl.userData.t0; if (k > 8) { scene.remove(fl); m.userData.flash = null; } else { fl.scale.setScalar(8 + k * 5); fl.material.opacity = 1 - k / 8; } } // 💥 éclair de tir
     }
   }
+  function decorAutour(T, th) { // 🌳 décor 3D hors du terrain (selon l'ambiance) : la map est posée dans un vrai monde
+    const h = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }, L = map.l, Hh = map.h, arbres = [], rochers = [], caisses = [];
+    const nb = Math.round((L + Hh) * 2 * 1.6 * reglage('decor3D', 1));
+    for (let i = 0; i < nb; i++) { const cote = Math.floor(h(i) * 4), u = h(i + 0.5), prof = 0.6 + h(i + 0.7) * 4.5; let x, z;
+      if (cote === 0) { x = (u * (L + 8) - 4) * T; z = -prof * T; } else if (cote === 1) { x = (u * (L + 8) - 4) * T; z = (Hh + prof) * T; }
+      else if (cote === 2) { x = -prof * T; z = (u * (Hh + 8) - 4) * T; } else { x = (L + prof) * T; z = (u * (Hh + 8) - 4) * T; }
+      const r = h(i + 0.9), l = r < 0.62 ? arbres : r < 0.85 ? rochers : caisses; l.push([x, z, 0.7 + h(i + 0.3) * 0.7, h(i + 0.1) * 6.28]); }
+    const t = themeDe(map.def), fe = t.buisson || '#3fae4a', sapin = /sapin|cactus/.test(t.buissonStyle || '');
+    const plante = (geo, mat, l, y, f) => { if (!l.length) return; const m = new THREE.InstancedMesh(geo, mat, l.length), o = new THREE.Object3D();
+      l.forEach((p, n) => { o.position.set(p[0], y * p[2], p[1]); o.rotation.set(0, p[3], 0); o.scale.setScalar(p[2]); if (f) f(o, p); o.updateMatrix(); m.setMatrixAt(n, o.matrix); }); m.castShadow = true; groupe.add(m);
+      const e = new THREE.InstancedMesh(geo, encre(), l.length); for (let n = 0; n < l.length; n++) { m.getMatrixAt(n, o.matrix); o.matrix.decompose(o.position, o.quaternion, o.scale); o.scale.multiplyScalar(1.06); o.updateMatrix(); e.setMatrixAt(n, o.matrix); } groupe.add(e); };
+    plante(new THREE.CylinderGeometry(7, 9, 40, 7), toon('#8a5a34'), arbres, 20);
+    plante(sapin ? new THREE.ConeGeometry(34, 80, 8) : new THREE.DodecahedronGeometry(36, 1), toon(fe), arbres, sapin ? 75 : 68);
+    plante(new THREE.DodecahedronGeometry(22, 0), toon(t.mur || '#9aa0b8'), rochers, 12, o => o.scale.y *= 0.7);
+    plante(new THREE.BoxGeometry(36, 36, 36), toon(t.coffre || '#c98a45'), caisses, 18);
+  }
   function construire() { // 🧱 la map en 3D (reconstruite seulement si une case change : bloc cassé, buisson brûlé…)
     const cle = map.g.join(''); if (cle === carteCle) return; carteCle = cle;
     for (const [, m] of cristaux) scene.remove(m); cristaux.clear();
@@ -137,6 +160,7 @@ const Rendu3D = (() => {
     const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 4;
     const sol = new THREE.Mesh(new THREE.PlaneGeometry(map.l * T, map.h * T), toon('#ffffff', { map: tex })); sol.rotation.x = -Math.PI / 2; sol.position.set(map.l * T / 2, 0, map.h * T / 2); sol.receiveShadow = true; groupe.add(sol);
     const ext = new THREE.Mesh(new THREE.PlaneGeometry(12000, 12000), toon(th.ext)); ext.rotation.x = -Math.PI / 2; ext.position.set(map.l * T / 2, -3, map.h * T / 2); ext.receiveShadow = true; groupe.add(ext);
+    decorAutour(T, th);
     const murs = {}, buis = [], eau = [], coffres = [];
     map.g.forEach((r, j) => [...r].forEach((t, i) => { const p = [i * T + T / 2, j * T + T / 2];
       if (t === '#') { const ci = couleurMur(i * T, j * T); (murs[ci] = murs[ci] || []).push(p); }

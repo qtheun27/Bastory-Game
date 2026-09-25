@@ -1020,7 +1020,8 @@ const CONFIG_PAR_DEFAUT = {
     "traineeTirs": 6,
     "impact3D": 1,
     "styleAnneau": "arcade",
-    "marqueursKO": 1
+    "marqueursKO": 1,
+    "decor3D": 1
   },
   "elements": {
     "terre": {

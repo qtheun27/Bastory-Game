@@ -2346,7 +2346,8 @@ function dessinerVisee() {
   else if (!mobile && souris) { const m = versMonde(souris.x, souris.y); a = Math.atan2(m.y - moi.y, m.x - moi.x); f = Math.min(1, Math.hypot(m.x - moi.x, m.y - moi.y) / moi.perso.portee); }
   else return;
   const A = moi.arme || {}, fr = A.type === 'frappe', P = fr ? +A.distanceFrappe || 110 : moi.perso.portee, lob = A.type === 'lob' || fr; if (fr) f = 1; // 🔨 frappe : zone fixe devant soi, on ne choisit que la direction pul = 0.5 + 0.5 * Math.sin(temps * 0.15);
-  const larg = Math.max(26, (+A.taille || 12) * 2), Lmur = lob ? P : porteeLibre(moi.x, moi.y, a, P); // 🎯 visée précise : largeur réelle du projectile, arrêtée au 1er mur
+  const larg = Math.max(26, (+A.taille || 12) * 2), Lmur = lob ? P : porteeLibre(moi.x, moi.y, a, P), reb = !lob && A.type === 'droit' && (+A.rebonds || 0) > 0;
+  if (reb) return viseeRebonds(a, P, A, larg); // ↩️ arme qui ricoche : la ligne rebondit sur les murs comme le tir // 🎯 visée précise : largeur réelle du projectile, arrêtée au 1er mur
   if (aff3) { visee3D = { a, f, lob, P, L: Lmur, w: larg, R: +A.rayon || 70, c: A.couleur || '#ffe14a' }; return; } // 🎯 visée en 3D
   ctx.save(); ctx.translate(moi.x, moi.y); ctx.rotate(a); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   if (lob) { const d = Math.max(60, P * f), R = +A.rayon || 70;
@@ -2356,6 +2357,24 @@ function dessinerVisee() {
   else { const L = Lmur, h = larg / 2, g = ctx.createLinearGradient(moi.r, 0, L, 0); g.addColorStop(0, 'rgba(255,255,255,.55)'); g.addColorStop(1, 'rgba(255,255,255,.25)');
     ctx.beginPath(); ctx.moveTo(moi.r, -h); ctx.lineTo(L, -h); ctx.arc(L, 0, h, -Math.PI / 2, Math.PI / 2); ctx.lineTo(moi.r, h); ctx.closePath(); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(11,6,32,.55)'; ctx.stroke();
     ctx.fillStyle = '#ffe14a'; if (L > moi.r + 50) for (let i = 0; i < 4; i++) { const x = moi.r + 30 + ((temps * 3 + i * (L / 4)) % (L - moi.r - 30)); ctx.beginPath(); ctx.moveTo(x, -8); ctx.lineTo(x + 12, 0); ctx.lineTo(x, 8); ctx.lineTo(x + 5, 0); ctx.closePath(); ctx.fill(); } }
+  ctx.restore();
+}
+function trajetRebonds(x, y, a, P, n, v) { // simule le tir exactement comme majProjectiles (mêmes pas, mêmes rebonds)
+  let vx = Math.cos(a) * v, vy = Math.sin(a) * v, dist = 0; const pts = [[x, y]];
+  for (let i = 0; i < 400 && dist < P; i++) {
+    x += vx; y += vy; dist += v;
+    if (bloqueTir(tuileA(x, y))) { x -= vx; y -= vy; pts.push([x, y]); if (n <= 0) return pts;
+      if (bloqueTir(tuileA(x + vx, y))) vx = -vx; else vy = -vy; n--; dist *= 0.5; }
+  }
+  pts.push([x, y]); return pts;
+}
+function viseeRebonds(a, P, A, larg) {
+  visee3D = null; const pts = trajetRebonds(moi.x, moi.y, a, P, +A.rebonds || 0, +A.vitesse || 10), c = A.couleur || '#ffe14a';
+  ctx.save(); ctx.lineJoin = ctx.lineCap = 'round';
+  const trace = (w, s) => { ctx.lineWidth = w; ctx.strokeStyle = s; ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); };
+  trace(larg + 5, 'rgba(11,6,32,.35)'); trace(larg, 'rgba(255,255,255,.45)'); ctx.setLineDash([14, 12]); ctx.lineDashOffset = -temps * 1.5; trace(4, c); ctx.setLineDash([]);
+  for (let i = 1; i < pts.length - 1; i++) { ctx.beginPath(); ctx.arc(pts[i][0], pts[i][1], 9, 0, 7); ctx.fillStyle = c; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke(); } // points de rebond
+  const [fx, fy] = pts[pts.length - 1]; ctx.beginPath(); ctx.arc(fx, fy, larg * 0.55, 0, 7); ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = c; ctx.stroke();
   ctx.restore();
 }
 function porteeLibre(x, y, a, P) { // distance jusqu'au 1er mur (les tirs droits s'y arrêtent)
@@ -3056,6 +3075,8 @@ function hudExtra() { // chrono, score et mode spectateur
     if (zoneControle === 'conteste') texte('⚔️ Zone contestée', W / 2, H - 100 * u, 16 * u, '#ffd23f');
   }
   if (moi.pv > 0 || resultat) return;
+  if (moi.revivre) { const r = Math.max(0, moi.revivre - temps), n = Math.ceil(r / 60), k = 1 - (r % 60) / 60, sc = 1 + Math.max(0, 0.35 - k) * 1.6; // ⏳ gros compte à rebours au centre
+    ctx.save(); ctx.translate(W / 2, H * 0.4); texte('Retour dans', 0, -46 * u, 18 * u, '#fff'); ctx.scale(sc, sc); titre(String(n), 0, 8 * u, 64 * u, n <= 1 ? '#9cff57' : '#ffe14a'); ctx.restore(); }
   const v = cibleCamera(), l = joueurs().filter(j => j !== moi && j.pv > 0 && (j.eq === moi.eq || !joueurs().some(a => a !== moi && a.eq === moi.eq && a.pv > 0)));
   const bw = 320 * u, bx = W / 2 - bw / 2, by = H - 72 * u;
   rect(bx, by, bw, 56 * u, 16 * u, 'rgba(0,0,0,.6)', '#ffd23f', 2);
