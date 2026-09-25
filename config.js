@@ -1023,6 +1023,7 @@ const CONFIG_PAR_DEFAUT = {
     "onomatopees": 1,
     "flashEcran": 0.4,
     "tailleDegats": 1,
+    "esquiveBots": 1,
     "decor3D": 1
   },
   "gadgets": {

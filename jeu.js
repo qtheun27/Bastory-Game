@@ -748,6 +748,19 @@ function blesserBot(j, deg, ang) {
   j.pv = Math.max(0, j.pv - deg); j.flash = 8; j.kx += Math.cos(ang) * 10; j.ky += Math.sin(ang) * 10;
   if (j.pv === 0) { mourir(j); if (mode.reapparition) j.revivre = temps + (+mode.delaiReapparition || 3) * 60; }
 }
+function esquive(j, nv) { // → direction de pas de côté si un tir ennemi fonce sur le bot
+  const ch = Math.min(0.85, (0.15 + 0.15 * nv) * reglage('esquiveBots', 1)); // chance d'esquiver un tir (décidée une fois par tir)
+  for (const p of projectiles) { if (p.type !== 'droit' && p.type !== 'retour') continue; const pr = entite(p.de); if (!pr || pr.eq === j.eq || pr === j) continue;
+    const dx = j.x - p.x, dy = j.y - p.y, d = Math.hypot(dx, dy), sp = Math.hypot(p.vx, p.vy) || 1; if (d > 220) continue;
+    const ux = p.vx / sp, uy = p.vy / sp, av = dx * ux + dy * uy; if (av < 0) continue; // il s'éloigne
+    const lat = dx * uy - dy * ux; if (Math.abs(lat) > j.r + (+p.arme.taille || 12) + 12) continue; // il va passer à côté
+    if (d > 170) continue; p.vuPar = p.vuPar || {}; if (p.vuPar[j.uid] === undefined) p.vuPar[j.uid] = Math.random() < ch; if (!p.vuPar[j.uid]) continue; // réaction : une seule décision par tir
+    const s2 = lat >= 0 ? 1 : -1; j.esq = { t: temps + 14, d: [uy * s2, -ux * s2] }; return j.esq.d; }
+  return j.esq && j.esq.t > temps ? j.esq.d : null;
+}
+function buissonProche(j, R) { const T = TUILE, tx = Math.floor(j.x / T), ty = Math.floor(j.y / T), n = Math.ceil(R / T); let best = null, dm = R;
+  for (let y = ty - n; y <= ty + n; y++) for (let x = tx - n; x <= tx + n; x++) if (tuile(x, y) === 'B') { const px = (x + 0.5) * T, py = (y + 0.5) * T, d = Math.hypot(px - j.x, py - j.y); if (d < dm) { dm = d; best = { x: px, y: py }; } }
+  return best; }
 function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses distances et tourne autour
   if (j.flash > 0) j.flash--;
   deplacer(j, j.kx, j.ky); j.kx *= 0.8; j.ky *= 0.8;
@@ -778,13 +791,22 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     if (zone && !c) { if (dO > 30) allerVers(j, butO.x, butO.y, v * 0.5); return; } // reste dans la zone
   }
   if (j.objet) { allerVers(j, j.objet.x, j.objet.y, v); if (!c || dm > 250) return; }
+  const nv = j.niv || 1, esq = esquive(j, nv); // 🤖 esquive les tirs qui arrivent
+  if (esq) { deplacer(j, esq[0] * v, esq[1] * v); j.marche += v; }
+  if (c && j.pv < j.pvMax * 0.3 && !(j.gadgets > 0) && nv >= 2) { const b = buissonProche(j, 320); if (b && Math.hypot(b.x - j.x, b.y - j.y) > 20) { allerVers(j, b.x, b.y, v); return; } } // 🌿 presque KO : va se cacher
   if (c) {
-    const a = Math.atan2(c.y - j.y, c.x - j.x), ideal = j.perso.portee * 0.7, cote = Math.sin(temps / 50 + j.x * 0.01) > 0 ? 1 : -1;
+    const su = j.suivi && j.suivi.c === c ? j.suivi : (j.suivi = { c, x: c.x, y: c.y, vx: 0, vy: 0 }); // vitesse de la cible (mémoire propre à chaque bot)
+    su.vx = (c.x - su.x) * 0.5 + su.vx * 0.5; su.vy = (c.y - su.y) * 0.5 + su.vy * 0.5; su.x = c.x; su.y = c.y;
+    const A0 = j.arme || {}, tv = A0.type === 'lob' ? Math.max(18, dm / (+A0.vitesse || 10)) : dm / (+A0.vitesse || 10), pr = Math.min(1, 0.35 + 0.25 * nv); // 🎯 vise là où la cible va être
+    const cx2 = c.x + su.vx * tv * pr, cy2 = c.y + su.vy * tv * pr;
+    const a = Math.atan2(cy2 - j.y, cx2 - j.x), ideal = j.perso.portee * 0.7, cote = Math.sin(temps / 50 + j.x * 0.01) > 0 ? 1 : -1;
+    const libre = A0.type === 'lob' || porteeLibre(j.x, j.y, a, dm) >= dm - c.r; // 🧱 pas de tir dans un mur
     const av = dm > ideal ? 1 : dm < ideal * 0.5 ? -1 : 0, ax = j.x, ay = j.y;
     deplacer(j, (Math.cos(a) * av - Math.sin(a) * cote * 0.6) * v, (Math.sin(a) * av + Math.cos(a) * cote * 0.6) * v);
     j.marche += v; tourner(j, a, 0.2);
     if (av > 0 && Math.hypot(j.x - ax, j.y - ay) < v * 0.35 && (j.coince = (j.coince || 0) + 1) > 8) { allerVers(j, c.x, c.y, v); j.coince = 0; } // bloqué par un mur : il contourne
-    if (dm < j.perso.portee && j.recharge <= 0 && j.mun >= 1 && Math.random() < 0.05 * (j.niv || 1)) {
+    if (!libre) { allerVers(j, c.x, c.y, v * 0.6); } // 🧱 ligne de tir bouchée par un mur : il contourne pour retrouver un angle de tir
+    if (libre && dm < j.perso.portee && j.recharge <= 0 && j.mun >= 1 && Math.random() < 0.05 * (j.niv || 1)) {
       const ang = a + (Math.random() - 0.5) * 0.35 / (j.niv || 1), f = Math.min(1, dm / j.perso.portee);
       j.mun -= 1; j.recharge = j.perso.delaiTir;
       const dg = Math.round(j.perso.degats * bonus(j, 'degats') * (0.8 + 0.2 * (j.niv || 1)));
