@@ -561,11 +561,17 @@ function creerProjectile(j, angle, force, x, y, deg) {
 }
 function tirer(angle, force = 1) {
   if (moi.anim && moi.anim.n === 'releve' && temps - moi.anim.t < DUREE_ANIM.releve) return; // pas de tir en se relevant
-  if (!moi || moi.recharge > 0 || moi.pv <= 0 || resultat) return;
+  if (!moi || moi.pv <= 0 || resultat) return;
+  if (moi.recharge > 0) { moi.tirAttente = { a: angle, f: force, t: temps }; return; } // 🎯 tir mémorisé : part dès la fin de la recharge
+  moi.tirAttente = null;
   const illimite = pouvoirActif(moi, 'munitions');
   if (moi.mun < 1 && !illimite) return;               // plus de munitions
   if (!illimite) moi.mun -= 1;
-  moi.recharge = moi.perso.delaiTir; moi.angle = angle; // cadence de tir
+  moi.recharge = moi.perso.delaiTir; moi.angle = angle; moi.viseT = temps + 18; // cadence de tir • le perso garde la direction du tir un instant
+  const cx = moi.x + Math.cos(angle) * moi.r, cy = moi.y + Math.sin(angle) * moi.r, cf = (moi.arme || {}).couleur || '#fff';
+  ondes.push({ x: cx, y: cy, r: 4, max: 26, c: cf, vie: 1, ep: 5 }); // 💥 éclair au canon
+  for (let i = 0; i < 6; i++) particule(cx, cy, i % 2 ? cf : '#fff', 5, 3, 1, 'trait', { len: 10 });
+  moi.kx -= Math.cos(angle) * 1.6; moi.ky -= Math.sin(angle) * 1.6; secousse = Math.max(secousse, 2); // recul
   const deg = Math.round(moi.perso.degats * bonus(moi, 'degats'));
   creerProjectile(moi, angle, force, moi.x, moi.y, deg);
   envoyer({ t: 'tir', a: +angle.toFixed(3), f: +force.toFixed(2), x: Math.round(moi.x), y: Math.round(moi.y), d: deg });
@@ -859,12 +865,13 @@ function maj() {
   const vit = moi.perso.vitesse * KV() * bonus(moi, 'vitesse') * (moi.dep === 'nage' && surEau ? +elm.valeur || 1.3 : 1) * (moi.dep !== 'vol' && tuileA(moi.x, moi.y) === 'S' ? 0.8 : 1) * (moi.ralentiT > temps ? moi.ralenti || 0.6 : 1); // 🏖️ le sable ralentit
   if (moi.dep === 'nage' && surEau && moi.pv > 0) moi.pv = Math.min(moi.pvMax, moi.pv + moi.pvMax * (+elm.soin || 0) / 100 / 60); // 💧 se soigne dans l'eau
   if (moi.dep === 'brise' && (mx || my)) { const tx = Math.floor((moi.x + mx * moi.r * 1.3) / TUILE), ty = Math.floor((moi.y + my * moi.r * 1.3) / TUILE); if (bloqueTir(tuile(tx, ty))) abimer(tx, ty, +elm.valeur || 60); } // 🌍 brise les blocs en fonçant dedans
-  moi.vx = (moi.vx || 0) + (mx * vit - (moi.vx || 0)) * 0.35; moi.vy = (moi.vy || 0) + (my * vit - (moi.vy || 0)) * 0.35; // départ / arrêt en douceur
+  moi.vx = (moi.vx || 0) + (mx * vit - (moi.vx || 0)) * 0.55; moi.vy = (moi.vy || 0) + (my * vit - (moi.vy || 0)) * 0.55; // départ / arrêt rapides (réactif)
   if (!dash(moi)) deplacer(moi, moi.vx + moi.kx, moi.vy + moi.ky); else deplacer(moi, moi.kx, moi.ky);
   moi.kx *= 0.8; moi.ky *= 0.8;
-  if (mx || my) { moi.marche += vit; if (!joyD.actif) tourner(moi, Math.atan2(my, mx), 0.25); }
+  if (mx || my) { moi.marche += vit; if (!joyD.actif && !(moi.viseT > temps)) tourner(moi, Math.atan2(my, mx), 0.4); }
   if (joyD.actif) { const v = vec(joyD); if (v.d > 15) tourner(moi, v.a, 0.4); }
   if (moi.recharge > 0) moi.recharge--;
+  if (moi.tirAttente && moi.recharge <= 0) { const q = moi.tirAttente; moi.tirAttente = null; if (temps - q.t < 15) tirer(q.a, q.f); } // tir mémorisé (clic un peu trop tôt)
   if (moi.flash > 0) moi.flash--;
   if (moi.recharge <= 0) moi.mun = Math.min(+moi.perso.munitions || 3, moi.mun + 1 / (+moi.perso.recharge || 60)); // recharge des munitions
   moi.cache = tuileA(moi.x, moi.y) === 'B' || !!pouvoirActif(moi, 'invisible') || nuages.some(n => !n.feu && Math.hypot(n.x - moi.x, n.y - moi.y) < n.r);
