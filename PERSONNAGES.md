@@ -7,7 +7,7 @@ Fichier de référence à compléter à chaque nouveau perso ou boss.
 
 1. **Texte → Image** : colle le « Préfixe commun » puis le prompt du perso.
 2. **Image → 3D** : style **Cartoon**, **sans PBR**.
-3. **Rig**, puis **Animate** : Idle, Walk, Attack (adaptée à l'arme), Hit Reaction, Dead, Stand Up, Jump et **une danse de victoire** (Dance / Victory / Cheer). Dans l'admin, choisis-la dans « 🕺 Animation de victoire ». Sans danse, le perso saute sur place à la fin du match.
+3. **Rig** (le squelette) : fortement conseillé. Les **animations sont facultatives** : si le modèle n'en a aucune, **le jeu l'anime tout seul**. Il gère le repos, la marche, l'attaque selon l'arme (frappe au marteau, lancer, tir), le coup reçu, le KO, le saut, le super et la danse de victoire. Tout se règle dans la fiche du perso (admin › section « 🤸 Animations calculées »). Sans squelette, le jeu anime le corps entier : rebonds, penchés, chute. Tu peux quand même ajouter des animations Meshy réussies : l'option « Qui anime ce perso ? » choisit entre les deux.
 4. **Export .glb** et nommage :
    - perso : `element-nom.glb` (par exemple `terre-bouldo.glb`) ;
    - boss : `boss-nom.glb`.
