@@ -271,7 +271,13 @@ const Rendu3D = (() => {
       const cache = e.pv > 0 && !e.def && tuileA(e.x, e.y) === 'B'; // 🌿 caché dans un buisson : translucide (invisible pour les autres)
       if (cache !== o.cache) { o.cache = cache; o.racine.traverse(x => { if (x.material) { x.material.transparent = cache; x.material.opacity = cache ? 0.45 : 1; } }); }
       const ech = e.r * 1.95 * (+(e.def && e.def.modeleEchelle) || +p.modeleEchelle || 1); // même règle pour tous : taille (rayon) × échelle du modèle
-      const saut = e.dash && e.dash.saut && temps < e.dash.fin, alt = saut ? Math.sin((1 - (e.dash.fin - temps) / e.dash.duree) * Math.PI) * 80 : (e.alt || 0);
+      const ck = e.def ? 0 : chuteK(), saut = e.dash && e.dash.saut && temps < e.dash.fin, alt = (saut ? Math.sin((1 - (e.dash.fin - temps) / e.dash.duree) * Math.PI) * 80 : (e.alt || 0)) + Math.pow(ck, 1.3) * 560; // 🪂 hauteur de chute
+      if (ck > 0.01 || o.para) { if (!o.para) { const c = e === moi ? '#5ac8fa' : '#ff7a59', g = new THREE.Group(), dome = new THREE.Mesh(new THREE.SphereGeometry(46, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), toon(c, { side: THREE.DoubleSide })); dome.scale.y = 0.55; g.add(dome);
+          const bande = new THREE.Mesh(new THREE.SphereGeometry(46.5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), toon('#ffffff', { side: THREE.DoubleSide, transparent: true, opacity: 0.9 })); bande.scale.set(1, 0.56, 0.35); g.add(bande);
+          for (let k2 = 0; k2 < 4; k2++) { const f = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 70, 4), toon('#222')); const a2 = k2 * Math.PI / 2 + Math.PI / 4; f.position.set(Math.cos(a2) * 26, -32, Math.sin(a2) * 26); f.rotation.set(Math.sin(a2) * 0.35, 0, -Math.cos(a2) * 0.35); g.add(f); }
+          o.para = g; scene.add(g); }
+        o.para.visible = ck > 0.01; o.para.position.set(e.x, alt + 150, e.y); o.para.rotation.z = Math.sin(temps * 0.06 + e.x) * 0.12; o.para.rotation.x = Math.cos(temps * 0.05) * 0.08;
+        if (ck <= 0.01) { scene.remove(o.para); o.para = null; } }
       const pas = Math.abs((e.marche || 0) - (o.marcheP || 0)); const dep = Math.min(12, Math.hypot(e.x - (o.px ?? e.x), e.y - (o.py ?? e.y))); o.px = e.x; o.py = e.y; if (pas > 0.05) o.marcheT = temps; o.pas = (o.pas ?? dep) * 0.85 + dep * 0.15; // 🚶 vitesse réelle (lissée)
       const ta = e.anim && e.anim.n === 'attaque' ? temps - e.anim.t : 99, tt = (e.flash || 0) > 0 ? 8 - e.flash : 99, pu = reglage('rebondPerso', 1);
       const sq = pu * (ta < 8 ? Math.sin(ta / 8 * Math.PI) * 0.1 : 0), st = pu * (tt < 8 ? Math.sin(tt / 8 * Math.PI) * 0.12 : 0); // 💥 petit écrasement au tir, gonflement au coup reçu
@@ -305,7 +311,7 @@ const Rendu3D = (() => {
     if (c._w !== W || c._h !== H || c._p !== pr) { R.setPixelRatio(pr); R.setSize(W, H); c._w = W; c._h = H; c._p = pr; }
     c.style.display = 'block';
     const fin = (etat === 'VICTOIRE' || etat === 'DEFAITE' || etat === 'EGALITE') && moi, cible = fin ? new THREE.Vector3(moi.x, 40, moi.y) : new THREE.Vector3(cam.x + sx, 0, cam.y + sy);
-    let dist = H / zoom / 0.62; camera.aspect = W / H; camera.updateProjectionMatrix();
+    let dist = H / zoom / 0.62 * (1 + chuteK() * 0.7); camera.aspect = W / H; camera.updateProjectionMatrix(); // 🪂 on voit plus loin pendant la chute
     if (fin) { const t = Math.min(1, (temps - (finInfo ? finInfo.t0 : temps)) / 60), e = 1 - Math.pow(1 - t, 3), a = temps * 0.004; dist *= 1 - e * 0.62; // 🎬 zoom cinéma
       camera.position.set(cible.x + Math.sin(a) * dist * 0.53 * e, dist * 0.85 - e * 60, cible.z + Math.cos(a) * dist * 0.53); }
     else camera.position.set(cible.x, dist * 0.85, cible.z + dist * 0.53);

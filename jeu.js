@@ -309,7 +309,7 @@ function creerBoss(id, x, y, i) {
 }
 // liste = joueurs de la partie [{uid, nom, p}] (le 1er est l'hôte) ; null = solo
 function demarrer(mapIdx, liste) {
-  mode = modeChoisi();
+  mode = modeChoisi(); atterri = !mode.atterrissage;
   map = chargerMap(CONFIG.maps[mapIdx] || CONFIG.maps[0]);
   liste = liste || [{ uid: user.uid, nom: nomJoueur(), p: persoIndex }];
   const c = t => (t + 0.5) * TUILE, places = [];
@@ -635,7 +635,7 @@ function creerProjectile(j, angle, force, x, y, deg) {
 }
 function tirer(angle, force = 1) {
   if (moi.anim && moi.anim.n === 'releve' && temps - moi.anim.t < DUREE_ANIM.releve) return; // pas de tir en se relevant
-  if (!moi || moi.pv <= 0 || resultat) return;
+  if (!moi || moi.pv <= 0 || resultat || enChute()) return; // 🪂 pas de tir pendant la chute
   if (moi.recharge > 0) { if (reglage('tamponTir', 15) > 0) moi.tirAttente = { a: angle, f: force, t: temps }; return; } // 🎯 tir mémorisé : part dès la fin de la recharge
   moi.tirAttente = null;
   const illimite = pouvoirActif(moi, 'munitions');
@@ -740,7 +740,7 @@ const roleDe = p => { const r = (baseDe(p) || {}).role; return r && (CONFIG.role
 const RV = (r, champ, d) => { const v = ((CONFIG.roles || {})[r] || {})[champ]; return v === undefined || v === '' ? d : +v; }; // 🎭 valeur d'un rôle (admin)
 function degats(e, de, deg, x, y, ang, a) { // applique les dégâts selon qui a l'autorité
   if (a && +a.ralenti) { e.ralenti = +a.ralenti; e.ralentiT = temps + 120; } // 🫧 arme qui ralentit
-  const pr = entite(de);
+  const pr = entite(de); if (enChute() && e.perso) return; // 🪂 intouchable pendant la chute
   if (pr && pr.perso) { const rA = roleDe(pr.perso), dd = Math.hypot(e.x - pr.x, e.y - pr.y), P = +pr.perso.portee || 400; // 🎭 bonus du rôle de l'attaquant
     if (rA === 'tireur' && dd > P * 0.6) deg *= 1 + RV('tireur', 'valeur', 20) / 100;
     if (rA === 'assassin' && dd < P * 0.4) deg *= 1 + RV('assassin', 'valeur', 25) / 100;
@@ -840,7 +840,7 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     if (av > 0 && Math.hypot(j.x - ax, j.y - ay) < v * 0.35 && (j.coince = (j.coince || 0) + 1) > 8) { allerVers(j, c.x, c.y, v); j.coince = 0; } // bloqué par un mur : il contourne
     if (!libre) { allerVers(j, c.x, c.y, v * 0.6); } // 🧱 ligne de tir bouchée par un mur : il contourne pour retrouver un angle de tir
     if (construction() && (j.mat || 0) >= reglage('coutMur', 10) && j.pv < j.pvMax * 0.5 && dm < 300 && Math.random() < 0.03) { j.angle = a; construireMur(j); } // 🤖 se met à l'abri
-    if (libre && dm < j.perso.portee && j.recharge <= 0 && j.mun >= 1 && Math.random() < 0.05 * (j.niv || 1)) {
+    if (libre && !enChute() && dm < j.perso.portee && j.recharge <= 0 && j.mun >= 1 && Math.random() < 0.05 * (j.niv || 1)) {
       const ang = a + (Math.random() - 0.5) * 0.35 / (j.niv || 1), f = Math.min(1, dm / j.perso.portee);
       j.mun -= 1; j.recharge = j.perso.delaiTir;
       const dg = Math.round(j.perso.degats * bonus(j, 'degats') * (0.8 + 0.2 * (j.niv || 1)) * multButin(j));
@@ -1038,7 +1038,7 @@ function maj() {
   if (moi.pv <= 0) mx = my = 0;
   const elm = elemDe(moi.perso) || {}, surEau = tuileA(moi.x, moi.y) === 'W';
   if (fige) { mx = 0; my = 0; }
-  const vit = moi.perso.vitesse * KV() * bonus(moi, 'vitesse') * (moi.dep === 'nage' && surEau ? +elm.valeur || 1.3 : 1) * (moi.dep !== 'vol' && tuileA(moi.x, moi.y) === 'S' ? 0.8 : 1) * (moi.ralentiT > temps ? moi.ralenti || 0.6 : 1) * (roleDe(moi.perso) === 'assassin' ? 1 + RV('assassin', 'vitesse', 10) / 100 : 1); // 🏖️ le sable ralentit
+  const vit = moi.perso.vitesse * KV() * bonus(moi, 'vitesse') * (moi.dep === 'nage' && surEau ? +elm.valeur || 1.3 : 1) * (moi.dep !== 'vol' && tuileA(moi.x, moi.y) === 'S' ? 0.8 : 1) * (moi.ralentiT > temps ? moi.ralenti || 0.6 : 1) * (roleDe(moi.perso) === 'assassin' ? 1 + RV('assassin', 'vitesse', 10) / 100 : 1) * (enChute() ? reglage('vitesseChute', 1.6) : 1); // 🏖️ le sable ralentit
   if (moi.dep === 'nage' && surEau && moi.pv > 0) moi.pv = Math.min(moi.pvMax, moi.pv + moi.pvMax * (+elm.soin || 0) / 100 / 60); // 💧 se soigne dans l'eau
   if (moi.dep === 'brise' && (mx || my)) { const tx = Math.floor((moi.x + mx * moi.r * 1.3) / TUILE), ty = Math.floor((moi.y + my * moi.r * 1.3) / TUILE); if (bloqueTir(tuile(tx, ty))) abimer(tx, ty, +elm.valeur || 60); } // 🌍 brise les blocs en fonçant dedans
   moi.vx = (moi.vx || 0) + (mx * vit - (moi.vx || 0)) * REAC(); moi.vy = (moi.vy || 0) + (my * vit - (moi.vy || 0)) * REAC(); // départ / arrêt rapides (réactif)
@@ -1048,7 +1048,7 @@ function maj() {
   if (joyD.actif) { const v = vec(joyD); if (v.d > 15) tourner(moi, v.a, 0.4); }
   if (moi.recharge > 0) moi.recharge--;
   if (temps % 30 === 0) soinsSoutien();
-  majGaz(); if (temps % 30 === 15) regenerer();
+  majGaz(); majChute(); if (temps % 30 === 15) regenerer();
   if (moi.tirAttente && moi.recharge <= 0) { const q = moi.tirAttente; moi.tirAttente = null; if (temps - q.t < reglage('tamponTir', 15)) tirer(q.a, q.f); } // tir mémorisé (clic un peu trop tôt)
   if (moi.flash > 0) moi.flash--;
   if (moi.recharge <= 0) moi.mun = Math.min(+moi.perso.munitions || 3, moi.mun + 1 / (+moi.perso.recharge || 60)); // recharge des munitions
@@ -1687,7 +1687,7 @@ function gagnerSuper(j, deg) {
 function tirSpecial(j, arme, angle, force, deg) { const a = j.arme; j.arme = arme; creerProjectile(j, angle, force, j.x, j.y, deg); j.arme = a; }
 const moiOuBot = j => j === moi || (j.bot && hote); // qui applique les effets sur ce perso
 function lancerSuper(j, angle = j.angle, distant) {
-  const e = infoElem(j); if (!e || j.pv <= 0 || resultat || (!distant && !j.superPret)) return;
+  const e = infoElem(j); if (!e || j.pv <= 0 || resultat || enChute() || (!distant && !j.superPret)) return;
   son('super', volA(j.x, j.y));
   if (!distant) { if (j === moi && moi.st) moi.st.sup++; j.superPret = false; j.superC = 0; envoyer({ t: 'su', de: j.uid, a: +angle.toFixed(3) }); }
   const deg = Math.round(j.perso.degats * bonus(j, 'degats')), A = j.arme;
@@ -1898,6 +1898,15 @@ function etapeSuivante(n, eq, distant) {
   preparerObjectif(); bandeauEtape = { t: temps, txt: 'ÉTAPE ' + (etape + 1) + ' : ' + NOM_OBJ[obj()], nous: eq === moi.eq }; choc = 1; flash = 0.5;
 }
 // ---------- ☠️ MODE SURVIE : un gaz toxique referme la carte, le dernier debout gagne ----------
+// ---------- 🪂 ATTERRISSAGE : tout le monde tombe du ciel en parachute au début (on choisit où atterrir) ----------
+const chuteK = () => mode && mode.atterrissage && etat === 'JEU' ? Math.max(0, 1 - (temps - debutJeu) / (reglage('dureeChute', 4) * 60)) : 0;
+const enChute = () => chuteK() > 0;
+let atterri = true;
+function majChute() {
+  if (!mode || !mode.atterrissage || atterri || etat !== 'JEU' || enChute()) return; atterri = true;
+  for (const j of joueurs()) if (j.pv > 0) { effet('impact', j.x, j.y, '#e8d8b0', 70); if (j === moi || visible(j)) ondes.push({ x: j.x, y: j.y, r: 10, max: 90, c: '#fff', vie: 1, ep: 8 }); }
+  ono('POF!', moi.x, moi.y - 20, 1.3, '#ffe14a'); secousse = Math.max(secousse, 10); son('frappe', 0.8);
+}
 function gaz() { // → { x, y, r, rMax, actif, dans (s avant fermeture) } ou null
   if (!mode || obj() !== 'survie' || !map) return null;
   const T = TUILE, cx = map.l * T / 2, cy = map.h * T / 2, rMax = Math.hypot(cx, cy) + T, rMin = (+mode.gazRayonMin || 2.5) * T;
