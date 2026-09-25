@@ -1045,6 +1045,8 @@ const CONFIG_PAR_DEFAUT = {
     "esquiveBots": 1,
     "quetesParJour": 3,
     "comboDelai": 3,
+    "bossMondialPV": 3,
+    "bossMondialButin": 3,
     "butinArme": 75,
     "dureeChute": 4,
     "vitesseChute": 1.6,

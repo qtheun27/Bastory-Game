@@ -328,7 +328,7 @@ function dessinerMeteo() { // effets à l'écran (au-dessus du monde, sous l'int
   ctx.restore();
 }
 function demarrer(mapIdx, liste) {
-  mode = modeChoisi(); atterri = !mode.atterrissage; meteo = choisirMeteo(liste, mapIdx);
+  mode = modeChoisi(); atterri = !mode.atterrissage; meteo = choisirMeteo(liste, mapIdx); bossMondialFait = !mode.bossMondial;
   map = chargerMap(CONFIG.maps[mapIdx] || CONFIG.maps[0]);
   liste = liste || [{ uid: user.uid, nom: nomJoueur(), p: persoIndex }];
   const c = t => (t + 0.5) * TUILE, places = [];
@@ -510,7 +510,7 @@ function envoyerEtat(force) {
   if (force || cle !== envoyerEtat.dernier || temps - (envoyerEtat.t || 0) > 60) { envoyerEtat.dernier = cle; envoyerEtat.t = temps; salle.ref.child('joueurs/' + user.uid).update(e); } // 📡 n'envoie que si quelque chose a changé
   const bots = Object.values(autres).filter(j => j.bot);
   if (hote && bots.length) salle.ref.child('bots').set(Object.fromEntries(bots.map(j => [j.uid, { x: Math.round(j.x), y: Math.round(j.y), a: +j.angle.toFixed(2), pv: Math.round(j.pv), c: j.cache, m: Math.round(j.marche), bo: bonusActifs(j).join(',') }])));
-  if (hote && bosses.length) salle.ref.child('boss').set(bosses.map(b => ({ id: b.id, x: Math.round(b.x), y: Math.round(b.y), a: +b.angle.toFixed(2), pv: b.pv, ch: b.charge, cm: b.chargeMax, fx: Math.round(b.fx), fy: Math.round(b.fy), rg: b.rage, e: b.eq })));
+  if (hote && bosses.length) salle.ref.child('boss').set(bosses.map(b => ({ mo: b.mondial ? 1 : 0, id: b.id, x: Math.round(b.x), y: Math.round(b.y), a: +b.angle.toFixed(2), pv: b.pv, ch: b.charge, cm: b.chargeMax, fx: Math.round(b.fx), fy: Math.round(b.fy), rg: b.rage, e: b.eq })));
 }
 function majAutres(js) {
   for (const [uid, j] of Object.entries(autres)) {
@@ -524,7 +524,7 @@ function majAutres(js) {
 }
 function majBossDistants(liste) {
   liste.forEach((d, i) => {
-    const b = bosses[i] || (bosses[i] = creerBoss(d.id, d.x, d.y, i));
+    const neuf = !bosses[i], b = bosses[i] || (bosses[i] = creerBoss(d.id, d.x, d.y, i)); if (neuf && d.mo) { b.mondial = true; annoncerBossMondial(b); } // 👹 le boss mondial apparaît aussi chez les invités
     b.eq = d.e === undefined ? -1 : d.e;
     Object.assign(b, { tx: d.x, ty: d.y, angle: d.a, charge: d.ch, chargeMax: d.cm || 1, fx: d.fx, fy: d.fy, rage: d.rg });
     if (b.pv > 0 && d.pv <= 0) mortBoss(b);
@@ -540,6 +540,7 @@ function recevoir(e) {
   else if (e.t === 'fr') frappe(e, false);
   else if (e.t === 'ca') casser(e.tx, e.ty, e.o);
   else if (e.t === 'pr') objets = objets.filter(o => o.tx !== e.tx || o.ty !== e.ty);
+  else if (e.t === 'bl') { (e.l || []).forEach(o => objets.push({ ...o })); if (e.l && e.l[0]) ono('BUTIN LÉGENDAIRE!', e.l[0].x, e.l[0].y - 60, 1.5, '#ffb020'); } // 🟡 butin du boss mondial
   else if (e.t === 'mort' && e.k) kills[e.k] = (kills[e.k] || 0) + 1;
   else if (e.t === 'su' && j) lancerSuper(j, e.a, true);
   else if (e.t === 'ac' && j) lancerAction(j, e.a, true);
@@ -917,7 +918,17 @@ function blesserBoss(b, deg, de) {
   if (b.pv <= 0) return; b.pv = Math.max(0, b.pv - deg); b.flash = 8;
   if (b.pv === 0) { mortBoss(b); if (b.def.cristal && hote) { const e = entite(de); cristalCasse(b.eq, e ? e.eq : (joueurs().find(j => j.eq !== b.eq) || {}).eq); } }
 }
-function mortBoss(b) { effet('explosion', b.x, b.y, '#7fbf3f', 130); secousse = 22; animMort(b, img(b.def.image)); }
+function mortBoss(b) { effet('explosion', b.x, b.y, '#7fbf3f', 130); secousse = 22; animMort(b, img(b.def.image));
+  if (b.mondial && hote) { const l = []; for (let k = 0; k < reglage('bossMondialButin', 3); k++) { const a = k / 3 * Math.PI * 2, x = b.x + Math.cos(a) * 70, y = b.y + Math.sin(a) * 70, id = tirerArme().replace(/:[^:]+$/, ':legendaire'); l.push({ x, y, id, tx: -100 - k, ty: -100 - temps % 1000 }); }
+    recevoir({ t: 'bl', l }); envoyer({ t: 'bl', l }); } }
+// ---------- 👹 BOSS MONDIAL : apparaît au centre en milieu de partie, lâche des armes légendaires ----------
+let bossMondialFait = true;
+function majBossMondial() {
+  if (!mode || !mode.bossMondial || bossMondialFait || !hote || etat !== 'JEU' || temps - debutJeu < (+mode.bossMondialApres || 90) * 60) return; bossMondialFait = true;
+  const ids = Object.keys(CONFIG.bosses), id = ids[Math.floor(Math.random() * ids.length)], sp = (map.b && map.b[0]) ? { x: (map.b[0].x + 0.5) * TUILE, y: (map.b[0].y + 0.5) * TUILE } : { x: map.l * TUILE / 2, y: map.h * TUILE / 2 };
+  const b = creerBoss(id, sp.x, sp.y, bosses.length), k = reglage('bossMondialPV', 3); b.pvMax = b.pv = Math.round(b.pvMax * k); b.r = Math.round(b.r * 1.25); b.mondial = true; b.eq = -1; bosses.push(b); annoncerBossMondial(b); envoyerEtat(true);
+}
+function annoncerBossMondial(b) { ono('BOSS MONDIAL!!', b.x, b.y - 90, 2, '#ff2d55'); notif('👹 Un boss mondial est apparu au centre : bats-le pour 3 armes légendaires !'); son('super'); secousse = Math.max(secousse, 14); choc = 1; flash = 0.3; }
 function frappe(e, local) { // coup de massue d'un boss (local = calculé ici par l'hôte)
   const b = bosses.find(b => Math.hypot(b.x - e.x, b.y - e.y) < 180); if (b) b.anim = { n: 'attaque', t: temps };
   effet('impact', e.x, e.y, '#f5deb3', e.r);
@@ -1083,7 +1094,7 @@ function maj() {
   if (joyD.actif) { const v = vec(joyD); if (v.d > 15) tourner(moi, v.a, 0.4); }
   if (moi.recharge > 0) moi.recharge--;
   if (temps % 30 === 0) soinsSoutien();
-  majGaz(); majChute(); if (temps % 30 === 15) regenerer();
+  majGaz(); majChute(); majBossMondial(); if (temps % 30 === 15) regenerer();
   if (moi.tirAttente && moi.recharge <= 0) { const q = moi.tirAttente; moi.tirAttente = null; if (temps - q.t < reglage('tamponTir', 15)) tirer(q.a, q.f); } // tir mémorisé (clic un peu trop tôt)
   if (moi.flash > 0) moi.flash--;
   if (moi.recharge <= 0) moi.mun = Math.min(+moi.perso.munitions || 3, moi.mun + 1 / (+moi.perso.recharge || 60)); // recharge des munitions
@@ -1965,9 +1976,10 @@ function dessinerGaz() { // brume violette hors du cercle + bord lumineux (dessi
 }
 function hudObjectif() { // compteurs trésors / étapes + bandeau d'étape animé
   const u = U();
-  if (meteo && etat === 'JEU' && temps - debutJeu < 360) { const a = Math.min(1, (360 - (temps - debutJeu)) / 40); ctx.save(); ctx.globalAlpha = a; verre(W / 2 - 170 * u, 92 * u, 340 * u, 30 * u, 15 * u); texte((meteo.icone || '') + ' ' + meteo.nom + (meteo.description ? ' : ' + meteo.description : ''), W / 2, 107 * u, 12 * u, '#fff', 'center', 330 * u); ctx.restore(); } // 🌦️ annonce de la météo
-  if (obj() === 'survie') { const g = gaz(), n = joueurs().filter(j => j.pv > 0).length; if (g) { verre(W / 2 - 150 * u, 50 * u, 300 * u, 30 * u, 15 * u);
-    texte((g.actif ? (g.fini ? '☠️ Zone minimale' : '☠️ Le gaz se referme') : '☠️ Le gaz arrive dans ' + g.dans + ' s') + '  •  🧍 ' + n + ' en vie', W / 2, 65 * u, 13 * u, g.actif ? '#e0b0ff' : '#fff'); } }
+  const yB = (bosses.some(b => b.pv > 0) ? 88 : 50) * u; // sous la barre du boss s'il y en a une
+  if (meteo && etat === 'JEU' && temps - debutJeu < 360) { const a = Math.min(1, (360 - (temps - debutJeu)) / 40); ctx.save(); ctx.globalAlpha = a; verre(W / 2 - 170 * u, yB + 40 * u, 340 * u, 30 * u, 15 * u); texte((meteo.icone || '') + ' ' + meteo.nom + (meteo.description ? ' : ' + meteo.description : ''), W / 2, yB + 55 * u, 12 * u, '#fff', 'center', 330 * u); ctx.restore(); } // 🌦️ annonce de la météo
+  if (obj() === 'survie') { const g = gaz(), n = joueurs().filter(j => j.pv > 0).length; if (g) { verre(W / 2 - 150 * u, yB, 300 * u, 30 * u, 15 * u);
+    texte((g.actif ? (g.fini ? '☠️ Zone minimale' : '☠️ Le gaz se referme') : '☠️ Le gaz arrive dans ' + g.dans + ' s') + '  •  🧍 ' + n + ' en vie', W / 2, yB + 15 * u, 13 * u, g.actif ? '#e0b0ff' : '#fff'); } }
   if (obj() === 'tresor') { const eqs = [...new Set(joueurs().map(j => j.eq))], but = +mode.objectifTresors || 7;
     eqs.forEach((eq, i) => { const y = 84 * u + i * 24 * u; verre(W - 190 * u, y, 178 * u, 20 * u, 10 * u);
       rect(W - 188 * u, y + 2 * u, 174 * u * Math.min(1, (scoreTresor[eq] || 0) / but), 16 * u, 8 * u, eq === moi.eq ? '#ffd23f' : '#ff5a6e');
