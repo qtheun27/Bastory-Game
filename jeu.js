@@ -80,11 +80,19 @@ function redim() {
 function recaler() { // 📱 iPhone : après une rotation, Safari garde un défilement ou un dézoom → image décalée + bande noire. On remet tout en place.
   if (scrollX || scrollY) scrollTo(0, 0);
   document.documentElement.scrollTop = document.body.scrollTop = document.documentElement.scrollLeft = document.body.scrollLeft = 0;
-  const vv = window.visualViewport, m = document.querySelector('meta[name=viewport]');
-  if (vv && m && Math.abs(vv.scale - 1) > 0.01 && !recaler.encours) { // l'iPhone a dézoomé l'appli (bande noire en bas) → on force le zoom 1
-    recaler.encours = true; const c = m.content; m.content = c.replace(/initial-scale=[^,]*/, 'initial-scale=0.99');
-    setTimeout(() => { m.content = c; recaler.encours = false; redim(); }, 30);
-  }
+}
+function infosEcran() { // 📱 diagnostic (admin › Appli › « Infos écran ») : mesures réelles de l'écran, pour corriger l'affichage sur téléphone
+  if (!(CONFIG.app || {}).debugEcran) return;
+  const vv = window.visualViewport || {}, p = document.createElement('div'); p.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:100lvh'; document.body.append(p); const lvh = p.getBoundingClientRect().height;
+  p.style.height = '100dvh'; const dvh = p.getBoundingClientRect().height; p.style.cssText = 'position:fixed;top:0;bottom:0;left:0;width:1px'; const fx = p.getBoundingClientRect().height; p.remove();
+  const b = document.body.getBoundingClientRect(), L = [
+    'inner ' + innerWidth + '×' + innerHeight + '  outer ' + outerWidth + '×' + outerHeight + '  écran ' + screen.width + '×' + screen.height,
+    'visuel ' + Math.round(vv.width) + '×' + Math.round(vv.height) + ' zoom ' + (+vv.scale || 1).toFixed(2) + ' haut ' + Math.round(vv.offsetTop || 0),
+    'lvh ' + Math.round(lvh) + '  dvh ' + Math.round(dvh) + '  fixe ' + Math.round(fx) + '  html ' + document.documentElement.clientWidth + '×' + document.documentElement.clientHeight,
+    'body ' + Math.round(b.left) + ',' + Math.round(b.top) + ' ' + Math.round(b.width) + '×' + Math.round(b.height) + '  jeu ' + W + '×' + H + '  tourné ' + tourne,
+    'zones ' + [sa.t, sa.r, sa.b, sa.l].map(Math.round).join('/') + '  dpr ' + dpr.toFixed(2) + '  ' + (matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'appli' : 'navigateur') + '  ' + ((navigator.userAgent.match(/OS [\d_]+/) || [''])[0])];
+  ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.font = '600 12px monospace'; ctx.fillStyle = 'rgba(0,0,0,.75)'; ctx.fillRect(W * 0.2, H * 0.3, W * 0.6, L.length * 17 + 10);
+  ctx.fillStyle = '#7CFC00'; L.forEach((l, i) => ctx.fillText(l, W * 0.2 + 8, H * 0.3 + 20 + i * 17)); ctx.restore();
 }
 addEventListener('scroll', recaler, { passive: true });
 addEventListener('resize', redim); redim();
@@ -1366,6 +1374,7 @@ function boucle(ts) {
   else if (etat === 'ATTENTE') zoneSure(dessinerAttente);
   else if (etat === 'INTRO') { dessinerJeu(); zoneSure(dessinerIntro); }
   else { dessinerJeu(); if (etat !== 'JEU') zoneSure(dessinerFin); }
+  infosEcran();
   requestAnimationFrame(boucle);
 }
 

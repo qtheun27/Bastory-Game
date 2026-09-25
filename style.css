@@ -41,5 +41,4 @@ canvas { display: block; background: transparent; }
   #auth::before, #auth::after { font-size: 30px; }
 }
 /* 📱 Mobile : l'appli reste en paysage — si le téléphone est en portrait, tout pivote (sans message) */
-html.tourne { position: fixed; inset: 0; overflow: hidden; } /* rien ne dépasse → Safari ne dézoome pas */
 html.tourne body { position: fixed; top: 0; left: 0; transform-origin: top left; transform: rotate(90deg) translateY(-100%); }
