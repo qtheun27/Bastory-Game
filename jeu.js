@@ -708,7 +708,8 @@ function degats(e, de, deg, x, y, ang, a) { // applique les dégâts selon qui a
   if (pr && pr.perso && (de === moi.uid || (hote && pr.bot))) gagnerSuper(pr, deg); // ⭐ les dégâts chargent le super
   if (e === moi) { if (a && +a.recul && moi.depSpecial !== 'orage') { moi.kx += Math.cos(ang) * a.recul; moi.ky += Math.sin(ang) * a.recul; } return toucherMoi(deg, x, y, de); }
   e.flash = 8;
-  texteFlottant('-' + deg, e.x, e.y - e.r * 1.4, (a && a.couleur) || '#fff');
+  const gros = pr && pr.perso && deg >= pr.perso.degats * 1.4; // 💥 coup puissant (super, bonus…) : plus gros et jaune
+  texteFlottant(String(deg) + (gros ? '!' : ''), e.x, e.y - e.r * 1.4, gros ? '#ffe14a' : de === moi.uid ? '#ffffff' : '#ffd0d0', gros ? 1.45 : de === moi.uid ? 1.1 : 0.85);
   if (e.bot) { if (hote) { e.dernier = de; blesserBot(e, deg, ang); } return; } // les bots sont gérés par l'hôte
   if (!e.def) return;                                 // autre joueur : il gère ses PV lui-même
   if (hote) { e.kx += Math.cos(ang) * kb; e.ky += Math.sin(ang) * kb; }
@@ -792,7 +793,7 @@ function toucherMoi(deg, x, y, de) {
   moi.pv = Math.max(0, moi.pv - deg); moi.flash = 8;
   const ang = Math.atan2(moi.y - y, moi.x - x);
   moi.kx += Math.cos(ang) * 14; moi.ky += Math.sin(ang) * 14;
-  texteFlottant('-' + deg, moi.x, moi.y - 50, '#ff4d4d');
+  texteFlottant('-' + deg, moi.x, moi.y - 50, '#ff4d4d', 1);
   if (moi.pv === 0) mourir(moi);
 }
 function blesserBoss(b, deg, de) {
@@ -1216,25 +1217,26 @@ const ONO = { explosion: ['DOKAAN!', 'KABOOM!', 'BOOM!!'], entaille: ['ZASH!', '
 const COULEURS = ['#ffe14a', '#ff5ab4', '#5ff0ff', '#ff8a1f', '#b6ff4a'];
 let onos = [], choc = 0, flash = 0;
 function ono(txt, x, y, gros = 1, couleur) {
-  if (onos.length > 5) onos.shift();
-  onos.push({ txt, x: x + (Math.random() - 0.5) * 30, y: y - 20, vie: 1, gros, c: couleur || COULEURS[Math.floor(Math.random() * COULEURS.length)], rot: (Math.random() - 0.5) * 0.6, seed: Math.random() * 6 });
+  if (onos.length > 3) onos.shift();
+  onos.push({ txt, x: x + (Math.random() - 0.5) * 40, y: y - 48, vie: 1, gros, c: couleur || COULEURS[Math.floor(Math.random() * COULEURS.length)], rot: (Math.random() - 0.5) * 0.6, seed: Math.random() * 6 });
 }
 function onoEffet(type, x, y) { // onomatopée selon l'effet de l'arme
   const l = ONO[type]; if (!l) return;
   const fort = type === 'explosion' || type === 'impact' || type === 'foudre';
-  if (fort || Math.random() < 0.55) ono(l[Math.floor(Math.random() * l.length)], x, y, fort ? 1.25 : 0.85);
-  if (fort) { choc = Math.max(choc, 0.8); flash = Math.max(flash, 0.35); }
+  const q = reglage('onomatopees', 1); // 0 = aucune, 1 = modéré (par défaut), 2 = beaucoup
+  if (q > 0 && Math.random() < (fort ? 0.4 : 0.12) * q) ono(l[Math.floor(Math.random() * l.length)], x, y, fort ? 1 : 0.7);
+  if (fort) { const fl = reglage('flashEcran', 0.4); choc = Math.max(choc, 0.8 * fl); flash = Math.max(flash, 0.35 * fl); } // flash plus léger : on voit le coup
 }
 function dessinerOnos() { // onomatopées (repère du monde)
   viseeSuper();
   for (const o of onos) {
-    const age = 1 - o.vie, k = elastique(Math.min(1, age * 4)), s = 26 * o.gros * (0.3 + 0.7 * k);
-    ctx.globalAlpha = Math.min(1, o.vie * 2.5);
+    const age = 1 - o.vie, k = elastique(Math.min(1, age * 4)), s = 22 * o.gros * (0.3 + 0.7 * k);
+    ctx.globalAlpha = Math.min(0.92, o.vie * 2.5);
     const tr = o.vie > 0.75 ? (Math.random() - 0.5) * 3 : 0; // tremblement à l'impact
     ctx.save(); ctx.translate(o.x + tr, o.y - age * 18 + tr); ctx.rotate(o.rot);
     if (o.gros > 1.1) eclat(0, 0, s * 1.6, 11, 'rgba(255,255,255,.9)', o.seed, NOIR, 3);
     bd(o.txt, 0, 0, s, o.c, 0); ctx.restore();
-    o.vie -= 0.022;
+    o.vie -= 0.03;
   }
   ctx.globalAlpha = 1; onos = onos.filter(o => o.vie > 0);
 }
@@ -1520,7 +1522,7 @@ function dessinerEffets() {
     } else { ctx.beginPath(); ctx.arc(p.x, p.y, p.t, 0, 7); ctx.fill(); }
   }
   ctx.globalCompositeOperation = 'source-over';
-  for (const t of textes) { ctx.globalAlpha = Math.max(0, Math.min(1, t.vie * 1.5)); titre(t.txt, t.x, t.y, 24 * (1 + Math.max(0, t.vie - 0.85) * 2.5), t.c); } // chiffres qui rebondissent
+  for (const t of textes) { ctx.globalAlpha = Math.max(0, Math.min(1, t.vie * 1.6)); const pop = t.vie > 0.86 ? 1 + (t.vie - 0.86) * 5 : 1; titre(t.txt, t.x, t.y, 26 * (t.k || 1) * pop * reglage('tailleDegats', 1), t.c); } // 💯 chiffres de dégâts : gros « pop » puis montent en s'effaçant
   ctx.globalAlpha = 1;
   dessinerOnos();
 }
@@ -1534,11 +1536,11 @@ function majEffets() {
     else p.vie -= p.forme === 'eclair' ? 0.07 : p.forme === 'trait' && p.a !== undefined ? 0.06 : 0.04;
   }
   for (const o of ondes) { o.r += (o.max - o.r) * 0.25; o.vie -= 0.06; }
-  for (const t of textes) { t.y -= 1; t.vie -= 0.02; }
+  for (const t of textes) { t.y -= 1.1; t.x += t.vx || 0; t.vie -= 0.022; }
   particules = particules.filter(p => p.vie > 0); ondes = ondes.filter(o => o.vie > 0); textes = textes.filter(t => t.vie > 0);
 }
 
-function texteFlottant(txt, x, y, c) { textes.push({ txt, x: x + (Math.random() - 0.5) * 20, y, c, vie: 1 }); }
+function texteFlottant(txt, x, y, c, k = 1) { if (textes.length > 40) textes.shift(); textes.push({ txt, x: x + (Math.random() - 0.5) * 24, y, c, vie: 1, k, vx: (Math.random() - 0.5) * 1.2 }); }
 
 // ---------- 🌟 POUVOIRS D'ÉLÉMENT : bouton ACTION + SUPER propre à chaque perso ----------
 const ELEM_DEF = { // noms et onomatopées par défaut (nom / charge / recharge réglables dans l'admin → Éléments)

@@ -1020,6 +1020,9 @@ const CONFIG_PAR_DEFAUT = {
     "traineeTirs": 6,
     "impact3D": 1,
     "styleAnneau": "arcade",
+    "onomatopees": 1,
+    "flashEcran": 0.4,
+    "tailleDegats": 1,
     "decor3D": 1
   },
   "elements": {
