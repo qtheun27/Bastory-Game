@@ -140,6 +140,7 @@ var CH_JEU = [['vitesseJeu','🏃 Vitesse générale de tous les persos (multipl
   ['reculTir','💥 Recul du perso à chaque tir (0 = aucun)','number'],
   ['tremblementTir','📳 Tremblement de l\'écran au tir (0 = aucun)','number'],
   ['eclatCanon','✨ Éclat lumineux au bout du canon','check'],
+  ['styleAnneau','⭕ Anneau sous les persos','select',[['arcade','arcade (disque + flèche de direction)'],['simple','Simple (cercle fin)']]],
   ['—','🎬 Animations (vue 3D)','titre'],
   ['rebondPerso','💢 Rebond du perso quand il tire / est touché (0 = aucun, 1 = normal, 2 = cartoon)','number'],
   ['pasMarche','🚶 Vitesse de référence des pas (+ grand = pas plus lents ; à ajuster si les pieds glissent)','number'],
@@ -154,10 +155,10 @@ const CH = {
           ['equipes','Équipes (multi)','select',[['chacun','Chacun pour soi'],['deux','2 équipes'],['trois','3 équipes'],['quatre','4 équipes'],['coop','Tous ensemble (coop)']]],
           ['pointsVictoire','Points par victoire','number'],['pointsDefaite','Points par défaite','number'],
           ['reapparition','Réapparition après la mort','check'],['delaiReapparition','Délai de réapparition (s)','number'],['duree','Durée max de la partie (s, 0 = illimité)','number'],
-          ['objectif','Objectif de victoire','select',[['standard','⚔️ Éliminer (ou battre les boss)'],['zone','🎯 Tenir la zone (outil Zone sur la map)'],['bloc','💎 Détruire le cristal (outil Cristal sur la map)'],['tresor','💰 Chasse au trésor (trésors cachés)'],['marathon','🏃 Marathon (plusieurs objectifs à la suite)']]],
+          ['objectif','Objectif de victoire','select',[['standard','⚔️ Éliminer (ou battre les boss)'],['zone','🎯 Tenir la zone (outil Zone sur la map)'],['bloc','🏰 Assaut des tours : détruire la tour adverse (outil Tour sur la map)'],['tresor','💰 Chasse au trésor (trésors cachés)'],['marathon','🏃 Marathon (plusieurs objectifs à la suite)']]],
           ['etapes','🏃 Marathon : épreuves (coche et ordonne)','etapes'],['nbTresors','Trésor : nombre de trésors cachés','number'],['objectifTresors','Trésor : trésors à trouver pour gagner','number'],
-          ['tempsZone','Zone : temps à tenir (s)','number'],['pvCristal','Cristal : points de vie','number'],['degatsCristal','Cristal : dégâts de ses tirs','number'],
-          ['porteeCristal','Cristal : portée de tir','number'],['cadenceCristal','Cristal : délai entre tirs (60 = 1 s)','number'],
+          ['tempsZone','Zone : temps à tenir (s)','number'],['pvCristal','Tour : points de vie','number'],['degatsCristal','Tour : dégâts de ses tirs','number'],
+          ['porteeCristal','Tour : portée de tir','number'],['cadenceCristal','Tour : délai entre tirs (60 = 1 s)','number'],
           ['botsObjets','Les bots ramassent les objets rares','check'],
           ['niveauBoss','Niveau des boss (1 = normal, 2 = 2× plus forts)','number'],['niveauBots','Niveau de base des bots (1 = normal)','number'],
           ['botsAdaptatifs','Bots adaptés aux points des joueurs','check'],
@@ -172,7 +173,7 @@ const CH = {
           ['modele','Modèle 3D (.glb, ex : modeles/rokh.glb)','text'],['modeleEchelle','Taille du perso (1 = normal, 1.4 = grand)','number'],['modeleRotation','Modèle : rotation (degrés)','number'],
           ['animRepos','Animation de repos (vide = auto)','anims'],['animSaut','Animation de saut (vide = auto)','anims'],['animCourse','Animation de course (si le perso est rapide)','anims'],['animSuper','Animation du Super','anims'],['animVictoire','🕺 Animation de victoire (danse de fin, vide = Super)','anims'],['animDefaite','😢 Animation de défaite (vide = repos, debout)','anims'],['animAction','Animation de l\'Action','anims'],['animMarche','Animation de marche (vide = auto)','anims'],['animAttaque','Animation d\'attaque (vide = auto)','anims'],['animTouche','Animation coup reçu (vide = auto)','anims'],['animMort','Animation de mort (vide = auto)','anims'],['animReleve','Animation de réapparition (vide = auto)','anims']],
   arme:  [['nom','Nom','text'],['image','Image (vide = boule)','image'],
-          ['type','Trajectoire','select',[['lob','Lancer en cloche (passe les murs)'],['retour','Aller-retour'],['droit','Tir droit'],['terrain','🌋 Terrain (fait sortir des cases du sol)']]],
+          ['type','Trajectoire','select',[['frappe','🔨 Frappe lourde au sol (2 temps : impact puis éclats)'],['lob','Lancer en cloche (passe les murs)'],['retour','Aller-retour'],['droit','Tir droit'],['terrain','🌋 Terrain (fait sortir des cases du sol)']]],
           ['effet','Animation d\'impact','select',[['explosion','💥 Explosion'],['entaille','⚔️ Entaille'],['etincelle','✨ Étincelles'],['impact','🔨 Onde de choc'],
             ['foudre','⚡ Foudre'],['glace','❄️ Glace'],['poison','☠️ Poison'],['fumee','🌫️ Fumée'],['feu','🔥 Feu'],['etoiles','⭐ Étoiles'],['vortex','🌀 Tourbillon'],['eclaboussure','💦 Éclaboussure']]],
           ['vitesse','Vitesse du projectile (conseillé : 9 à 16)','number',null,AIDE.vitArme],['taille','Taille (rayon, px)','number'],['rayon','Rayon explosion','number'],['couleur','Couleur effet','color'],
@@ -181,6 +182,10 @@ const CH = {
           ['rebonds','Tir droit : ricochets sur les murs','number'],['bonusRebond','Puissance × à chaque ricochet','number'],
           ['chaine','Tir droit : rebonds vers ennemis proches','number'],['perteChaine','Puissance × à chaque ennemi suivant','number'],['porteeChaine','Distance max vers l\'ennemi suivant','number'],
           ['forme','🎨 Forme 3D du projectile (ou 🌋 forme du terrain)','select',[['','⚪ Boule'],['fleche','🏹 Flèche'],['feu','🔥 Boule de feu'],['bulle','🫧 Bulle'],['rocher','🪨 Rocher'],['etoile','⭐ Étoile'],['lame','🪃 Lame tournoyante'],['cristal','💎 Cristal'],['onde','🔨 Onde au sol (marteau)'],['zone','🌋 Terrain : zone ronde'],['ligne','🌋 Terrain : ligne devant soi'],['mur','🌋 Terrain : mur en travers'],['croix','🌋 Terrain : croix']]],
+          ['distanceFrappe','🔨 Frappe : distance du point d\'impact devant le perso (px)','number',null,AIDE.portee],['delaiFrappe','🔨 Frappe : temps d\'élan avant l\'impact (à caler sur l\'animation)','number',null,AIDE.images],
+          ['ralentiElan','🔨 Frappe : vitesse du perso pendant l\'élan (0.35 = très ralenti, 1 = normal)','number'],
+          ['eclats','🪨 Éclats : nombre (0 = aucun)','number'],['degatsEclats','🪨 Éclats : dégâts (% de la frappe)','number'],['angleEclats','🪨 Éclats : ouverture de l\'éventail (degrés)','number'],
+          ['porteeEclats','🪨 Éclats : distance parcourue (px)','number',null,AIDE.portee],['vitesseEclats','🪨 Éclats : vitesse','number',null,AIDE.vitArme],
           ['nbCases','🌋 Nombre / taille (cases)','number'],
           ['typeCase','🌋 Case créée','select',[['#','🟫 Mur (bloquant)'],['B','🌳 Buisson (cache)'],['W','🟦 Eau (bloque la marche)'],['S','🟨 Sable (ralentit)'],['.','🟩 Herbe (efface les obstacles)']]],
           ['dureeCase','🌋 Durée (s, 0 = permanent)','number'],['delaiCase','🌋 Délai entre cases (60 = 1 s)','number']],
@@ -210,7 +215,7 @@ function formulaire(obj, champs) {
       f.append(el('div', { className: 'ligne' }, el('span', { textContent: lab }), sel)); continue;
     }
     if (type === 'etapes') { // 🏃 épreuves du marathon : cochées et remises dans l'ordre avec ▲
-      const TOUS = [['bloc', '💎 Guerre des cristaux'], ['zone', '🎯 Zone de contrôle'], ['tresor', '💰 Chasse au trésor']], box = el('div', { className: 'multi' });
+      const TOUS = [['bloc', '🏰 Assaut des tours'], ['zone', '🎯 Zone de contrôle'], ['tresor', '💰 Chasse au trésor']], box = el('div', { className: 'multi' });
       const dessiner = () => {
         box.innerHTML = ''; const actifs = String(obj[k] || '').split(',').filter(v => TOUS.some(t => t[0] === v));
         const maj = l => { obj[k] = l.join(','); modifie(); dessiner(); };
@@ -250,6 +255,14 @@ function formulaire(obj, champs) {
     f.append(el('label', {}, el('span', { textContent: lab }, bulle), inp,
       type === 'icone' ? el('span', { className: 'img-outils' }, prev, boutonIcone(src => { inp.value = src; inp.oninput(); }, obj)) :
       type === 'image' ? el('span', { className: 'img-outils' }, prev, boutonUpload(src => { inp.value = src; inp.oninput(); }, () => inp.value)) : ''));
+  }
+  if (champs === CH.arme) { // 🔨 n'afficher que les réglages de la trajectoire choisie
+    const T = o => o.type, C = { distanceFrappe: o => T(o) === 'frappe', delaiFrappe: o => T(o) === 'frappe', ralentiElan: o => T(o) === 'frappe', eclats: o => T(o) === 'frappe', degatsEclats: o => T(o) === 'frappe' && +o.eclats > 0,
+      angleEclats: o => T(o) === 'frappe' && +o.eclats > 0, porteeEclats: o => T(o) === 'frappe' && +o.eclats > 0, vitesseEclats: o => T(o) === 'frappe' && +o.eclats > 0,
+      rebonds: o => T(o) === 'droit', bonusRebond: o => T(o) === 'droit', chaine: o => T(o) === 'droit', perteChaine: o => T(o) === 'droit', porteeChaine: o => T(o) === 'droit',
+      nbCases: o => T(o) === 'terrain', typeCase: o => T(o) === 'terrain', dureeCase: o => T(o) === 'terrain', delaiCase: o => T(o) === 'terrain' };
+    const el2 = [...f.children], maj = () => champs.forEach(([k], i) => { if (C[k] && el2[i]) el2[i].style.display = C[k](obj) ? '' : 'none'; });
+    maj(); f.addEventListener('input', maj); f.addEventListener('change', maj);
   }
   if (champs === CH.mode) { // ⚙️ n'afficher que les réglages utiles pour le type de jeu et l'objectif choisis
     const ep = o => String(o.etapes || '').split(','), a = (o, k) => o.objectif === k || (o.objectif === 'marathon' && ep(o).includes(k)), multi = o => o.type === 'multi';
@@ -490,7 +503,7 @@ const VUES = {
 
     // 🎨 outils rangés par familles • option miroir pour des maps équitables
     const GROUPES = [['🌍 Terrain', [['.', '🟩 Sol'], ['#', '🧱 Mur'], ['B', '🌿 Buisson'], ['W', '🌊 Eau / lave'], ['S', '🏖️ Sable']]],
-      ['🎯 Objectifs', [['C', '🎁 Coffre'], ['Z', '🎯 Zone'], ['T', '💎 Cristal (équipe la + proche)'], ['N', '💎 Cristal neutre'], ['5', '💎 Cristal équipe 1'], ['6', '💎 Cristal équipe 2'], ['7', '💎 Cristal équipe 3'], ['8', '💎 Cristal équipe 4'], ['O', '💰 Cachette de trésor']]],
+      ['🎯 Objectifs', [['C', '🎁 Coffre'], ['Z', '🎯 Zone'], ['T', '🏰 Tour (équipe la + proche)'], ['N', '🏰 Tour neutre'], ['5', '🏰 Tour équipe 1'], ['6', '🏰 Tour équipe 2'], ['7', '🏰 Tour équipe 3'], ['8', '🏰 Tour équipe 4'], ['O', '💰 Cachette de trésor']]],
       ['🧍 Départs', [['P', '🧍 Joueur'], ['1', '🔵 Équipe 1'], ['2', '🔴 Équipe 2'], ['3', '🟢 Équipe 3'], ['4', '🟡 Équipe 4'], ['E', '👹 Boss']]]];
     const pal = el('div', { className: 'palette-groupes' });
     GROUPES.forEach(([t, l]) => pal.append(el('div', { className: 'outils palette' }, el('b', { textContent: t }), ...l.map(([c, n]) => el('button', { textContent: n, className: c === pinceau ? 'on' : 'sec', onclick: () => { pinceau = c; afficher(); } })))));

@@ -867,8 +867,8 @@ const CONFIG_PAR_DEFAUT = {
       "botsAdaptatifs": true
     },
     {
-      "nom": "Guerre des cristaux",
-      "description": "Détruis le cristal ennemi",
+      "nom": "Assaut des tours",
+      "description": "Détruis la tour ennemie (elle se défend en tirant !)",
       "type": "multi",
       "actif": true,
       "joueursMin": 2,
@@ -911,7 +911,7 @@ const CONFIG_PAR_DEFAUT = {
       "reapparition": true,
       "delaiReapparition": 3,
       "nom": "Marathon",
-      "description": "Cristaux puis zone : l'équipe qui gagne le plus d'étapes l'emporte",
+      "description": "Tours puis zone : l'équipe qui gagne le plus d'étapes l'emporte",
       "pointsVictoire": 50,
       "pointsDefaite": 8,
       "duree": 0,
@@ -1018,7 +1018,8 @@ const CONFIG_PAR_DEFAUT = {
     "pasMarche": 2.6,
     "haloTirs": 1,
     "traineeTirs": 6,
-    "impact3D": 1
+    "impact3D": 1,
+    "styleAnneau": "arcade"
   },
   "elements": {
     "terre": {
@@ -1216,6 +1217,11 @@ function migrerConfig(c) {
     const DESC = { ROKH: 'Ours-golem de roche. Son marteau fend le sol en onde de choc, sa charge brise les blocs.', ZEPHYR: 'Faucon du vent. Ses flèches rapides ricochent, il saute par-dessus les murs.',
       NAIA: 'Axolotl guerrière. Son trident repousse puis revient ; elle nage et se soigne dans l\'eau.', PYRO: 'Bébé dragon. Sa boule de feu explose en flammes et il laisse une traînée brûlante.' };
     c.persos.forEach(p => { if (!p.description && DESC[p.nom]) p.description = DESC[p.nom]; }); c.version = 15;
+  }
+  if ((c.version || 0) < 16) { // v16 : marteau de Rokh en 2 temps (frappe au sol puis éclats de roche)
+    if (c.armes.rocher && c.armes.rocher.forme === 'onde') Object.assign(c.armes.rocher, { type: 'frappe', distanceFrappe: 100, delaiFrappe: 16, rayon: 85, eclats: 5, degatsEclats: 45, angleEclats: 75, porteeEclats: 180, vitesseEclats: 9, ralentiElan: 0.35 });
+    c.modes.forEach(m => { if (m.nom === 'Guerre des cristaux') m.nom = 'Assaut des tours'; if (m.description === 'Détruis le cristal ennemi') m.description = 'Détruis la tour ennemie (elle se défend en tirant !)'; if (m.description) m.description = m.description.replace(/^Cristaux puis/, 'Tours puis'); }); // 🏰 le cristal devient une tour
+    c.version = Math.max(c.version || 0, 16);
   }
   c.persos.forEach(p => { if (typeof p.base === 'boolean') { p.deBase = p.base; delete p.base; } }); // réparation : ancien nom du champ
   c.persos.forEach(p => { if (p.deBase === false && !p.armeAuto) armePour(c, p); }); // nouveaux persos : arme créée automatiquement

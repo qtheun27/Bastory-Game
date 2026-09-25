@@ -62,6 +62,35 @@ const Rendu3D = (() => {
     const R2 = v.lob ? v.R : 40; an.material.color = c; an.scale.setScalar(R2 * (v.lob ? 1 : 0.6) * (1 + pulse * 0.06)); an.position.set(v.lob ? d : d, 4, 0);
     pl.material.color = c; pl.scale.setScalar(R2 * (v.lob ? 0.95 : 0.55)); pl.position.copy(an.position); pl.position.y = 3.5;
   }
+  let balises = null, balisesCle = '', coffres = new Map();
+  function majObjectifs() { // 🎯 balises 3D aux coins de la zone • 💰 coffres au trésor en 3D
+    const zo = obj() === 'zone' && map.z ? centreZone() : null, cle = zo ? [zo.b.x0, zo.b.y0, zo.b.x1, zo.b.y1].join() : '';
+    if (cle !== balisesCle) { if (balises) scene.remove(balises); balises = null; balisesCle = cle;
+      if (zo) { balises = new THREE.Group(); const b = zo.b, T = TUILE;
+        for (const [x, z] of [[b.x0, b.y0], [b.x1 + 1, b.y0], [b.x0, b.y1 + 1], [b.x1 + 1, b.y1 + 1]]) {
+          const g = new THREE.Group(); g.position.set(x * T, 0, z * T);
+          const mat = new THREE.Mesh(new THREE.CylinderGeometry(5, 7, 70, 8), toon('#e8e2d0')); mat.position.y = 35; mat.castShadow = true; g.add(mat);
+          const e = new THREE.Mesh(mat.geometry, encre()); e.position.y = 35; e.scale.setScalar(1.15); g.add(e);
+          const feu = new THREE.Mesh(new THREE.OctahedronGeometry(10, 0), toon('#ffffff', { emissive: new THREE.Color(1, 1, 1), emissiveIntensity: 0.6 })); feu.position.y = 82; g.add(feu);
+          const halo = new THREE.Mesh(new THREE.SphereGeometry(18, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false })); halo.position.y = 82; g.add(halo);
+          balises.add(g); }
+        scene.add(balises); } }
+    if (balises) { const eqC = typeof zoneControle === 'number' ? zoneControle : null, c = lin(eqC === null ? (zoneControle === 'conteste' ? '#ffd23f' : '#ffffff') : eqC === moi.eq ? '#5ac8fa' : '#ff5a6e');
+      balises.children.forEach((g, i) => { const [, , feu, halo] = g.children; feu.material.color.copy(c); feu.material.emissive.copy(c); halo.material.color.copy(c);
+        feu.rotation.y = temps * 0.05; feu.position.y = halo.position.y = 82 + Math.sin(temps * 0.08 + i) * 4; halo.scale.setScalar(1 + 0.15 * Math.sin(temps * 0.12 + i)); }); }
+    const vus = new Set(obj() === 'tresor' ? tresors.filter(t => t.pris === null) : []);
+    for (const [t, m] of coffres) if (!vus.has(t)) { scene.remove(m); coffres.delete(t); }
+    for (const t of vus) { let m = coffres.get(t);
+      if (!m) { m = new THREE.Group(); const bois = toon('#b8742f'), or = toon('#ffd23f', { emissive: lin('#ffb300'), emissiveIntensity: 0.4 });
+        const add = (g, mat, x, y, z) => { const o = new THREE.Mesh(g, mat); o.position.set(x, y, z); o.castShadow = true; m.add(o); const e = new THREE.Mesh(g, encre()); e.position.copy(o.position); e.scale.setScalar(1.08); m.add(e); return o; };
+        add(new THREE.BoxGeometry(34, 20, 24), bois, 0, 10, 0); add(new THREE.CylinderGeometry(12, 12, 34, 10, 1, false, 0, Math.PI).rotateZ(Math.PI / 2), toon('#d58f44'), 0, 20, 0);
+        add(new THREE.BoxGeometry(6, 22, 25), or, 0, 12, 0); add(new THREE.BoxGeometry(6, 8, 6), or, 0, 17, 12.5);
+        const lu = new THREE.Mesh(new THREE.SphereGeometry(26, 12, 8), new THREE.MeshBasicMaterial({ color: lin('#ffd23f'), transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false })); lu.position.y = 16; m.add(lu); m.userData.lu = lu;
+        scene.add(m); coffres.set(t, m); }
+      const d = Math.hypot(t.x - moi.x, t.y - moi.y), vis = t.lache ? 1 : Math.max(0, Math.min(1, (230 - d) / 80)); // caché tant qu'on n'est pas près
+      m.visible = vis > 0.02; m.scale.setScalar(0.4 + 0.6 * vis); m.position.set(t.x, 4 + Math.abs(Math.sin(temps * 0.08 + t.x)) * 6 * vis, t.y); m.rotation.y = Math.sin(temps * 0.03 + t.y) * 0.4;
+      m.userData.lu.material.opacity = 0.12 + 0.15 * Math.sin(temps * 0.15 + t.x); }
+  }
   function majTirs() { // 🎯 projectiles en vraie 3D : flèche, rocher, bulle, boule de feu… + éclair de départ
     if (!geoTir) geoTir = { fleche: new THREE.ConeGeometry(6, 36, 6), rocher: new THREE.DodecahedronGeometry(13, 0), bulle: new THREE.SphereGeometry(14, 16, 12), feu: new THREE.SphereGeometry(13, 14, 10), base: new THREE.SphereGeometry(10, 12, 8), eclat: new THREE.SphereGeometry(1, 10, 8),
       etoile: new THREE.OctahedronGeometry(13, 0), lame: new THREE.TorusGeometry(13, 3.5, 6, 18), cristal: new THREE.OctahedronGeometry(10, 0).scale(0.7, 1.6, 0.7) };
@@ -180,15 +209,24 @@ const Rendu3D = (() => {
       b.op += (cible - b.op) * 0.25; b.mats.forEach(m => { m.opacity = b.op; m.depthWrite = b.op > 0.95; });
     }
     for (const [b, m] of cristaux) if (!la.has(b) || b.pv <= 0) { scene.remove(m); cristaux.delete(b); }
-    for (const b of bosses) if (b.def.cristal && b.pv > 0) { // 💎 cristal 3D qui flotte et tourne, couleur de l'équipe
+    for (const b of bosses) if (b.def.cristal && b.pv > 0) { // 🏰 tour de défense aux couleurs de l'équipe : donjon en pierre + cœur d'énergie qui tire
       let m = cristaux.get(b);
-      if (!m) { const c = b.eq === -1 ? '#b57bff' : b.eq === -2 ? '#ffd23f' : b.eq === moi.eq ? '#5ac8fa' : '#ff5a6e', geo = new THREE.OctahedronGeometry(1, 0);
-        m = new THREE.Group(); const k = new THREE.Mesh(geo, toon(c, { emissive: lin(c), emissiveIntensity: 0.35 })); k.scale.set(26, 44, 26); k.castShadow = true; m.add(k);
-        const e2 = new THREE.Mesh(geo, encre()); e2.scale.set(29, 48, 29); m.add(e2); const socle = new THREE.Mesh(new THREE.CylinderGeometry(30, 36, 12, 8), toon('#6b6f86')); socle.position.y = -52; m.add(socle);
+      if (!m) { const c = b.eq === -1 ? '#b57bff' : b.eq === -2 ? '#ffd23f' : b.eq === moi.eq ? '#5ac8fa' : '#ff5a6e', pierre = toon('#9aa0b8'), sombre = toon('#6b6f86');
+        m = new THREE.Group(); const add = (g, mat, x, y, z, contour) => { const o = new THREE.Mesh(g, mat); o.position.set(x, y, z); o.castShadow = true; m.add(o); if (contour) { const e = new THREE.Mesh(g, encre()); e.position.copy(o.position); e.scale.setScalar(1.07); m.add(e); } return o; };
+        add(new THREE.CylinderGeometry(44, 50, 16, 10), sombre, 0, 8, 0, true);                              // socle
+        add(new THREE.CylinderGeometry(34, 40, 74, 10), pierre, 0, 53, 0, true);                             // donjon
+        add(new THREE.CylinderGeometry(35.5, 38, 12, 10), toon(c, { emissive: lin(c), emissiveIntensity: 0.25 }), 0, 44, 0, false); // bandeau d'équipe
+        add(new THREE.CylinderGeometry(42, 38, 12, 10), pierre, 0, 94, 0, true);                             // chemin de ronde
+        for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2; add(new THREE.BoxGeometry(12, 14, 12), sombre, Math.cos(a) * 36, 107, Math.sin(a) * 36, true); } // créneaux
+        const coeur = add(new THREE.OctahedronGeometry(16, 0), toon(c, { emissive: lin(c), emissiveIntensity: 0.8 }), 0, 128, 0, true);
+        const halo = new THREE.Mesh(new THREE.SphereGeometry(26, 14, 10), new THREE.MeshBasicMaterial({ color: lin(c), transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false })); halo.position.y = 128; m.add(halo);
+        m.userData = { coeur, halo, cEncre: m.children[m.children.indexOf(coeur) + 1] };
         scene.add(m); cristaux.set(b, m); }
-      m.position.set(b.x, 64 + Math.sin(temps * 0.05) * 6, b.y); m.children[0].rotation.y = m.children[1].rotation.y = temps * 0.02;
-      const s = 1 + (b.flash > 0 ? 0.12 : 0); m.scale.setScalar(s);
-      const pied = projeter(b.x, b.y, 0), tete = projeter(b.x, b.y, 130); b.topY = b.y + (tete[1] - pied[1]) / aff[3]; b.topT = temps;
+      const U = m.userData, y = 128 + Math.sin(temps * 0.06) * 5, pv = b.pv / (b.pvMax || 1);
+      U.coeur.position.y = U.cEncre.position.y = U.halo.position.y = y; U.coeur.rotation.y = U.cEncre.rotation.y = temps * 0.03;
+      U.halo.scale.setScalar(1 + Math.sin(temps * 0.15) * 0.1 + ((b.tir || 0) > (b.def.cadenceTir || 60) - 8 ? 0.5 : 0)); // pulse, gros éclat quand elle tire
+      const tr = b.flash > 0 ? (Math.random() - 0.5) * 6 : 0; m.position.set(b.x + tr, 0, b.y + tr * 0.5); m.rotation.z = (1 - pv) * 0.06; // tremble quand elle est touchée, penche quand elle faiblit
+      const pied = projeter(b.x, b.y, 0), tete = projeter(b.x, b.y, 160); b.topY = b.y + (tete[1] - pied[1]) / aff[3]; b.topT = temps;
     }
     for (const e of la) {
       const p = modeleDe(e); if (!p) continue;
@@ -242,7 +280,7 @@ const Rendu3D = (() => {
     const aff = [(b[0] - a[0]) / 100, (b[1] - a[1]) / 100, (d[0] - a[0]) / 100, (d[1] - a[1]) / 100];
     aff.push(a[0] - c0.x * aff[0] - c0.z * aff[2], a[1] - c0.x * aff[1] - c0.z * aff[3]);
     const t = performance.now(); majPersos(Math.min(0.05, (t - (horloge || t)) / 1000), aff); horloge = t;
-    majTirs(); majVisee(); R.render(scene, camera);
+    majTirs(); majObjectifs(); majVisee(); R.render(scene, camera);
     return aff;
   }
   function versMonde(sx, sy) { // écran → sol (rayon depuis la caméra)

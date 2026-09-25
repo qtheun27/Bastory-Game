@@ -260,7 +260,7 @@ function creerJoueur(pi, x, y, uid, nom, eq, nv) {
 function creerBoss(id, x, y, i) {
   const ids = Object.keys(CONFIG.bosses);
   if (id !== 'bloc' && !CONFIG.bosses[id]) id = ids[Math.floor(Math.random() * ids.length)]; // 'aleatoire' ou inconnu
-  const d = id === 'bloc' ? { nom: 'CRISTAL', cristal: true, image: '', pvMax: +mode.pvCristal || 20000, taille: 40, vitesse: 0, degats: 0, delaiAttaque: 9999, rayonAttaque: 0,
+  const d = id === 'bloc' ? { nom: 'TOUR', cristal: true, image: '', pvMax: +mode.pvCristal || 20000, taille: 40, vitesse: 0, degats: 0, delaiAttaque: 9999, rayonAttaque: 0,
     arme: CONFIG.armes.eclair ? 'eclair' : Object.keys(CONFIG.armes)[0], porteeTir: +mode.porteeCristal || 350, degatsTir: +mode.degatsCristal || 800, cadenceTir: +mode.cadenceCristal || 60 } : (b => { const n = +mode.niveauBoss || 1; return { ...b, pvMax: Math.round(b.pvMax * n), degats: Math.round(b.degats * n), degatsTir: Math.round((+b.degatsTir || b.degats / 2) * n), vitesse: b.vitesse * (0.85 + 0.15 * n) }; })(CONFIG.bosses[id]); // niveau du boss
   return { i, id, def: d, x, y, tx: x, ty: y, r: d.taille || 48, pv: d.pvMax, pvMax: d.pvMax, angle: Math.PI, recharge: 60,
            flash: 0, marche: 0, kx: 0, ky: 0, charge: 0, chargeMax: 1, rage: false, cx: x, cy: y, fx: x, fy: y,
@@ -318,9 +318,9 @@ function verifierFin() {
   if (o === 'tresor') for (const [eq, n] of Object.entries(scoreTresor)) if (n >= (+mode.objectifTresors || 7)) return gagnerObjectif(+eq, 'Trésors trouvés !', 'Les trésors sont à eux…');
   if (o === 'bloc' && ennemis.length) { // 💎 1re équipe à casser un cristal adverse → gagne ; cristaux neutres → la majorité gagne
     const adv = cristauxCasses.find(c => c.p >= 0 && c.eq != null && c.eq !== c.p);
-    if (adv) return gagnerObjectif(adv.eq, 'Cristal adverse détruit !', adv.p === moi.eq ? 'Ton cristal est détruit' : 'Un cristal est tombé…');
+    if (adv) return gagnerObjectif(adv.eq, 'Tour adverse détruite !', adv.p === moi.eq ? 'Ta tour est détruite' : 'Une tour est tombée…');
     const N = nbNeutres(), sc = scoreNeutres(), best = Object.entries(sc).sort((a, b) => b[1] - a[1])[0];
-    if (N && best && (best[1] > N / 2 || cristauxCasses.filter(c => c.p === -2).length >= N)) return gagnerObjectif(+best[0], 'Cristaux conquis !', 'Ils ont cassé plus de cristaux…');
+    if (N && best && (best[1] > N / 2 || cristauxCasses.filter(c => c.p === -2).length >= N)) return gagnerObjectif(+best[0], 'Tours conquises !', 'Ils ont détruit plus de tours…');
   }
   if (mode.reapparition && ennemis.length) return; // avec réapparition, le match se joue au temps ou à l'objectif
   if (ennemis.length) {
@@ -568,6 +568,11 @@ function creerProjectile(j, angle, force, x, y, deg) {
   const a = j.arme, v = a.vitesse || 10;
   const p = { rebonds: +a.rebonds || 0, chaine: +a.chaine || 0, sombre: !!j.def, type: a.type, arme: a, perso: j.perso, deg: deg || j.perso.degats, de: j.uid, x, y, vx: Math.cos(angle) * v, vy: Math.sin(angle) * v, dist: 0, rot: 0, z: 0, vie: 0, retour: false, touches: new Set() };
   if (a.type === 'terrain') Object.assign(p, { cases: casesTerrain(a, x, y, angle, Math.max(TUILE, j.perso.portee * force)), t: 0 });
+  if (a.type === 'frappe') { // 🔨 arme lourde en 2 temps : élan → frappe au sol → éclats de roche (visée = direction seulement)
+    const d = +a.distanceFrappe || 110, du = Math.max(1, +a.delaiFrappe || 14);
+    Object.assign(p, { t: 0, duree: du, ang: angle, x: x + Math.cos(angle) * d, y: y + Math.sin(angle) * d, vx: 0, vy: 0 });
+    if (j.perso) { j.ralenti = +a.ralentiElan || 0.35; j.ralentiT = temps + du; } // lourd : on ralentit pendant l'élan
+  }
   if (a.type === 'lob') {
     const d = Math.max(80, j.perso.portee * force);
     Object.assign(p, { sx: x, sy: y, cx: x + Math.cos(angle) * d, cy: y + Math.sin(angle) * d, t: 0, duree: Math.max(18, d / v) });
@@ -612,6 +617,8 @@ function majProjectiles() {
       p.t++;
       p.cases = p.cases.filter(c => { if (c[2] > p.t) return true; elever(c[0], c[1], p); return false; });
       if (!p.cases.length) fini = true;
+    } else if (!fini && p.type === 'frappe') {
+      if (++p.t >= p.duree) { exploser(p); eclatsRoche(p); fini = true; }
     } else if (!fini && p.type === 'lob') {
       p.t++; const k = p.t / p.duree;
       p.x = p.sx + (p.cx - p.sx) * k; p.y = p.sy + (p.cy - p.sy) * k;
@@ -632,7 +639,7 @@ function majProjectiles() {
         if (bloqueTir(tuileA(p.x + p.vx, p.y))) p.vx = -p.vx; else p.vy = -p.vy;
         p.rebonds--; p.deg = Math.round(p.deg * (+p.arme.bonusRebond || 1)); p.dist *= 0.5; p.touches.clear();
         effet('etincelle', p.x, p.y, p.arme.couleur);
-      } else if (mur || p.dist >= p.perso.portee) { effet('etincelle', p.x, p.y, p.arme.couleur); fini = true; }
+      } else if (mur || p.dist >= (p.portee || p.perso.portee)) { effet('etincelle', p.x, p.y, p.arme.couleur); fini = true; }
       if (!fini) for (const c of cibles(p)) {
         const cle = (p.retour ? 'r' : 'a') + c.k;
         if (!p.touches.has(cle) && Math.hypot(p.x - c.e.x, p.y - c.e.y) < c.e.r + (p.arme.taille || 16)) {
@@ -657,8 +664,15 @@ function exploser(p) {
     if (ondes.length > 14) ondes.shift();
     ondes.push({ x: p.x, y: p.y, r, max: +p.arme.onde, c: '#fff3c4', vie: 1, ep: 12 }); ono('KRAKOOM!', p.x, p.y, 1.3, '#ffe14a');
     fissuresSol.push({ x: p.x, y: p.y, t: temps, g: Math.random() * 100 }); secousse = Math.max(secousse, 12); effet('impact', p.x, p.y, '#c98a4b', 110); // sol fracassé
-    for (const c of cibles(p)) { const d = Math.hypot(p.x - c.e.x, p.y - c.e.y); if (d >= r + c.e.r * 0.6 && d < +p.arme.onde) impact(c.e, { ...p, deg: Math.round(p.deg * 0.45) }, p.x, p.y, false); }
+    if (p.type !== 'frappe') for (const c of cibles(p)) { const d = Math.hypot(p.x - c.e.x, p.y - c.e.y); if (d >= r + c.e.r * 0.6 && d < +p.arme.onde) impact(c.e, { ...p, deg: Math.round(p.deg * 0.45) }, p.x, p.y, false); }
   }
+}
+function eclatsRoche(p) { // 🪨 2e temps de la frappe : éclats projetés en éventail, plus loin, dégâts plus faibles
+  const a = p.arme, n = Math.max(0, Math.round(+a.eclats || 0)); if (!n) return;
+  const ev = (+a.angleEclats || 70) * Math.PI / 180, v = +a.vitesseEclats || 9, deg = Math.round(p.deg * (+a.degatsEclats || 50) / 100);
+  const ae = { ...a, type: 'droit', forme: 'rocher', taille: Math.max(6, (+a.taille || 20) * 0.45), nuage: 0, onde: 0, effet: 'etincelle', rebonds: 0, chaine: 0 };
+  for (let i = 0; i < n; i++) { const an = p.ang + (n > 1 ? ev * (i / (n - 1) - 0.5) : 0);
+    projectiles.push({ rebonds: 0, chaine: 0, sombre: p.sombre, type: 'droit', arme: ae, perso: p.perso, deg, de: p.de, x: p.x, y: p.y, vx: Math.cos(an) * v, vy: Math.sin(an) * v, dist: 0, portee: +a.porteeEclats || 170, rot: 0, z: 0, vie: 0, retour: false, touches: new Set() }); }
 }
 function impact(e, p, x, y, avecEffet) {
   const a = p.arme, deg = p.deg, ang = Math.atan2(e.y - y, e.x - x);
@@ -1392,9 +1406,23 @@ function dessiner3D(e, sp, anneau, taille) { // perso 3D : on choisit la vignett
   if (e.flash > 0 && !an) { ctx.globalAlpha = (e.flash / 8) * 0.9; ctx.drawImage(blanc(sp.planche), d * sp.S, po * sp.S, sp.S, sp.S, x, y, s, s); }
   ctx.globalAlpha = 1;
 }
+function anneauSol(e, c) { // ⭕ anneau d'équipe au sol, style arcade : disque coloré, contour épais, flèche de direction pour soi
+  const R = e.r * 1.15, st = (CONFIG.app || {}).styleAnneau || 'arcade';
+  ctx.save();
+  if (st === 'simple') { ctx.globalAlpha = 0.85; ctx.strokeStyle = c; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(e.x, e.y, R, 0, 7); ctx.stroke(); ctx.restore(); return; }
+  const g = ctx.createRadialGradient(e.x, e.y, R * 0.2, e.x, e.y, R); g.addColorStop(0, c + '10'); g.addColorStop(1, c + '66');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(e.x, e.y, R, 0, 7); ctx.fill();
+  ctx.lineWidth = 7; ctx.strokeStyle = 'rgba(11,6,32,.55)'; ctx.stroke(); ctx.lineWidth = 4; ctx.strokeStyle = c; ctx.stroke();
+  if (e === moi && e.pv > 0) { // flèche devant soi
+    ctx.translate(e.x, e.y); ctx.rotate(e.angle || 0); ctx.beginPath(); ctx.moveTo(R + 14, 0); ctx.lineTo(R + 2, -9); ctx.lineTo(R + 2, 9); ctx.closePath();
+    ctx.fillStyle = c; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(11,6,32,.7)'; ctx.stroke();
+  }
+  if (e.superPret) { ctx.setTransform(ctx.getTransform()); ctx.globalAlpha = 0.5 + 0.4 * Math.sin(temps * 0.2); ctx.lineWidth = 3; ctx.strokeStyle = '#ffe14a'; ctx.beginPath(); ctx.arc(e === moi ? 0 : e.x, e === moi ? 0 : e.y, R + 5, 0, 7); ctx.stroke(); } // ⭐ super prêt : halo doré
+  ctx.restore();
+}
 function dessinerEntite(e, im, anneau, taille) {
   if (typeof Rendu3D !== 'undefined' && Rendu3D.gere(e)) { // modèle 3D animé en direct : ici on ne dessine que l'anneau d'équipe au sol
-    ctx.save(); ctx.globalAlpha = 0.85; ctx.strokeStyle = anneau; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(e.x, e.y, e.r * 1.15, e.r * 1.15, 0, 0, 7); ctx.stroke(); ctx.restore(); auraElem(e); return; }
+    anneauSol(e, anneau); auraElem(e); return; }
   e.alt = e.dep === 'vol' ? ((elemDe(e.perso) || {}).altitude || 22) + Math.sin(temps * 0.08 + e.x * 0.01) * 4 : 0; // 💨 altitude
   if (e.dash && e.dash.saut && temps < e.dash.fin) e.alt = Math.sin((1 - (e.dash.fin - temps) / e.dash.duree) * Math.PI) * 70; // hauteur du saut
   auraElem(e);
@@ -1632,11 +1660,11 @@ function bullesElem() { // 🫧 bulle protectrice de Naïa (par-dessus le perso)
 let tresors = [], scoreTresor = {}, etape = 0, scoreEtapes = {}, bandeauEtape = null, graine = 1;
 const etapesDe = m => String(m.etapes || 'bloc,zone').split(',').map(s => s.trim()).filter(s => ['bloc', 'zone', 'tresor'].includes(s));
 const obj = () => mode.objectif === 'marathon' ? (etapesDe(mode)[etape] || 'zone') : mode.objectif;
-const NOM_OBJ = { bloc: 'Guerre des cristaux', zone: 'Zone de contrôle', tresor: 'Chasse au trésor', standard: 'Élimination' };
+const NOM_OBJ = { bloc: 'Assaut des tours', zone: 'Zone de contrôle', tresor: 'Chasse au trésor', standard: 'Élimination' };
 let cristauxCasses = []; // { p: équipe du cristal (-2 = neutre), eq: équipe qui l'a cassé }
 function cristalCasse(p, eq, distant) {
   cristauxCasses.push({ p, eq }); if (!distant) envoyer({ t: 'cr', p, eq });
-  if (eq === moi.eq) ono(p === -2 ? 'CRISTAL CONQUIS!' : 'CRISTAL BRISÉ!!', moi.x, moi.y - 80, 1.4, '#ffe14a');
+  if (eq === moi.eq) ono(p === -2 ? 'TOUR CONQUISE!' : 'TOUR DÉTRUITE!!', moi.x, moi.y - 80, 1.4, '#ffe14a');
 }
 const scoreNeutres = () => { const s = {}; cristauxCasses.filter(c => c.p === -2 && c.eq != null).forEach(c => s[c.eq] = (s[c.eq] || 0) + 1); return s; };
 const nbNeutres = () => { const eqs = new Set(joueurs().map(j => j.eq)); return map.tn.length + map.tc.filter(t => !eqs.has(t.eq)).length + (eqs.size > 1 && !map.t.length && !map.tc.length && !map.tn.length ? 1 : 0); };
@@ -1684,6 +1712,7 @@ function dessinerTresors() { // cachés : on ne les voit qu'en s'approchant (que
     if (t.pris !== null) continue;
     const d = Math.hypot(t.x - moi.x, t.y - moi.y), vis = t.lache ? 1 : Math.max(0, Math.min(1, (230 - d) / 80)), f = (temps + i * 37) % 140;
     if (vis <= 0) { if (f < 16) { ctx.save(); ctx.globalAlpha = 1 - f / 16; ctx.fillStyle = '#fff'; ctx.translate(t.x, t.y - 10); ctx.rotate(f * 0.1); ctx.beginPath(); for (let k = 0; k < 8; k++) { const r = k % 2 ? 2 : 8; ctx.lineTo(Math.cos(k * Math.PI / 4) * r, Math.sin(k * Math.PI / 4) * r); } ctx.fill(); ctx.restore(); } continue; }
+    if (aff3) continue; // en 3D : vrai coffre 3D (rendu3d.js)
     const b = Math.sin(temps * 0.1 + i) * 3; ctx.save(); ctx.globalAlpha = vis; ctx.translate(t.x, t.y - 8 + b);
     ellipse(0, 18 - b, 20, 7, 'rgba(0,0,0,.3)'); ctx.lineJoin = 'round'; ctx.lineWidth = 3; ctx.strokeStyle = NOIR;
     ctx.fillStyle = '#b8742f'; ctx.beginPath(); ctx.roundRect(-18, -4, 36, 22, 4); ctx.fill(); ctx.stroke();
@@ -1711,7 +1740,7 @@ function hudObjectif() { // compteurs trésors / étapes + bandeau d'étape anim
       rect(W - 188 * u, y + 2 * u, 174 * u * Math.min(1, (scoreTresor[eq] || 0) / but), 16 * u, 8 * u, eq === moi.eq ? '#ffd23f' : '#ff5a6e');
       texte((eq === moi.eq ? '💰 Nous ' : '💰 Eux ') + (scoreTresor[eq] || 0) + ' / ' + but, W - 101 * u, y + 10 * u, 11 * u, '#fff'); }); }
   if (obj() === 'bloc' && nbNeutres()) { const sc = scoreNeutres(), eqs = [...new Set(joueurs().map(j => j.eq))];
-    eqs.forEach((eq, i) => { const y = 84 * u + i * 24 * u; verre(W - 190 * u, y, 178 * u, 20 * u, 10 * u); texte((eq === moi.eq ? '💎 Nous ' : '💎 Équipe ' + (eq + 1) + ' ') + (sc[eq] || 0) + ' / ' + nbNeutres(), W - 101 * u, y + 10 * u, 11 * u, eq === moi.eq ? '#5ff0ff' : '#fff'); }); }
+    eqs.forEach((eq, i) => { const y = 84 * u + i * 24 * u; verre(W - 190 * u, y, 178 * u, 20 * u, 10 * u); texte((eq === moi.eq ? '🏰 Nous ' : '🏰 Équipe ' + (eq + 1) + ' ') + (sc[eq] || 0) + ' / ' + nbNeutres(), W - 101 * u, y + 10 * u, 11 * u, eq === moi.eq ? '#5ff0ff' : '#fff'); }); }
   if (mode.objectif === 'marathon') { const l = etapesDe(mode), mien = scoreEtapes[moi.eq] || 0, leur = Math.max(0, ...Object.entries(scoreEtapes).filter(([k]) => +k !== moi.eq).map(([, v]) => v));
     verre(W / 2 - 120 * u, 44 * u, 240 * u, 26 * u, 13 * u); titre(`Étape ${Math.min(etape + 1, l.length)}/${l.length} • ${NOM_OBJ[obj()]}  ${mien}-${leur}`, W / 2, 57 * u, 14 * u, '#ffe14a', 'center', 230 * u); }
   if (bandeauEtape && temps - bandeauEtape.t < 150) { const t = temps - bandeauEtape.t, e = elastique(Math.min(1, t / 20)), s = Math.max(0, (t - 120) / 30);
@@ -2285,7 +2314,7 @@ function dessinerVisee() {
   if (joyD.actif) { const v = vec(joyD); if (v.d < 12) return; a = v.a; f = Math.min(1, v.d / 60); }
   else if (!mobile && souris) { const m = versMonde(souris.x, souris.y); a = Math.atan2(m.y - moi.y, m.x - moi.x); f = Math.min(1, Math.hypot(m.x - moi.x, m.y - moi.y) / moi.perso.portee); }
   else return;
-  const P = moi.perso.portee, A = moi.arme || {}, lob = A.type === 'lob', pul = 0.5 + 0.5 * Math.sin(temps * 0.15);
+  const A = moi.arme || {}, fr = A.type === 'frappe', P = fr ? +A.distanceFrappe || 110 : moi.perso.portee, lob = A.type === 'lob' || fr; if (fr) f = 1; // 🔨 frappe : zone fixe devant soi, on ne choisit que la direction pul = 0.5 + 0.5 * Math.sin(temps * 0.15);
   if (aff3) { visee3D = { a, f, lob, P, R: +A.rayon || 70, c: A.couleur || '#ffe14a' }; return; } // 🎯 visée en 3D
   ctx.save(); ctx.translate(moi.x, moi.y); ctx.rotate(a); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   if (lob) { const d = Math.max(60, P * f), R = +A.rayon || 70;
@@ -2626,7 +2655,7 @@ function menuAccueil() {
   texte('MODE DE JEU • ' + lab.toUpperCase(), mx + 20 * u, my + 22 * u, 10 * u, 'rgba(255,255,255,.75)', 'left');
   titre(m.nom, mx + 20 * u, my + 50 * u, 32 * u, '#fff', 'left', colD - 70 * u);
   icone('carte', mx + 28 * u, my + mh - 24 * u, 15 * u); texte(def.nom, mx + 42 * u, my + mh - 24 * u, 12 * u, '#fff', 'left');
-  const obj = { zone: '  •  Zone', bloc: '  •  Cristal' }[m.objectif] || '';
+  const obj = { zone: '  •  Zone', bloc: '  •  Tour' }[m.objectif] || '';
   texte((multi ? m.joueursMin + '-' + m.joueursMax + ' joueurs' : 'Solo') + (m.boss && m.nbBoss ? '  •  ' + m.nbBoss + ' boss' : '') + obj, mx + 20 * u, my + 76 * u, 12 * u, 'rgba(255,255,255,.9)', 'left');
   icone('suite', mx + colD - 24 * u, my + mh / 2, 22 * u);
   zones.push({ x: mx, y: my, w: colD, h: mh, action: () => allerA('modes') });
@@ -2722,7 +2751,7 @@ function carteMode(md, x, y, w, h, sel, grand) { // case de BD d'un mode (mini-m
   texte(lab.toUpperCase() + (md.type === 'multi' ? ' • EN LIGNE' : ' • SOLO'), x + 16 * u, y + 18 * u * s, 10 * u * s, '#fff', 'left', w - 60 * u);
   titre(md.nom, x + 16 * u, y + 44 * u * s, 24 * u * s, '#fff', 'left', w - 32 * u);
   lignes(md.description || '', w * 0.6, 11 * u * s).slice(0, grand ? 3 : h > 120 * u ? 2 : 1).forEach((l, j) => texte(l, x + 16 * u, y + (68 + j * 15) * u * s, 11 * u * s, '#fff', 'left', w * 0.6));
-  const OBJ = { zone: 'Zone', bloc: 'Cristaux', tresor: 'Trésors', marathon: 'Marathon' };
+  const OBJ = { zone: 'Zone', bloc: 'Tours', tresor: 'Trésors', marathon: 'Marathon' };
   let ix = x + 16 * u; const iy = y + h - 18 * u * s;
   [['amis', md.type === 'multi' ? (md.joueursMin === md.joueursMax ? md.joueursMax : md.joueursMin + '-' + md.joueursMax) : '1'], ['trophee', '+' + md.pointsVictoire],
    OBJ[md.objectif] ? ['cible', OBJ[md.objectif]] : md.boss && md.nbBoss ? ['eclair', md.nbBoss + ' boss'] : null].filter(Boolean).forEach(([ic, v]) => {
