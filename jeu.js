@@ -2895,89 +2895,105 @@ function menuAccueil() {
 
 // --- Persos : vue d'ensemble (grille) + fiche du perso choisi (description, modèle 3D animé, stats)
 const TYPES_ARME = { lob: '🤾 Cloche', retour: '🪃 Retour', droit: '🎯 Tir droit', terrain: '🌋 Terrain', frappe: '🔨 Frappe' };
+let vuePersos = 'detail', defilPersos = 0; // 🗂️ collection (toutes les cartes) • 🔍 détail (liste + perso en grand + stats)
+function cartePerso(p, i, cx, cy, cw, ch, u, action) { // carte de la collection : portrait, niveau, élément, rôle, arme, mini-stats
+  const k = Math.min(1, ch / (170 * u)), el = elemDe(p), c = (el && el.couleur) || p.couleur || '#5a4dff', sel = i === persoVue, verrou = !estDebloque(p), a = CONFIG.armes[p.arme] || {};
+  const g = ctx.createLinearGradient(cx, cy, cx, cy + ch); g.addColorStop(0, ombrer(c, 0.25)); g.addColorStop(1, ombrer(c, -0.45));
+  rect(cx, cy, cw, ch, 14 * u, g, sel ? '#ffe14a' : 'rgba(11,6,32,.8)', sel ? 4 * u : 2.5 * u);
+  const im = carteDe(p), is = Math.min(cw * 0.62, ch * 0.5); if (verrou) ctx.filter = 'grayscale(1) brightness(.6)';
+  if (pret(im)) ctx.drawImage(im, cx + (cw - is) / 2, cy + 8 * k * u, is, is); ctx.filter = 'none';
+  if (verrou) texte('🔒 ' + (+p.coutJetons || 3) + ' 🎟️', cx + cw / 2, cy + is * 0.55, 13 * k * u, '#ffe14a');
+  rect(cx + 6 * u, cy + 6 * u, 40 * k * u, 18 * k * u, 9 * k * u, 'rgba(11,6,32,.75)'); texte('Nv ' + niveauDe(p), cx + 6 * u + 20 * k * u, cy + 15 * k * u, 10 * k * u, '#ffe14a');
+  elementsDe(p).forEach((e, m) => iconeElement(e, cx + cw - 14 * u - m * 20 * k * u, cy + 16 * k * u, 16 * k * u));
+  if (i === persoIndex) texte('✔', cx + cw - 14 * u, cy + is - 2 * u, 15 * k * u, '#b6ff4a');
+  const ty = cy + 10 * k * u + is, ro = roleDe(p);
+  titre(p.nom, cx + cw / 2, ty + 10 * k * u, 17 * k * u, '#fff', 'center', cw - 10 * u);
+  texte([ro ? CONFIG.roles[ro].nom : '', TYPES_ARME[a.type] || ''].filter(Boolean).join(' • '), cx + cw / 2, ty + 27 * k * u, 10 * k * u, '#ffe8a3', 'center', cw - 8 * u);
+  const mini = [['❤', p.pvMax / 9000, '#ff5a6e'], ['💥', p.degats / 3000, '#ff9f43'], ['🏃', p.vitesse / 5, '#4cd964'], ['🎯', p.portee / 600, '#5ac8fa']], bw = (cw - 20 * u) / 2 - 16 * k * u;
+  mini.forEach(([ic, f, col], m) => { const bx = cx + 8 * u + (m % 2) * (cw / 2 - 4 * u), by = ty + (40 + Math.floor(m / 2) * 13) * k * u;
+    texte(ic, bx + 6 * k * u, by, 9 * k * u, '#fff'); rect(bx + 14 * k * u, by - 3 * k * u, bw, 6 * k * u, 3 * k * u, 'rgba(11,6,32,.6)'); rect(bx + 14 * k * u, by - 3 * k * u, Math.max(3, bw * Math.min(1, f)), 6 * k * u, 3 * k * u, col); });
+  zones.push({ x: cx, y: cy, w: cw, h: ch, action });
+}
 function menuPersos() {
   const u = U(), top = barreHaut('PERSOS', true), n = CONFIG.persos.length;
-  const panW = Math.min(380 * u, W * 0.4), x0 = 14 * u, y0 = top + 12 * u, zoneW = W - panW - 40 * u, zoneH = H - y0 - 14 * u;
   heroZone = null; persoVue = ((persoVue % n) + n) % n;
-  // 🗂️ grille de tous les persos
-  const gap = 10 * u, cols = Math.max(2, Math.min(n, Math.floor((zoneW + gap) / (150 * u)))), rows = Math.ceil(n / cols);
-  const cw = (zoneW - gap * (cols - 1)) / cols, ch = Math.min(cw * 1.2, (zoneH - gap * (rows - 1)) / rows), k = Math.min(1, ch / (170 * u));
-  CONFIG.persos.forEach((p, i) => {
-    const cx = x0 + (i % cols) * (cw + gap), cy = y0 + Math.floor(i / cols) * (ch + gap), el = elemDe(p), c = (el && el.couleur) || p.couleur || '#5a4dff';
-    const sel = i === persoVue, verrou = !estDebloque(p), a = CONFIG.armes[p.arme] || {}, pop = sel ? 1 + Math.sin(temps * 0.12) * 0.012 : 1;
-    ctx.save(); ctx.translate(cx + cw / 2, cy + ch / 2); ctx.scale(pop, pop); ctx.translate(-cx - cw / 2, -cy - ch / 2);
-    const g = ctx.createLinearGradient(cx, cy, cx, cy + ch); g.addColorStop(0, ombrer(c, 0.25)); g.addColorStop(1, ombrer(c, -0.45));
-    rect(cx, cy, cw, ch, 14 * u, g, sel ? '#ffe14a' : 'rgba(11,6,32,.8)', sel ? 4 * u : 2.5 * u);
-    const im = carteDe(p), is = Math.min(cw * 0.62, ch * 0.5); if (verrou) ctx.filter = 'grayscale(1) brightness(.6)';
-    if (pret(im)) ctx.drawImage(im, cx + (cw - is) / 2, cy + 8 * k * u, is, is); ctx.filter = 'none';
-    if (verrou) texte('🔒 ' + (+p.coutJetons || 3) + ' 🎟️', cx + cw / 2, cy + is * 0.55, 13 * k * u, '#ffe14a');
-    rect(cx + 6 * u, cy + 6 * u, 40 * k * u, 18 * k * u, 9 * k * u, 'rgba(11,6,32,.75)'); texte('Nv ' + niveauDe(p), cx + 6 * u + 20 * k * u, cy + 15 * k * u, 10 * k * u, '#ffe14a'); // niveau
-    elementsDe(p).forEach((e, m) => iconeElement(e, cx + cw - 14 * u - m * 20 * k * u, cy + 16 * k * u, 16 * k * u)); // élément(s)
-    if (i === persoIndex) texte('✔', cx + cw - 14 * u, cy + is - 2 * u, 15 * k * u, '#b6ff4a');
-    const ty = cy + 10 * k * u + is;
-    titre(p.nom, cx + cw / 2, ty + 10 * k * u, 17 * k * u, '#fff', 'center', cw - 10 * u);
-    const ro = roleDe(p); texte([ro ? CONFIG.roles[ro].nom : '', TYPES_ARME[a.type] || ''].filter(Boolean).join(' • '), cx + cw / 2, ty + 27 * k * u, 10 * k * u, '#ffe8a3', 'center', cw - 8 * u);
-    const mini = [['❤', p.pvMax / 9000, '#ff5a6e'], ['💥', p.degats / 3000, '#ff9f43'], ['🏃', p.vitesse / 5, '#4cd964'], ['🎯', p.portee / 600, '#5ac8fa']], bw = (cw - 20 * u) / 2 - 16 * k * u;
-    mini.forEach(([ic, f, col], m) => { const bx = cx + 8 * u + (m % 2) * (cw / 2 - 4 * u), by = ty + (40 + Math.floor(m / 2) * 13) * k * u; // résumé des stats
-      texte(ic, bx + 6 * k * u, by, 9 * k * u, '#fff'); rect(bx + 14 * k * u, by - 3 * k * u, bw, 6 * k * u, 3 * k * u, 'rgba(11,6,32,.6)'); rect(bx + 14 * k * u, by - 3 * k * u, Math.max(3, bw * Math.min(1, f)), 6 * k * u, 3 * k * u, col); });
-    ctx.restore();
-    zones.push({ x: cx, y: cy, w: cw, h: ch, action: () => { if (persoVue !== i) persoAnim = { t: temps, d: i > persoVue ? 1 : -1 }; persoVue = i; } });
-  });
+  // onglets
+  const ow = 132 * u, oy = top + 6 * u;
+  [['collection', '🗂️ Collection'], ['detail', '🔍 Détail']].forEach(([v, t], m) => { const on = vuePersos === v, ox = 14 * u + m * (ow + 8 * u);
+    bouton3D(ox, oy, ow, 30 * u, on ? '#ffe14a' : '#8e7bff', on ? '#ff8a1f' : '#5b3fd6', () => vuePersos = v); texte(t, ox + ow / 2, oy + 14 * u, 13 * u, on ? '#1f1300' : '#fff'); });
+  const y0 = oy + 42 * u, zoneH = H - y0 - 12 * u;
 
-  // 📋 fiche du perso sélectionné : description en haut, modèle animé, stats en dessous
+  if (vuePersos === 'collection') { // 🗂️ toutes les cartes, sur toute la largeur
+    const zoneW = W - 28 * u, gap = 10 * u, cols = Math.max(2, Math.min(n, Math.floor((zoneW + gap) / (150 * u)))), rows = Math.ceil(n / cols);
+    const cw = (zoneW - gap * (cols - 1)) / cols, ch = Math.min(cw * 1.25, (zoneH - gap * (rows - 1)) / rows);
+    CONFIG.persos.forEach((p, i) => cartePerso(p, i, 14 * u + (i % cols) * (cw + gap), y0 + Math.floor(i / cols) * (ch + gap), cw, ch, u, () => { persoVue = i; persoAnim = { t: temps, d: 1 }; vuePersos = 'detail'; }));
+    texte('Touche un perso pour voir sa fiche', W / 2, H - 8 * u, 11 * u, 'rgba(255,255,255,.7)');
+    return;
+  }
+
+  // 🔍 DÉTAIL : liste à gauche • perso en grand au milieu • stats à droite
   const p = CONFIG.persos[persoVue], a = CONFIG.armes[p.arme] || {}, el = elemDe(p), c = (el && el.couleur) || p.couleur || '#5a4dff';
-  const px = W - panW - 14 * u, py = y0, ph = H - py - 14 * u, cx = px + panW / 2;
-  verre(px, py, panW, ph, 18 * u); rect(px, py, panW, 6 * u, 3 * u, c);
-  titre(p.nom, cx, py + 30 * u, 28 * u, '#fff', 'center', panW - 90 * u);
-  elementsDe(p).forEach((e, m) => iconeElement(e, px + 22 * u + m * 22 * u, py + 28 * u, 18 * u));
-  texte('Nv ' + niveauDe(p), px + panW - 30 * u, py + 29 * u, 13 * u, '#ffe14a');
-  const desc = lignes(p.description || '', panW - 30 * u, 11 * u).slice(0, 3);
-  desc.forEach((l, m) => texte(l, cx, py + 56 * u + m * 15 * u, 11 * u, 'rgba(255,255,255,.9)', 'center'));
-  const bh = 42 * u, by = py + ph - bh - 12 * u, eY = by - 34 * u, hy = py + 60 * u + desc.length * 15 * u, libre = eY - hy - 40 * u; // place pour le modèle + les stats
-  const compact = libre - 7 * 17 * u < 110 * u, hh = Math.max(64 * u, Math.min(ph * 0.36, libre - (compact ? 4 * 15 : 7 * 17) * u)), sol = hy + hh; // petit écran : stats sur 2 colonnes
-  ctx.save(); ctx.beginPath(); ctx.rect(px, hy, panW, hh); ctx.clip(); rayons(cx, sol - hh * 0.45, temps * 0.004, ombrer(c, 0.35), 0.3, 14);
-  const hg = ctx.createRadialGradient(cx, sol - hh * 0.45, 0, cx, sol - hh * 0.45, hh * 0.7); hg.addColorStop(0, c + '88'); hg.addColorStop(1, c + '00'); ctx.fillStyle = hg; ctx.fillRect(px, hy, panW, hh); ctx.restore();
-  ctx.save(); ctx.translate(cx, sol - 4 * u); ctx.scale(1, 0.26); const og = ctx.createRadialGradient(0, 0, 0, 0, 0, hh * 0.35); og.addColorStop(0, 'rgba(0,0,0,.5)'); og.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = og; ctx.beginPath(); ctx.arc(0, 0, hh * 0.35, 0, 7); ctx.fill(); ctx.restore();
-  const off = (1 - sortir(Math.min(1, (temps - persoAnim.t) / 14))) * persoAnim.d * 60 * u, vh = vitrineHero(p), gris = !estDebloque(p); if (gris) ctx.filter = 'grayscale(1) brightness(.55)';
-  if (skinVue.p !== p.nom) skinVue = { p: p.nom, cle: skinChoisi(p) }; // 👀 skin affiché (aperçu gratuit, même non acheté)
+  const lw = Math.min(112 * u, W * 0.14), sw = Math.min(330 * u, W * 0.34), mx = 14 * u + lw + 12 * u, mw = W - mx - sw - 26 * u, sx = W - sw - 14 * u, cx = mx + mw / 2;
+  // liste des persos (défilante)
+  const th = Math.min(84 * u, lw * 0.95), gapT = 8 * u, tient = Math.max(1, Math.floor((zoneH - 56 * u) / (th + gapT))), max = Math.max(0, n - tient);
+  if (persoVue < defilPersos) defilPersos = persoVue; if (persoVue >= defilPersos + tient) defilPersos = persoVue - tient + 1; defilPersos = Math.max(0, Math.min(max, defilPersos));
+  const ly0 = y0 + (max ? 24 * u : 0);
+  if (max) { [[-1, y0, '▲'], [1, y0 + zoneH - 20 * u, '▼']].forEach(([d, yb, t]) => { bouton3D(14 * u, yb, lw, 20 * u, '#8e7bff', '#5b3fd6', () => defilPersos = Math.max(0, Math.min(max, defilPersos + d * tient))); texte(t, 14 * u + lw / 2, yb + 9 * u, 11 * u, '#fff'); }); }
+  CONFIG.persos.slice(defilPersos, defilPersos + tient).forEach((q, m) => { const i = defilPersos + m, ty = ly0 + m * (th + gapT), e2 = elemDe(q), c2 = (e2 && e2.couleur) || q.couleur || '#5a4dff', sel = i === persoVue;
+    const g = ctx.createLinearGradient(0, ty, 0, ty + th); g.addColorStop(0, ombrer(c2, 0.25)); g.addColorStop(1, ombrer(c2, -0.45)); rect(14 * u, ty, lw, th, 12 * u, g, sel ? '#ffe14a' : NOIR, sel ? 4 * u : 2 * u);
+    const im = carteDe(q), is = th * 0.68; if (!estDebloque(q)) ctx.filter = 'grayscale(1) brightness(.6)'; if (pret(im)) ctx.drawImage(im, 14 * u + (lw - is) / 2, ty + 3 * u, is, is); ctx.filter = 'none';
+    titre(q.nom, 14 * u + lw / 2, ty + th - 11 * u, 11 * u, '#fff', 'center', lw - 8 * u); if (i === persoIndex) texte('✔', 14 * u + lw - 11 * u, ty + 11 * u, 12 * u, '#b6ff4a');
+    zones.push({ x: 14 * u, y: ty, w: lw, h: th, action: () => { if (persoVue !== i) persoAnim = { t: temps, d: i > persoVue ? 1 : -1 }; persoVue = i; } }); });
+
+  // centre : nom, description, perso en grand, skins
+  titre(p.nom, cx, y0 + 16 * u, 30 * u, '#fff', 'center', mw - 90 * u);
+  elementsDe(p).forEach((e, m) => iconeElement(e, mx + 16 * u + m * 22 * u, y0 + 16 * u, 18 * u)); texte('Nv ' + niveauDe(p), mx + mw - 20 * u, y0 + 16 * u, 13 * u, '#ffe14a');
+  const desc = lignes(p.description || '', mw - 20 * u, 11 * u).slice(0, 2); desc.forEach((l, m) => texte(l, cx, y0 + 40 * u + m * 14 * u, 11 * u, 'rgba(255,255,255,.9)', 'center'));
+  const hy = y0 + 46 * u + desc.length * 14 * u, sk = 50 * u, hh = Math.max(80 * u, H - hy - sk - 16 * u), sol = hy + hh;
+  ctx.save(); ctx.beginPath(); ctx.roundRect(mx, hy, mw, hh + sk, 16 * u); ctx.clip(); rayons(cx, sol - hh * 0.45, temps * 0.004, ombrer(c, 0.35), 0.28, 16);
+  const hg = ctx.createRadialGradient(cx, sol - hh * 0.45, 0, cx, sol - hh * 0.45, hh * 0.75); hg.addColorStop(0, c + '99'); hg.addColorStop(1, c + '00'); ctx.fillStyle = hg; ctx.fillRect(mx, hy, mw, hh + sk); ctx.restore();
+  ctx.save(); ctx.translate(cx, sol - 4 * u); ctx.scale(1, 0.26); const og = ctx.createRadialGradient(0, 0, 0, 0, 0, hh * 0.32); og.addColorStop(0, 'rgba(0,0,0,.5)'); og.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = og; ctx.beginPath(); ctx.arc(0, 0, hh * 0.32, 0, 7); ctx.fill(); ctx.restore();
+  const off = (1 - sortir(Math.min(1, (temps - persoAnim.t) / 14))) * persoAnim.d * 80 * u, vh = vitrineHero(p), gris = !estDebloque(p); if (gris) ctx.filter = 'grayscale(1) brightness(.55)';
+  if (skinVue.p !== p.nom) skinVue = { p: p.nom, cle: skinChoisi(p) }; // 👀 aperçu gratuit du skin
   if (vh && vh.teinte) vh.teinte(skinParCle(skinVue.cle));
-  if (vh) { const T = Math.round(Math.min(640, hh * 1.3 * dpr)), im3 = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = Math.min(panW * 1.1, hh * 0.95 * Math.min(1, 0.72 + 0.2 * Math.min(1.4, +p.modeleEchelle || 1)) / Math.max(0.2, (vh.bas - vh.haut) || 0.7)); // jamais plus large que la fiche
+  if (vh) { const T = Math.round(Math.min(720, hh * 1.3 * dpr)), im3 = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = Math.min(mw * 1.05, hh * 1.02 * Math.min(1, 0.72 + 0.2 * Math.min(1.4, +p.modeleEchelle || 1)) / Math.max(0.2, (vh.bas - vh.haut) || 0.7));
     ctx.drawImage(im3, cx - D / 2 + off, sol - 6 * u - vh.bas * D, D, D); }
   else { const im = carteDe(p); if (pret(im)) ctx.drawImage(im, cx - hh * 0.45 + off, sol - hh * 0.9, hh * 0.9, hh * 0.9); }
   ctx.filter = 'none';
-  const SK = [null, ...(CONFIG.skins || [])], sr = 13 * u, sx0 = cx - (SK.length - 1) * (sr * 2 + 6 * u) / 2, choisiSk = skinChoisi(p), yS = hy + hh - sr - 4 * u; // 🎨 skins
+  if (gris) { titre('🔒 ' + (+p.coutJetons || 3) + ' 🎟️', cx, sol - hh * 0.5, 30 * u, '#ffe14a'); texte('Tu as ' + (mesStats.jetons || 0) + ' 🎟️ jetons perso', cx, sol - hh * 0.5 + 28 * u, 12 * u, '#fff'); }
+  const SK = [null, ...(CONFIG.skins || [])], sr = 14 * u, sx0 = cx - (SK.length - 1) * (sr * 2 + 8 * u) / 2, choisiSk = skinChoisi(p), yS = sol + sk / 2 + 2 * u;
   if (!gris && SK.length > 1) {
-    SK.forEach((s, m) => { const x = sx0 + m * (sr * 2 + 6 * u), a = !s || skinsAchetes(p).includes(s.cle), vu = (s ? s.cle : '') === skinVue.cle, eq = (s ? s.cle : '') === choisiSk;
-      ctx.beginPath(); ctx.arc(x, yS, sr, 0, 7); const g2 = ctx.createLinearGradient(x - sr, yS - sr, x + sr, yS + sr); g2.addColorStop(0, s ? s.couleur2 || s.teinte || '#fff' : ombrer(c, 0.3)); g2.addColorStop(1, s ? s.couleur1 || s.teinte || '#888' : c);
-      ctx.fillStyle = g2; ctx.fill(); ctx.lineWidth = vu ? 4 * u : 2 * u; ctx.strokeStyle = vu ? '#ffe14a' : eq ? '#b6ff4a' : NOIR; ctx.stroke();
-      texte(!a ? '🔒' : s && s.icone ? s.icone : '', x, yS, 10 * u, '#fff');
-      zones.push({ x: x - sr, y: yS - sr, w: sr * 2, h: sr * 2, action: () => { skinVue = { p: p.nom, cle: s ? s.cle : '' }; if (!s || skinsAchetes(p).includes(s.cle)) choisirSkin(p, s); } }); });
+    SK.forEach((sK, m) => { const x = sx0 + m * (sr * 2 + 8 * u), ach = !sK || skinsAchetes(p).includes(sK.cle), vu = (sK ? sK.cle : '') === skinVue.cle, eq = (sK ? sK.cle : '') === choisiSk;
+      ctx.beginPath(); ctx.arc(x, yS, sr, 0, 7); const g2 = ctx.createLinearGradient(x - sr, yS - sr, x + sr, yS + sr); g2.addColorStop(0, sK ? sK.couleur2 || sK.teinte || '#fff' : ombrer(c, 0.3)); g2.addColorStop(1, sK ? sK.couleur1 || sK.teinte || '#888' : c);
+      ctx.fillStyle = g2; ctx.fill(); ctx.lineWidth = vu ? 4 * u : 2 * u; ctx.strokeStyle = vu ? '#ffe14a' : eq ? '#b6ff4a' : NOIR; ctx.stroke(); texte(!ach ? '🔒' : sK && sK.icone ? sK.icone : '', x, yS, 11 * u, '#fff');
+      zones.push({ x: x - sr, y: yS - sr, w: sr * 2, h: sr * 2, action: () => { skinVue = { p: p.nom, cle: sK ? sK.cle : '' }; if (!sK || skinsAchetes(p).includes(sK.cle)) choisirSkin(p, sK); } }); });
     const sv = skinParCle(skinVue.cle), achete = !sv || skinsAchetes(p).includes(sv.cle);
-    if (sv && !achete) { const bw2 = 170 * u, bx2 = cx - bw2 / 2, by2 = yS - sr - 40 * u; bouton3D(bx2, by2, bw2, 32 * u, '#ffd23f', '#ff8a1f', () => choisirSkin(p, sv)); titre('Acheter ' + sv.nom + ' • ' + (sv.cout || 0) + ' 🎟️', cx, by2 + 15 * u, 12 * u, '#fff', 'center', bw2 - 10 * u); }
-    else texte((sv ? sv.nom : 'Classique') + (skinVue.cle === choisiSk ? '  •  ✔ Équipé' : ''), cx, yS - sr - 12 * u, 11 * u, '#fff');
+    if (sv && !achete) { const bw2 = Math.min(230 * u, mw - 20 * u), by2 = sol - 40 * u; bouton3D(cx - bw2 / 2, by2, bw2, 34 * u, '#ffd23f', '#ff8a1f', () => choisirSkin(p, sv)); titre('Acheter ' + sv.nom + ' • ' + (sv.cout || 0) + ' 🎟️', cx, by2 + 16 * u, 13 * u, '#fff', 'center', bw2 - 12 * u); }
+    else texte((sv ? sv.nom : 'Classique') + (skinVue.cle === choisiSk ? '  •  ✔ Équipé' : ''), cx, sol - 14 * u, 12 * u, '#fff');
   }
-  // arme + super / action
-  let y = sol + 16 * u;
-  texte((TYPES_ARME[a.type] ? TYPES_ARME[a.type] + ' • ' : '') + (a.nom || p.arme) + (a.rebonds > 0 ? ' • ' + a.rebonds + ' ricochets' : '') + (a.chaine > 0 ? ' • chercheur ×' + a.chaine : ''), cx, y, 12 * u, '#ffe8a3', 'center', panW - 20 * u);
-  const ro = roleDe(p); if (ro) { y += 16 * u; texte(CONFIG.roles[ro].nom + ' : ' + (CONFIG.roles[ro].description || ''), cx, y, 11 * u, '#9cff57', 'center', panW - 20 * u); }
-  const ie = ELEM_DEF[cleElem(p)] && { ...ELEM_DEF[cleElem(p)], ...el }; if (ie) { y += 16 * u; texte(`⭐ ${ie.superNom}  •  🎮 ${ie.actionNom}`, cx, y, 11 * u, '#ffe14a', 'center', panW - 20 * u); }
-  // stats
+  [[-1, 'retour', mx + 24 * u], [1, 'suite', mx + mw - 24 * u]].forEach(([d, ic, fx]) => { bouton3D(fx - 20 * u, hy + hh / 2 - 20 * u, 40 * u, 40 * u, '#ffe14a', '#ff8a1f', () => changerPerso(d), 20 * u); icone(ic, fx, hy + hh / 2 - 1 * u, 20 * u); });
+
+  // droite : arme, rôle, super, stats, essences, boutons
+  verre(sx, y0, sw, zoneH, 18 * u); rect(sx, y0, sw, 6 * u, 3 * u, c);
+  let y = y0 + 22 * u; const tx = (t, col, taille = 11) => { lignes(t, sw - 24 * u, taille * u).slice(0, 2).forEach(l => { texte(l, sx + sw / 2, y, taille * u, col, 'center'); y += (taille + 4) * u; }); y += 3 * u; };
+  tx((TYPES_ARME[a.type] ? TYPES_ARME[a.type] + ' • ' : '') + (a.nom || p.arme) + (a.rebonds > 0 ? ' • ' + a.rebonds + ' ricochets' : '') + (a.chaine > 0 ? ' • chercheur ×' + a.chaine : ''), '#ffe8a3', 12);
+  const ro = roleDe(p); if (ro) tx(CONFIG.roles[ro].nom + ' : ' + (CONFIG.roles[ro].description || ''), '#9cff57');
+  const ie = ELEM_DEF[cleElem(p)] && { ...ELEM_DEF[cleElem(p)], ...el }; if (ie) tx(`⭐ ${ie.superNom}  •  🎮 ${ie.actionNom}`, '#ffe14a');
+  const gk = gadgetDe({ perso: p }), gg = gk && CONFIG.gadgets[gk]; if (gg) tx(`🧰 ${gg.icone || ''} ${gg.nom} (×${reglage('gadgetsParPartie', 3)})`, '#b6f0ff');
   const st = [['❤️', 'Vie', p.pvMax / 8000, p.pvMax, '#ff5a6e'], ['💥', 'Dégâts', p.degats / 3000, p.degats, '#ff9f43'], ['🏃', 'Vitesse', p.vitesse / 5, p.vitesse, '#4cd964'],
     ['🎯', 'Portée', p.portee / 600, p.portee, '#5ac8fa'], ['🔋', 'Munitions', (p.munitions || 3) / 6, p.munitions || 3, '#ffd23f'],
     ['⚡', 'Cadence', 1 - (p.delaiTir || 30) / 90, ((p.delaiTir || 30) / 60).toFixed(2) + 's', '#b57bff'], ['♻️', 'Recharge', 1 - (p.recharge || 60) / 150, ((p.recharge || 60) / 60).toFixed(1) + 's', '#ff7ab6']];
-  const sy = y + 14 * u, nl = compact ? 4 : st.length, pas = Math.max(12 * u, Math.min(22 * u, (eY - sy - 6 * u) / nl)), cw2 = compact ? (panW - 30 * u) / 2 : panW - 24 * u;
-  st.forEach((s2, m) => { const col = compact ? Math.floor(m / 4) : 0, row = compact ? m % 4 : m; const bx = px + 12 * u + col * (cw2 + 6 * u), yy = sy + row * pas; if (yy >= eY - 8 * u) return;
-    if (!compact) return statBarre(bx, yy, cw2, ...s2);
-    const [ic, lab, f, v, colr] = s2; texte(ic + ' ' + lab, bx, yy - 3 * u, 10 * u, '#fff', 'left'); texte(String(v), bx + cw2, yy - 3 * u, 10 * u, '#fff', 'right'); // petit écran : nom + valeur, barre fine dessous
-    rect(bx, yy + 4 * u, cw2, 4 * u, 2 * u, 'rgba(11,6,32,.6)'); rect(bx, yy + 4 * u, Math.max(3, cw2 * Math.max(0, Math.min(1, f))), 4 * u, 2 * u, colr); });
-  // essences + boutons
-  const els = Object.entries(CONFIG.elements || {}), pw = (panW - 40 * u - (els.length - 1) * 6 * u) / Math.max(1, els.length);
-  els.forEach(([k2, e2], m) => { const ex = px + 20 * u + m * (pw + 6 * u); verre(ex, eY, pw, 26 * u, 13 * u); texte(e2.icone + ' ' + ((mesStats.essences || {})[k2] || 0), ex + pw / 2, eY + 13 * u, 12 * u, '#fff', 'center', pw - 8 * u); });
-  const choisi = persoVue === persoIndex, bw = (panW - 50 * u) / 2, ep = el, nvP = niveauDe(p), maxN = +(CONFIG.progression || {}).niveauMax || 10, verrou = !estDebloque(p);
-  if (ep) { bouton3D(px + 20 * u, by, bw, bh, nvP >= maxN ? '#9aa5b8' : ep.couleur, nvP >= maxN ? '#5d6778' : ombrer(ep.couleur, -0.35), () => evoluer(p));
-    texte(nvP >= maxN ? 'Niveau max' : `Évoluer • ${coutNiveau(nvP)} ${ep.icone}`, px + 20 * u + bw / 2, by + bh / 2, 13 * u, '#fff', 'center', bw - 12 * u); }
-  bouton3D(ep ? px + 30 * u + bw : px + 20 * u, by, ep ? bw : panW - 40 * u, bh, verrou ? '#ffd23f' : choisi ? '#9aa5b8' : '#4cd964', verrou ? '#ff8a1f' : choisi ? '#5d6778' : '#1f9d3a', verrou ? () => debloquerPerso(p) : choisi ? null : () => { persoIndex = persoVue; allerA('accueil'); });
-  texte(verrou ? '🔓 ' + (+p.coutJetons || 3) + ' 🎟️' : choisi ? '✔ Choisi' : 'Choisir', (ep ? px + 30 * u + bw * 1.5 : cx), by + bh / 2, 15 * u, '#fff');
+  const bh = 40 * u, by = y0 + zoneH - bh - 10 * u, eY = by - 32 * u, pas = Math.max(13 * u, Math.min(24 * u, (eY - y - 8 * u) / st.length));
+  st.forEach((s2, m) => { const yy = y + m * pas + 6 * u; if (yy > eY - 6 * u) return; if (pas >= 18 * u) return statBarre(sx + 12 * u, yy, sw - 24 * u, ...s2);
+    const [ic, lab, f, v, colr] = s2; texte(ic + ' ' + lab, sx + 12 * u, yy - 3 * u, 10 * u, '#fff', 'left'); texte(String(v), sx + sw - 12 * u, yy - 3 * u, 10 * u, '#fff', 'right');
+    rect(sx + 12 * u, yy + 4 * u, sw - 24 * u, 4 * u, 2 * u, 'rgba(11,6,32,.6)'); rect(sx + 12 * u, yy + 4 * u, Math.max(3, (sw - 24 * u) * Math.max(0, Math.min(1, f))), 4 * u, 2 * u, colr); });
+  const els = Object.entries(CONFIG.elements || {}), pw = (sw - 24 * u - (els.length - 1) * 6 * u) / Math.max(1, els.length);
+  els.forEach(([k2, e2], m) => { const ex = sx + 12 * u + m * (pw + 6 * u); verre(ex, eY, pw, 24 * u, 12 * u); texte(e2.icone + ' ' + ((mesStats.essences || {})[k2] || 0), ex + pw / 2, eY + 12 * u, 11 * u, '#fff', 'center', pw - 6 * u); });
+  const choisi = persoVue === persoIndex, bw = (sw - 34 * u) / 2, nvP = niveauDe(p), maxN = +(CONFIG.progression || {}).niveauMax || 10, verrou = !estDebloque(p);
+  if (el) { bouton3D(sx + 12 * u, by, bw, bh, nvP >= maxN ? '#9aa5b8' : el.couleur, nvP >= maxN ? '#5d6778' : ombrer(el.couleur, -0.35), () => evoluer(p));
+    texte(nvP >= maxN ? 'Niveau max' : `Évoluer • ${coutNiveau(nvP)} ${el.icone}`, sx + 12 * u + bw / 2, by + bh / 2, 12 * u, '#fff', 'center', bw - 10 * u); }
+  bouton3D(el ? sx + 22 * u + bw : sx + 12 * u, by, el ? bw : sw - 24 * u, bh, verrou ? '#ffd23f' : choisi ? '#9aa5b8' : '#4cd964', verrou ? '#ff8a1f' : choisi ? '#5d6778' : '#1f9d3a', verrou ? () => debloquerPerso(p) : choisi ? null : () => { persoIndex = persoVue; allerA('accueil'); });
+  texte(verrou ? '🔓 ' + (+p.coutJetons || 3) + ' 🎟️' : choisi ? '✔ Choisi' : 'Choisir', el ? sx + 22 * u + bw * 1.5 : sx + sw / 2, by + bh / 2, 14 * u, '#fff');
 }
 
 // --- Modes de jeu + choix de la map
