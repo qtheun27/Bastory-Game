@@ -256,7 +256,7 @@ const Rendu3D = (() => {
         anim = fin ? e.finAnim : e.pv <= 0 ? 'mort' : saut ? 'saut' : e.anim && temps - e.anim.t < dA(e.anim.n) ? (e.anim.super ? 'super' : e.anim.n) : temps - (o.marcheT || -99) < 12 ? 'marche' : 'repos';
         if (o.action) { o.mixer.stopAllAction(); o.action = null; o.clip = null; }
         const t0 = anim === 'mort' ? (o.mortT || temps) : fin ? (finInfo ? finInfo.t0 : 0) : e.anim && (anim === e.anim.n || anim === 'super') ? e.anim.t : 0;
-        Modele3D.animer(o, anim, temps - t0, { phase: (e.marche || 0) * 0.085 * (+p.pasProc || 1), type: A.type, du: +A.delaiFrappe || 16, danse: p.danseProc, force: +p.forceAnim || 1, nom: p.nom });
+        Modele3D.animer(o, anim, temps - t0, { phase: (e.marche || 0) * 0.085 * (+p.pasProc || 1), type: A.type, du: +A.delaiFrappe || 16, danse: p.danseProc, force: +p.forceAnim || 1, nom: p.nom, lisse: 1 - Math.min(0.9, Math.max(0, p.fluidite === undefined || p.fluidite === '' ? 0.7 : +p.fluidite)) });
       }
       const clip = proc ? null : o.anims[anim] || (o.parNom || {})[anim] || o.anims.repos || Object.values(o.parNom || {})[0]; // jamais de pose en T : au pire la 1re animation du modèle
       if (clip && o.clip !== clip) {

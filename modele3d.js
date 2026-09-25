@@ -262,13 +262,15 @@ const Modele3D = (() => {
       else { const p = (sin(f * 0.157) + 1) / 2, A = [0.6, 0.9, 0.3], Bb = [0.6, -0.9, 0.1]; bG = mix(A, Bb, p); bD = mix(Bb, A, p); dosZ = sin(f * 0.157) * 0.15 * k; cG = [0.1, -1, 0.15 * p]; cD = [0.1, -1, 0.15 * (1 - p)]; y = Math.abs(sin(f * 0.314)) * 0.04; }
     } else { dos = 0.03 * souffle; tete = 0.03 * souffle; bG = bD = [0.38, -1, 0.06 + 0.04 * souffle]; y = 0.01 * souffle; } // repos : respiration
     // corps entier (tous les modèles, même sans squelette)
-    obj.position.y = S.y0 + y; obj.position.z = S.z0 + z; obj.rotation.set(S.r0.x + rx, S.r0.y + ry, S.r0.z + rz);
+    const L = c01(+o.lisse || 0) || 1, lis = (cle, v) => (S[cle] = S[cle] === undefined || L === 1 ? v : S[cle] + (v - S[cle]) * L); // 🌊 lissage : on glisse vers la nouvelle pose
+    obj.position.y = S.y0 + lis('_y', y); obj.position.z = S.z0 + lis('_z', z); obj.rotation.set(S.r0.x + lis('_rx', rx), S.r0.y + lis('_ry', ry), S.r0.z + lis('_rz', rz));
     if (!S.os) return;
     tourne(S, 'bassin', AY, dosY * 0.5); tourne(S, 'dos', AX, dos * 0.6); tourne(S, 'dos', AZ, dosZ); tourne(S, 'poitrine', AX, dos * 0.4); tourne(S, 'poitrine', AY, dosY * 0.5); tourne(S, 'tete', AX, tete); tourne(S, 'cou', AX, tete * 0.5);
     const V3 = (a, s) => new THREE.Vector3(a[0] * s, a[1], a[2]).normalize(), plie = a => [a[0], a[1], a[2] + 0.35];
     for (const [c, s, b, a, cu, ti] of [['G', 1, bG, aG, cG, tG], ['D', -1, bD, aD, cD, tD]]) {
       vise(S, 'bras' + c, V3(b, s)); vise(S, 'avant' + c, V3(a || plie(b), s)); vise(S, 'cuisse' + c, V3(cu, s)); vise(S, 'tibia' + c, V3(ti || cu, s));
     }
+    if (L < 1) for (const r of S.liste) { if (r.prec) { r.prec.slerp(r.b.quaternion, L); r.b.quaternion.copy(r.prec); } else r.prec = r.b.quaternion.clone(); }
   }
   const procActif = (m, p) => !!m && ((p && p.animProc) === 'toujours' || ((p && p.animProc) !== 'jamais' && !(m.clips || []).length));
   async function listeAnims(p) { const m = await charger(p); if (!m) return []; m.liberer(); return m.clips; } // noms des animations d'un modèle (admin)
