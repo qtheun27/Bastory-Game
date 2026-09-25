@@ -129,7 +129,7 @@ const AIDE = {
   images: v => `= ${n1(v / 60)} s`,
   cadence: v => `= ${n1(v / 60)} s entre 2 tirs (${n1(60 / Math.max(1, v))} tirs/s)`,
   portee: v => `≈ ${n1(v / 64)} cases`,
-  reac: v => v >= 0.8 ? 'très nerveux (arcade)' : v >= 0.45 ? 'réactif (style arcade)' : v >= 0.25 ? 'souple' : 'glissant, lourd',
+  reac: v => v >= 0.8 ? 'très nerveux (arcade)' : v >= 0.45 ? 'réactif (arcade)' : v >= 0.25 ? 'souple' : 'glissant, lourd',
   multi: v => v == 1 ? 'normal' : v > 1 ? `+${Math.round((v - 1) * 100)} %` : `−${Math.round((1 - v) * 100)} %`
 };
 var CH_JEU = [['vitesseJeu','🏃 Vitesse générale de tous les persos (multiplie chaque fiche)','number',null,AIDE.multi],
@@ -140,7 +140,7 @@ var CH_JEU = [['vitesseJeu','🏃 Vitesse générale de tous les persos (multipl
   ['reculTir','💥 Recul du perso à chaque tir (0 = aucun)','number'],
   ['tremblementTir','📳 Tremblement de l\'écran au tir (0 = aucun)','number'],
   ['eclatCanon','✨ Éclat lumineux au bout du canon','check'],
-  ['styleAnneau','⭕ Anneau sous les persos','select',[['arcade','arcade (disque + flèche de direction)'],['simple','Simple (cercle fin)']]],
+  ['styleAnneau','⭕ Anneau sous les persos','select',[['arcade','Arcade (disque + flèche de direction)'],['simple','Simple (cercle fin)']]],
   ['—','🎬 Animations (vue 3D)','titre'],
   ['rebondPerso','💢 Rebond du perso quand il tire / est touché (0 = aucun, 1 = normal, 2 = cartoon)','number'],
   ['pasMarche','🚶 Vitesse de référence des pas (+ grand = pas plus lents ; à ajuster si les pieds glissent)','number'],

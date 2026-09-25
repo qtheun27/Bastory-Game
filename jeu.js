@@ -80,6 +80,11 @@ function redim() {
 function recaler() { // 📱 iPhone : après une rotation, Safari garde un défilement ou un dézoom → image décalée + bande noire. On remet tout en place.
   if (scrollX || scrollY) scrollTo(0, 0);
   document.documentElement.scrollTop = document.body.scrollTop = document.documentElement.scrollLeft = document.body.scrollLeft = 0;
+  const vv = window.visualViewport, m = document.querySelector('meta[name=viewport]');
+  if (vv && m && Math.abs(vv.scale - 1) > 0.01 && !recaler.encours) { // l'iPhone a dézoomé l'appli (bande noire en bas) → on force le zoom 1
+    recaler.encours = true; const c = m.content; m.content = c.replace(/initial-scale=[^,]*/, 'initial-scale=0.99');
+    setTimeout(() => { m.content = c; recaler.encours = false; redim(); }, 30);
+  }
 }
 addEventListener('scroll', recaler, { passive: true });
 addEventListener('resize', redim); redim();
@@ -2373,7 +2378,7 @@ function dessinerHUD() {
     ctx.font = '22px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.icone || '✨', x + 22, 92);
     texte(Math.ceil((moi.bonus[id] - temps) / 60) + 's', x + 22, 112, 11, '#fff');
   });
-  if (mobile) { // emplacements des joysticks (comme arcade)
+  if (mobile) { // emplacements des joysticks (style arcade)
     const u = U();
     if (!joyG.actif) { ctx.globalAlpha = 0.18; ellipse(95 * u, H - 95 * u, 55 * u, 55 * u, '#fff'); ctx.globalAlpha = 0.35; ellipse(95 * u, H - 95 * u, 24 * u, 24 * u, '#fff'); ctx.globalAlpha = 1; }
   }
