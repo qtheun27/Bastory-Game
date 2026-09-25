@@ -314,7 +314,7 @@ function demarrer(mapIdx, liste) {
     const sp = libreE ? (libreE.pris = true, { x: c(libreE.x), y: c(libreE.y) }) : map.j[k] ? { x: c(map.j[k].x), y: c(map.j[k].y) }
       : (k === 1 && map.j[0]) ? { x: c(map.l - 1 - map.j[0].x), y: c(map.h - 1 - map.j[0].y) } : caseLibre(places);
     const j = creerJoueur(d.p, sp.x, sp.y, d.uid, d.nom, eq, d.nv || (d.uid === user.uid ? niveauDe(CONFIG.persos[d.p]) : 1));
-    places.push(j);
+    places.push(j); if (d.sk && d.uid !== user.uid) j.skin = d.sk; // 🎨 skin équipé des autres joueurs
     if (d.bot) { j.bot = true; j.niv = d.niv || 1; j.pvMax = j.pv = Math.round(j.pvMax * (0.8 + 0.2 * j.niv)); }
     if (d.uid === user.uid) moi = j; else autres[d.uid] = j;
   });
@@ -414,7 +414,7 @@ async function chercherPartie(opts = {}) {
   if (s.hote) { rtdb.ref(cle).onDisconnect().remove(); s.ref.onDisconnect().remove(); await s.ref.child('info').set({ map: mapChoisie(mode), sig }); }
   const moiRef = s.ref.child('joueurs/' + user.uid);
   moiRef.onDisconnect().remove();
-  await moiRef.set({ nom: nomJoueur(), p: persoIndex, nv: niveauDe(CONFIG.persos[persoIndex]), g: groupe.chef || null, pp: ((mesStats.persos || {})[cleP(CONFIG.persos[persoIndex] || {})] || {}).points || 0, t: firebase.database.ServerValue.TIMESTAMP });
+  await moiRef.set({ nom: nomJoueur(), p: persoIndex, sk: skinChoisi(CONFIG.persos[persoIndex] || {}) || '', nv: niveauDe(CONFIG.persos[persoIndex]), g: groupe.chef || null, pp: ((mesStats.persos || {})[cleP(CONFIG.persos[persoIndex] || {})] || {}).points || 0, t: firebase.database.ServerValue.TIMESTAMP });
   s.ref.child('joueurs').on('value', snap => {
     if (salle !== s) return;
     s.js = snap.val() || {};
@@ -437,7 +437,7 @@ async function chercherPartie(opts = {}) {
 function lancerSalle(avecBots) {
   const s = salle; if (!s || s.debut) return; s.debut = true;
   rtdb.ref(s.cle).transaction(v => v && v.salle === s.id ? null : undefined).catch(() => {});
-  const liste = Object.entries(s.js).sort((a, b) => (a[1].t || 0) - (b[1].t || 0)).map(([uid, d]) => ({ uid, nom: d.nom, p: d.p, nv: d.nv || 1, g: d.g || null }));
+  const liste = Object.entries(s.js).sort((a, b) => (a[1].t || 0) - (b[1].t || 0)).map(([uid, d]) => ({ uid, nom: d.nom, p: d.p, nv: d.nv || 1, g: d.g || null, sk: d.sk || '' }));
   if (avecBots) { // 🤖 complète avec des bots (nombre pair en équipes)
     let k = 1;
     const humains = Object.values(s.js), moy = humains.reduce((t, d) => t + (+d.pp || 0), 0) / Math.max(1, humains.length);
@@ -552,6 +552,7 @@ canvas.addEventListener('touchstart', e => {
     if (etat === 'MENU' && (ecranMenu === 'hud' || ecranMenu === 'commandes') && prendreBoutonHud(pt(t))) continue;
     if (etat === 'MENU') glisse = { x: pt(t).x, id: t.identifier };
     if (etat === 'MENU' && surHero(pt(t))) { heroDrag = { x: pt(t).x, id: t.identifier, bouge: 0 }; continue; }
+    if (surListe(pt(t))) { const q = pt(t); glisseListe = { id: t.identifier, y: q.y, x0: q.x, y0: q.y, total: 0 }; glisse = null; continue; } // 📜 liste des persos : on attend de savoir si c'est un glissé ou un appui
     if (etat !== 'JEU' || moi.pv <= 0) { clic(pt(t).x, pt(t).y); continue; }
     const hb = boutonHUD(pt(t)); // boutons SUPER (glisser pour viser) / ACTION
     if (hb && hb.vise && moi.superPret) { const q = pt(t); Object.assign(joyS, { actif: true, id: t.identifier, ox: q.x, oy: q.y, x: q.x, y: q.y }); continue; }
@@ -565,9 +566,11 @@ canvas.addEventListener('touchmove', e => {
   if (hudDrag) deplacerBoutonHud(pt(e.changedTouches[0]));
   for (const t of e.changedTouches) for (const j of [joyG, joyD, joyS]) if (j.actif && j.id === t.identifier) { const q = pt(t); j.x = q.x; j.y = q.y; }
   if (heroDrag) for (const t of e.changedTouches) if (t.identifier === heroDrag.id) tournerHero(pt(t).x);
+  if (glisseListe.id !== undefined) for (const t of e.changedTouches) if (t.identifier === glisseListe.id) { const q = pt(t), dy = q.y - glisseListe.y; glisseListe.y = q.y; glisseListe.total += Math.abs(dy); defilPersos -= dy; }
 }, { passive: false });
 function finTouche(e) {
   if (hudDrag) { hudDrag = null; sauverHud(); }
+  if (glisseListe.id !== undefined) for (const t of e.changedTouches) if (t.identifier === glisseListe.id) { const g = glisseListe; glisseListe = {}; if (g.total < 10) clic(g.x0, g.y0); } // simple appui = choisir le perso
   if (glisse) for (const t of e.changedTouches) if (t.identifier === glisse.id) { const dx = pt(t).x - glisse.x; if (Math.abs(dx) > 60 && etat === 'MENU') { if (ecranMenu === 'modes') changerMode(dx < 0 ? 1 : -1); if (ecranMenu === 'persos') changerPerso(dx < 0 ? 1 : -1); } glisse = null; }
   if (heroDrag) for (const t of e.changedTouches) if (t.identifier === heroDrag.id) lacherHero();
   for (const t of e.changedTouches) {
@@ -1332,14 +1335,14 @@ function bossPourIntro() {
 function preparerIntro() {
   if (intro) intro.vedettes.forEach(v => v.vue && v.vue.liberer());
   const tous = [moi, ...Object.values(autres)], amis = tous.filter(j => j.eq === moi.eq), ennemis = tous.filter(j => j.eq !== moi.eq);
-  const fiche = (j, cote) => ({ p: baseDe(j.perso), im: carteDe(j.perso), nom: j.nom, sous: (baseDe(j.perso) || {}).nom || '', c: cote < 0 ? (j === moi ? '#1e90ff' : '#1fc46b') : '#ff2d55', cote, vue: null });
+  const fiche = (j, cote) => ({ p: baseDe(j.perso), im: carteDe(j.perso), nom: j.nom, sous: (baseDe(j.perso) || {}).nom || '', c: cote < 0 ? (j === moi ? '#1e90ff' : '#1fc46b') : '#ff2d55', cote, vue: null, sk: skinDe(j) });
   const liste = [fiche(moi, -1), ...amis.filter(j => j !== moi).map(j => fiche(j, -1)), ...ennemis.map(j => fiche(j, 1))];
   if (mode.boss && mode.nbBoss > 0) { const d = bossBase(bossPourIntro()); liste.push({ p: d.modele ? d : null, im: carteDe(d), nom: d.nom || 'BOSS', sous: 'BOSS', c: '#ff8a00', cote: 1 }); }
   const G = liste.filter(v => v.cote < 0), D = liste.filter(v => v.cote > 0); // une apparition par équipe (tout le monde côte à côte)
   const vedettes = [G.length && { ...G[0], membres: G, cote: -1 }, D.length && { ...D[0], membres: D, cote: 1 }].filter(Boolean);
   intro = { cle: introT, vedettes, gauche: [...amis.map(j => fiche(j, -1))], droite: liste.filter(v => v.cote > 0) };
   intro.total = Math.round((vedettes.length * SHOW + VS + CD) * KI()); // même durée chez tous les joueurs (ne dépend que de la partie)
-  vedettes.forEach(v => { if (v.membres.length === 1 && v.p && v.p.modele && ok3D()) Modele3D.vitrine(v.p).then(x => { if (intro && intro.vedettes.includes(v)) v.vue = x; else if (x) x.liberer(); }).catch(() => {}); });
+  vedettes.forEach(v => { if (v.membres.length === 1 && v.p && v.p.modele && ok3D()) Modele3D.vitrine(v.p).then(x => { if (x && x.teinte) x.teinte(skinParCle(v.sk)); if (intro && intro.vedettes.includes(v)) v.vue = x; else if (x) x.liberer(); }).catch(() => {}); }); // 🎨 skin équipé aussi dans l'intro
 }
 const PHRASES = ['DOGOGOGO', 'ZUDOOON!!', 'BAKOOM!!', 'GOGOGO…'];
 function introVedette(v, l, i) {
@@ -2846,7 +2849,7 @@ function menuAccueil() {
     ctx.globalAlpha = Math.max(0, 0.6 - t / 300); ellipse(px, py, 2, 2, '#fff'); ctx.globalAlpha = 1;
   }
   const im = carteDe(p), b = Math.sin(temps * 0.045) * 6 * u;
-  const vh = vitrineHero(p);
+  const vh = vitrineHero(p); if (vh && vh.teinte) vh.teinte(skinParCle(skinChoisi(p))); // accueil : seulement le skin équipé (jamais un aperçu non acheté)
   if (vh) { // héros 3D haute définition, immobile ; on le fait tourner en glissant le doigt
     const T = Math.round(Math.min(720, taille * 1.35 * dpr)), c = vh.rendre(heroAngle, T, ...animMenu(vh, p)), D = taille * 0.82 * Math.min(1, 0.72 + 0.2 * Math.min(1.4, +p.modeleEchelle || 1)) / Math.max(0.2, (vh.bas - vh.haut) || 0.7);
     ctx.imageSmoothingQuality = 'high'; ctx.drawImage(c, cx - D / 2, sol - 4 * u - vh.bas * D, D, D);
@@ -2895,7 +2898,9 @@ function menuAccueil() {
 
 // --- Persos : vue d'ensemble (grille) + fiche du perso choisi (description, modèle 3D animé, stats)
 const TYPES_ARME = { lob: '🤾 Cloche', retour: '🪃 Retour', droit: '🎯 Tir droit', terrain: '🌋 Terrain', frappe: '🔨 Frappe' };
-let vuePersos = 'detail', defilPersos = 0; // 🗂️ collection (toutes les cartes) • 🔍 détail (liste + perso en grand + stats)
+let vuePersos = 'detail', defilPersos = 0, defilVu = -1, listePersos = null, glisseListe = {};
+const surListe = q => etat === 'MENU' && ecranMenu === 'persos' && vuePersos === 'detail' && listePersos && listePersos.max > 0 && q.x - sa.l >= listePersos.x && q.x - sa.l <= listePersos.x + listePersos.w && q.y - sa.t >= listePersos.y && q.y - sa.t <= listePersos.y + listePersos.h;
+addEventListener('wheel', e => { const q = pt(e); if (surListe(q)) { defilPersos += e.deltaY; e.preventDefault(); } }, { passive: false }); // 🖱️ molette sur la liste // 🗂️ collection (toutes les cartes) • 🔍 détail (liste + perso en grand + stats)
 function cartePerso(p, i, cx, cy, cw, ch, u, action) { // carte de la collection : portrait, niveau, élément, rôle, arme, mini-stats
   const k = Math.min(1, ch / (170 * u)), el = elemDe(p), c = (el && el.couleur) || p.couleur || '#5a4dff', sel = i === persoVue, verrou = !estDebloque(p), a = CONFIG.armes[p.arme] || {};
   const g = ctx.createLinearGradient(cx, cy, cx, cy + ch); g.addColorStop(0, ombrer(c, 0.25)); g.addColorStop(1, ombrer(c, -0.45));
@@ -2935,15 +2940,19 @@ function menuPersos() {
   const p = CONFIG.persos[persoVue], a = CONFIG.armes[p.arme] || {}, el = elemDe(p), c = (el && el.couleur) || p.couleur || '#5a4dff';
   const lw = Math.min(112 * u, W * 0.14), sw = Math.min(330 * u, W * 0.34), mx = 14 * u + lw + 12 * u, mw = W - mx - sw - 26 * u, sx = W - sw - 14 * u, cx = mx + mw / 2;
   // liste des persos (défilante)
-  const th = Math.min(84 * u, lw * 0.95), gapT = 8 * u, tient = Math.max(1, Math.floor((zoneH - 56 * u) / (th + gapT))), max = Math.max(0, n - tient);
-  if (persoVue < defilPersos) defilPersos = persoVue; if (persoVue >= defilPersos + tient) defilPersos = persoVue - tient + 1; defilPersos = Math.max(0, Math.min(max, defilPersos));
-  const ly0 = y0 + (max ? 24 * u : 0);
-  if (max) { [[-1, y0, '▲'], [1, y0 + zoneH - 20 * u, '▼']].forEach(([d, yb, t]) => { bouton3D(14 * u, yb, lw, 20 * u, '#8e7bff', '#5b3fd6', () => defilPersos = Math.max(0, Math.min(max, defilPersos + d * tient))); texte(t, 14 * u + lw / 2, yb + 9 * u, 11 * u, '#fff'); }); }
-  CONFIG.persos.slice(defilPersos, defilPersos + tient).forEach((q, m) => { const i = defilPersos + m, ty = ly0 + m * (th + gapT), e2 = elemDe(q), c2 = (e2 && e2.couleur) || q.couleur || '#5a4dff', sel = i === persoVue;
+  const th = Math.min(92 * u, lw * 1.05), gapT = 8 * u, pasT = th + gapT, total = n * pasT - gapT, bh0 = 22 * u, lY = y0 + bh0 + 4 * u, lH = zoneH - 2 * (bh0 + 4 * u), max = Math.max(0, total - lH);
+  if (defilVu !== persoVue) { defilVu = persoVue; const yv = persoVue * pasT; if (yv < defilPersos) defilPersos = yv; if (yv + th > defilPersos + lH) defilPersos = yv + th - lH; } // suit le perso choisi seulement quand il change
+  defilPersos = Math.max(0, Math.min(max, defilPersos)); listePersos = { x: 14 * u, y: lY, w: lw, h: lH, max };
+  [[-1, y0, '▲'], [1, y0 + zoneH - bh0, '▼']].forEach(([d, yb, t]) => { const actif = d < 0 ? defilPersos > 1 : defilPersos < max - 1; ctx.globalAlpha = actif ? 1 : 0.4;
+    bouton3D(14 * u, yb, lw, bh0, '#8e7bff', '#5b3fd6', () => defilPersos = Math.max(0, Math.min(max, defilPersos + d * pasT))); texte(t, 14 * u + lw / 2, yb + bh0 / 2 - 1 * u, 11 * u, '#fff'); ctx.globalAlpha = 1; });
+  ctx.save(); ctx.beginPath(); ctx.rect(10 * u, lY, lw + 8 * u, lH); ctx.clip(); // la carte suivante dépasse sous le bord : on voit qu'il y en a d'autres
+  CONFIG.persos.forEach((q, i) => { const ty = lY + i * pasT - defilPersos; if (ty > lY + lH || ty + th < lY) return; const e2 = elemDe(q), c2 = (e2 && e2.couleur) || q.couleur || '#5a4dff', sel = i === persoVue;
     const g = ctx.createLinearGradient(0, ty, 0, ty + th); g.addColorStop(0, ombrer(c2, 0.25)); g.addColorStop(1, ombrer(c2, -0.45)); rect(14 * u, ty, lw, th, 12 * u, g, sel ? '#ffe14a' : NOIR, sel ? 4 * u : 2 * u);
     const im = carteDe(q), is = th * 0.68; if (!estDebloque(q)) ctx.filter = 'grayscale(1) brightness(.6)'; if (pret(im)) ctx.drawImage(im, 14 * u + (lw - is) / 2, ty + 3 * u, is, is); ctx.filter = 'none';
     titre(q.nom, 14 * u + lw / 2, ty + th - 11 * u, 11 * u, '#fff', 'center', lw - 8 * u); if (i === persoIndex) texte('✔', 14 * u + lw - 11 * u, ty + 11 * u, 12 * u, '#b6ff4a');
-    zones.push({ x: 14 * u, y: ty, w: lw, h: th, action: () => { if (persoVue !== i) persoAnim = { t: temps, d: i > persoVue ? 1 : -1 }; persoVue = i; } }); });
+    const vy = Math.max(ty, lY), vh2 = Math.min(ty + th, lY + lH) - vy; if (vh2 > 12 * u) zones.push({ x: 14 * u, y: vy, w: lw, h: vh2, action: () => { if (persoVue !== i) persoAnim = { t: temps, d: i > persoVue ? 1 : -1 }; persoVue = i; } }); });
+  ctx.restore();
+  if (max > 0) { const hb = lH * lH / (total || 1), yb = lY + (lH - hb) * (defilPersos / max); rect(14 * u + lw + 2 * u, yb, 4 * u, hb, 2 * u, 'rgba(255,255,255,.55)'); } // barre de défilement
 
   // centre : nom, description, perso en grand, skins
   titre(p.nom, cx, y0 + 16 * u, 30 * u, '#fff', 'center', mw - 90 * u);
