@@ -34,7 +34,7 @@
   button:active { transform:scale(.96); } button:disabled { opacity:.4; cursor:not-allowed; }
   nav { display:flex; gap:6px; padding:14px 18px; flex-wrap:wrap; }
   main { padding:0 18px 48px; }
-  .grille-cartes { display:grid; grid-template-columns:repeat(auto-fill,minmax(310px,1fr)); gap:16px; }
+  .grille-cartes { align-items:start; display:grid; grid-template-columns:repeat(auto-fill,minmax(310px,1fr)); gap:16px; }
   .carte h3 button { padding:6px 10px; }
   input, select { width:100%; padding:9px 12px; border-radius:12px; border:1px solid var(--bord); background:rgba(0,0,0,.25); color:var(--txt); font:500 14px inherit; font-family:inherit; outline:none; transition:border .15s, box-shadow .15s; }
   input:focus, select:focus { border-color:var(--acc); box-shadow:0 0 0 3px rgba(10,132,255,.3); }
@@ -143,6 +143,8 @@ var CH_JEU = [['vitesseJeu','🏃 Vitesse générale de tous les persos (multipl
   ['—','🎬 Animations (vue 3D)','titre'],
   ['rebondPerso','💢 Rebond du perso quand il tire / est touché (0 = aucun, 1 = normal, 2 = cartoon)','number'],
   ['pasMarche','🚶 Vitesse de référence des pas (+ grand = pas plus lents ; à ajuster si les pieds glissent)','number'],
+  ['traineeTirs','☄️ Longueur de la traînée des projectiles (0 = aucune, 6 = normal, 12 = longue)','number'],
+  ['impact3D','💥 Taille de l\'éclat 3D à l\'impact (0 = aucun, 1 = normal)','number'],
   ['haloTirs','✨ Halo lumineux des projectiles (0 = aucun, 1 = normal, 2 = très brillant)','number']];
 const optMaps = () => [[-1, 'Au choix du joueur'], ...cfg.maps.map((m, i) => [i, m.nom])];
 const CH = {
@@ -168,7 +170,7 @@ const CH = {
           ['element','Élément','select',() => [['', 'Aucun'], ...Object.entries(cfg.elements || {}).map(([k, e]) => [k, e.icone + ' ' + e.nom])]],
           ['element2','2e élément (perso fusion, plus fort)','select',() => [['', 'Aucun'], ...Object.entries(cfg.elements || {}).map(([k, e]) => [k, e.icone + ' ' + e.nom])]],['element3','3e élément (plus tard)','select',() => [['', 'Aucun'], ...Object.entries(cfg.elements || {}).map(([k, e]) => [k, e.icone + ' ' + e.nom])]],['element4','4e élément (plus tard)','select',() => [['', 'Aucun'], ...Object.entries(cfg.elements || {}).map(([k, e]) => [k, e.icone + ' ' + e.nom])]],
           ['modele','Modèle 3D (.glb, ex : modeles/rokh.glb)','text'],['modeleEchelle','Taille du perso (1 = normal, 1.4 = grand)','number'],['modeleRotation','Modèle : rotation (degrés)','number'],
-          ['animRepos','Animation de repos (vide = auto)','anims'],['animSaut','Animation de saut (vide = auto)','anims'],['animCourse','Animation de course (si le perso est rapide)','anims'],['animSuper','Animation du Super','anims'],['animAction','Animation de l\'Action','anims'],['animMarche','Animation de marche (vide = auto)','anims'],['animAttaque','Animation d\'attaque (vide = auto)','anims'],['animTouche','Animation coup reçu (vide = auto)','anims'],['animMort','Animation de mort (vide = auto)','anims'],['animReleve','Animation de réapparition (vide = auto)','anims']],
+          ['animRepos','Animation de repos (vide = auto)','anims'],['animSaut','Animation de saut (vide = auto)','anims'],['animCourse','Animation de course (si le perso est rapide)','anims'],['animSuper','Animation du Super','anims'],['animVictoire','🕺 Animation de victoire (danse de fin, vide = Super)','anims'],['animDefaite','😢 Animation de défaite (vide = repos, debout)','anims'],['animAction','Animation de l\'Action','anims'],['animMarche','Animation de marche (vide = auto)','anims'],['animAttaque','Animation d\'attaque (vide = auto)','anims'],['animTouche','Animation coup reçu (vide = auto)','anims'],['animMort','Animation de mort (vide = auto)','anims'],['animReleve','Animation de réapparition (vide = auto)','anims']],
   arme:  [['nom','Nom','text'],['image','Image (vide = boule)','image'],
           ['type','Trajectoire','select',[['lob','Lancer en cloche (passe les murs)'],['retour','Aller-retour'],['droit','Tir droit'],['terrain','🌋 Terrain (fait sortir des cases du sol)']]],
           ['effet','Animation d\'impact','select',[['explosion','💥 Explosion'],['entaille','⚔️ Entaille'],['etincelle','✨ Étincelles'],['impact','🔨 Onde de choc'],
@@ -178,7 +180,7 @@ const CH = {
           ['nuage','Nuage / fumée au sol : durée (s)','number'],['rayonNuage','Rayon du nuage','number'],['degatsNuage','Dégâts du nuage par seconde','number'],
           ['rebonds','Tir droit : ricochets sur les murs','number'],['bonusRebond','Puissance × à chaque ricochet','number'],
           ['chaine','Tir droit : rebonds vers ennemis proches','number'],['perteChaine','Puissance × à chaque ennemi suivant','number'],['porteeChaine','Distance max vers l\'ennemi suivant','number'],
-          ['forme','🌋 Forme (terrain)','select',[['zone','Zone ronde'],['ligne','Ligne devant soi'],['mur','Mur en travers'],['croix','Croix']]],
+          ['forme','🎨 Forme 3D du projectile (ou 🌋 forme du terrain)','select',[['','⚪ Boule'],['fleche','🏹 Flèche'],['feu','🔥 Boule de feu'],['bulle','🫧 Bulle'],['rocher','🪨 Rocher'],['etoile','⭐ Étoile'],['lame','🪃 Lame tournoyante'],['cristal','💎 Cristal'],['onde','🔨 Onde au sol (marteau)'],['zone','🌋 Terrain : zone ronde'],['ligne','🌋 Terrain : ligne devant soi'],['mur','🌋 Terrain : mur en travers'],['croix','🌋 Terrain : croix']]],
           ['nbCases','🌋 Nombre / taille (cases)','number'],
           ['typeCase','🌋 Case créée','select',[['#','🟫 Mur (bloquant)'],['B','🌳 Buisson (cache)'],['W','🟦 Eau (bloque la marche)'],['S','🟨 Sable (ralentit)'],['.','🟩 Herbe (efface les obstacles)']]],
           ['dureeCase','🌋 Durée (s, 0 = permanent)','number'],['delaiCase','🌋 Délai entre cases (60 = 1 s)','number']],
@@ -187,7 +189,7 @@ const CH = {
           ['arme','Arme à distance (effet sombre)','select',() => [['', 'Aucune (massue seulement)'], ...Object.entries(cfg.armes).map(([k, a]) => [k, a.nom])]],
           ['porteeTir','Portée de tir','number'],['degatsTir','Dégâts du tir','number'],['cadenceTir','Délai entre 2 tirs (60 = 1 s)','number'],
           ['modele','Modèle 3D (.glb, ex : modeles/troll.glb)','text'],['modeleEchelle','Taille du modèle (1 = normal)','number'],['modeleRotation','Modèle : rotation (degrés)','number'],
-          ['animRepos','Animation de repos (vide = auto)','anims'],['animMarche','Animation de marche (vide = auto)','anims'],['animAttaque','Animation d\'attaque (vide = auto)','anims'],['animTouche','Animation coup reçu (vide = auto)','anims'],['animMort','Animation de mort (vide = auto)','anims']],
+          ['animRepos','Animation de repos (vide = auto)','anims'],['animMarche','Animation de marche (vide = auto)','anims'],['animAttaque','Animation d\'attaque (vide = auto)','anims'],['animTouche','Animation coup reçu (vide = auto)','anims'],['animVictoire','🕺 Animation de victoire (fin de partie)','anims'],['animDefaite','😢 Animation de défaite (fin de partie)','anims'],['animMort','Animation de mort (vide = auto)','anims']],
   map:   [['nom','Nom','text'],['actif','Disponible dans le jeu','check'],['theme','🎨 Ambiance (sol, murs, buissons, eau, ciel en 3D)','select',Object.entries(THEMES).map(([k, t]) => [k, t.nom])],
           ['casseMurs','Murs cassables','check'],['casseBuissons','Buissons cassables','check'],['pvBloc','Solidité d\'un mur (dégâts)','number'],
           ['chanceObjet','% objet rare (mur/buisson)','number'],['chanceCoffre','% objet rare (coffre 🎁)','number']],

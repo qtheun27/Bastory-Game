@@ -40,7 +40,7 @@ const Rendu3D = (() => {
     else for (let r = 0; r < 4; r++) for (let i = -1; i < 3; i++) { const bx = i * 64 + (r % 2) * 32, by = r * 32; x.fillStyle = ombrer(c, (alea(r * 5.3 + i * 2.1) - 0.5) * 0.2); x.beginPath(); x.roundRect(bx + 3, by + 3, 58, 26, 5); x.fill(); clair(bx, by, 64, 32); }
     const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; return texs[k] = t;
   }
-  let eauTex = null, eauMat = null, cristaux = new Map(), geoTir = null; const tirs = new Map();
+  let eauTex = null, eauMat = null, cristaux = new Map(), geoTir = null; const tirs = new Map(), eclats = [];
   let viseeG = null;
   function majVisee() { // 🎯 faisceau lumineux au sol + cercle d'impact animé (vue 3D)
     if (!viseeG) { viseeG = new THREE.Group(); viseeG.visible = false;
@@ -63,9 +63,14 @@ const Rendu3D = (() => {
     pl.material.color = c; pl.scale.setScalar(R2 * (v.lob ? 0.95 : 0.55)); pl.position.copy(an.position); pl.position.y = 3.5;
   }
   function majTirs() { // 🎯 projectiles en vraie 3D : flèche, rocher, bulle, boule de feu… + éclair de départ
-    if (!geoTir) geoTir = { fleche: new THREE.ConeGeometry(6, 36, 6), rocher: new THREE.DodecahedronGeometry(13, 0), bulle: new THREE.SphereGeometry(14, 16, 12), feu: new THREE.SphereGeometry(13, 14, 10), base: new THREE.SphereGeometry(10, 12, 8), eclat: new THREE.SphereGeometry(1, 10, 8) };
+    if (!geoTir) geoTir = { fleche: new THREE.ConeGeometry(6, 36, 6), rocher: new THREE.DodecahedronGeometry(13, 0), bulle: new THREE.SphereGeometry(14, 16, 12), feu: new THREE.SphereGeometry(13, 14, 10), base: new THREE.SphereGeometry(10, 12, 8), eclat: new THREE.SphereGeometry(1, 10, 8),
+      etoile: new THREE.OctahedronGeometry(13, 0), lame: new THREE.TorusGeometry(13, 3.5, 6, 18), cristal: new THREE.OctahedronGeometry(10, 0).scale(0.7, 1.6, 0.7) };
     const vus = new Set(projectiles);
-    for (const [p, m] of tirs) if (!vus.has(p)) { scene.remove(m); tirs.delete(p); }
+    for (const [p, m] of tirs) if (!vus.has(p)) { // 💥 impact : éclat 3D qui grossit et s'efface
+      scene.remove(m); tirs.delete(p); (m.userData.trainee || []).forEach(t => { scene.remove(t); t.material.dispose(); });
+      if (reglage('impact3D', 1) > 0 && eclats.length < 30) { const b = new THREE.Mesh(geoTir.eclat, new THREE.MeshBasicMaterial({ color: m.userData.c, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })); b.position.copy(m.position); b.userData.t0 = temps; scene.add(b); eclats.push(b); }
+    }
+    for (let i = eclats.length - 1; i >= 0; i--) { const b = eclats[i], k = (temps - b.userData.t0) / 12; if (k >= 1) { scene.remove(b); b.material.dispose(); eclats.splice(i, 1); } else { b.scale.setScalar((10 + k * 40) * reglage('impact3D', 1)); b.material.opacity = 0.9 * (1 - k); } }
     for (const p of projectiles) {
       const a = p.arme || {}; if (a.forme === 'onde') continue; // l'onde du marteau reste dessinée au sol
       const f = geoTir[a.forme] ? a.forme : 'base'; let m = tirs.get(p);
@@ -75,9 +80,13 @@ const Rendu3D = (() => {
         if (reglage('haloTirs', 1) > 0) { const g = new THREE.Mesh(geoTir.base, new THREE.MeshBasicMaterial({ color: lin(c).lerp(new THREE.Color(1, 1, 1), 0.3), transparent: true, opacity: 0.35 * reglage('haloTirs', 1), blending: THREE.AdditiveBlending, depthWrite: false })); g.scale.setScalar(2.2); g.userData.halo = true; m.add(g); } // ✨ halo lumineux
         if (f === 'feu') { const h = new THREE.Mesh(geoTir.feu, new THREE.MeshBasicMaterial({ color: 0xfff3b0 })); h.scale.setScalar(0.55); m.add(h); }
         const fl = new THREE.Mesh(geoTir.eclat, new THREE.MeshBasicMaterial({ color: lin(c).lerp(new THREE.Color(1, 1, 1), 0.6), transparent: true, opacity: 1, depthWrite: false })); fl.userData.t0 = temps; m.userData.flash = fl; scene.add(fl);
+        m.userData.c = lin(c).lerp(new THREE.Color(1, 1, 1), 0.4); m.userData.trainee = []; m.userData.hist = [];
+        for (let i = 0, n = Math.round(reglage('traineeTirs', 6)); i < n; i++) { const t = new THREE.Mesh(geoTir.base, new THREE.MeshBasicMaterial({ color: m.userData.c, transparent: true, opacity: 0.5 * (1 - i / n), blending: THREE.AdditiveBlending, depthWrite: false })); t.visible = false; scene.add(t); m.userData.trainee.push(t); } // ☄️ traînée
         fl.position.set(p.x, 30, p.y); m.scale.setScalar(Math.max(0.7, (a.taille || 16) / 16)); scene.add(m); tirs.set(p, m); }
       const ang = Math.atan2(p.vy || 0, p.vx || 1); m.position.set(p.x, 26 + (p.z || 0), p.y);
-      if (f === 'fleche') m.rotation.set(0, -ang, -Math.PI / 2); else m.rotation.set(temps * 0.2, temps * 0.15, 0);
+      if (f === 'fleche' || f === 'cristal') m.rotation.set(0, -ang, -Math.PI / 2); else if (f === 'lame') m.rotation.set(Math.PI / 2, 0, temps * 0.7); else if (f === 'etoile') m.rotation.set(temps * 0.1, temps * 0.35, 0); else m.rotation.set(temps * 0.2, temps * 0.15, 0);
+      const H = m.userData.hist, T = m.userData.trainee; H.unshift(m.position.clone()); if (H.length > T.length * 2 + 2) H.pop();
+      T.forEach((t, i) => { const q = H[(i + 1) * 2]; t.visible = !!q; if (q) { t.position.copy(q); t.scale.setScalar(m.scale.x * (1 - i / T.length) * 0.9); } });
       if (f === 'bulle' || f === 'feu') m.children[0].scale.setScalar(1 + Math.sin(temps * 0.4) * 0.08);
       const fl = m.userData.flash; if (fl) { const k = temps - fl.userData.t0; if (k > 8) { scene.remove(fl); m.userData.flash = null; } else { fl.scale.setScalar(8 + k * 5); fl.material.opacity = 1 - k / 8; } } // 💥 éclair de tir
     }
@@ -196,14 +205,16 @@ const Rendu3D = (() => {
       o.racine.scale.set(ech * (1 + sq * 0.6 + st * 0.5), ech * (1 - sq + st * 0.3), ech * (1 + sq * 0.6 + st * 0.5)); o.racine.position.set(e.x, alt, e.y);
       o.racine.rotation.y = Math.PI / 2 - (e.angle || 0) + (o.decalage || 0);
       let anim = 'repos';
-      if (e.pv <= 0) anim = 'mort';
+      const fin = e.finAnim && etat !== 'JEU' && (e.def || p), nomFin = fin && (e.finAnim === 'victoire' ? fin.animVictoire || fin.animSuper : fin.animDefaite);
+      if (fin) anim = nomFin && (o.parNom || {})[nomFin] ? nomFin : e.finAnim === 'victoire' && o.anims.saut ? 'saut' : 'repos'; // 🕺 fin de partie : danse du gagnant, pose du perdant (debout, même s'il était KO)
+      else if (e.pv <= 0) anim = 'mort';
       else if (saut) anim = o.anims.saut ? 'saut' : 'marche';
       else if (e.anim && temps - e.anim.t < (DUREE_ANIM[e.anim.n] || 40) && (o.anims[e.anim.n] || (o.parNom || {})[e.anim.n])) anim = e.anim.n;
       else if (temps - (o.marcheT || -99) < 12) anim = 'marche'; // garde la marche entre deux positions reçues du réseau (plus de saccades)
       o.marcheP = e.marche;
-      const clip = o.anims[anim] || (o.parNom || {})[anim] || o.anims.repos;
+      const clip = o.anims[anim] || (o.parNom || {})[anim] || o.anims.repos || Object.values(o.parNom || {})[0]; // jamais de pose en T : au pire la 1re animation du modèle
       if (clip && o.clip !== clip) {
-        const a = o.mixer.clipAction(clip); a.reset(); a.setLoop(anim === 'repos' || anim === 'marche' ? THREE.LoopRepeat : THREE.LoopOnce); a.clampWhenFinished = true;
+        const a = o.mixer.clipAction(clip); a.reset(); a.setLoop(anim === 'repos' || anim === 'marche' || fin ? THREE.LoopRepeat : THREE.LoopOnce); a.clampWhenFinished = true;
         if (o.action && o.action !== a) a.crossFadeFrom(o.action, 0.12, false); a.play(); o.action = a; o.clip = clip;
       }
       const fl = (e.flash || 0) > 0 || (e.touche && temps - e.touche < 6); if (fl !== o.flash) { o.flash = fl; o.racine.traverse(x => { if (x.material && x.material.emissive) x.material.emissive.setRGB(fl ? 0.6 : 0, fl ? 0.6 : 0, fl ? 0.6 : 0); }); } // éclair blanc du coup reçu

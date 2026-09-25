@@ -1016,7 +1016,9 @@ const CONFIG_PAR_DEFAUT = {
     "maintienVisee": 18,
     "rebondPerso": 1,
     "pasMarche": 2.6,
-    "haloTirs": 1
+    "haloTirs": 1,
+    "traineeTirs": 6,
+    "impact3D": 1
   },
   "elements": {
     "terre": {

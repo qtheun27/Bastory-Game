@@ -341,6 +341,7 @@ function finir(r, msg) {
   const tous = [moi, ...Object.values(autres)], ennemis = tous.filter(j => j.eq !== moi.eq), allies = tous.filter(j => j.eq === moi.eq);
   const [g, p] = ennemis.length ? (r !== 'DEFAITE' ? [allies, ennemis] : [ennemis, allies]) : (r === 'VICTOIRE' ? [allies, bosses] : [bosses, allies]);
   const carte = e => e.def ? { im: img(e.def.imageCarte || e.def.image), nom: e.def.nom } : { im: carteDe(e.perso), nom: e.nom };
+  g.forEach(e => e.finAnim = 'victoire'); p.forEach(e => e.finAnim = 'defaite'); // 🕺 pose de fin (animations Victoire / Défaite réglées dans l'admin)
   const uniques = l => l.filter((e, i) => !e.def || l.findIndex(o => o.id === e.id) === i).slice(0, 5).map(carte);
   finInfo = { gagnants: uniques(g), perdants: uniques(p), points: +(r === 'VICTOIRE' ? mode.pointsVictoire : mode.pointsDefaite) || 0, t0: temps + 70 };
   if (db && user) {
