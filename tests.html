@@ -68,6 +68,10 @@ async function lancer() {
   E(`resultat = ''; finInfo = null; modeIndex = modes().findIndex(m => m.objectif === 'survie'); demarrer(mapChoisie(modeChoisi()), [{ uid: 'test', nom: 'Test', p: 0, eq: 0 }, { uid: 'bot1', nom: 'Bot', p: 1, eq: 1, bot: true }]); for (let i = 0; i < 400; i++) pasDeJeu(); etat = 'JEU';`);
   await test('Survie : le gaz se referme avec le temps', () => E(`(() => { debutJeu = temps - 25 * 60; const a = gaz().r; debutJeu = temps - 80 * 60; const b = gaz().r; return gaz().actif && b < a; })()`));
   await test('Survie : le gaz blesse hors de la zone', () => E(`(() => { const g = gaz(); moi.pv = moi.pvMax = 1e6; moi.invuln = 0; moi.x = g.x + g.r + 200; moi.y = g.y; temps += 30 - (temps % 30); majGaz(); return moi.pv < 1e6; })()`));
+  E(`resultat = ''; finInfo = null; modeIndex = modes().findIndex(m => m.objectif === 'marathon'); if (modeIndex >= 0) { modeChoisi().etapes = 'bloc,zone'; modeChoisi().cartesEtapes = 'bloc:0,zone:1'; demarrer(mapChoisie(modeChoisi()), [{ uid: 'test', nom: 'Test', p: 0, eq: 0 }, { uid: 'bot1', nom: 'Bot', p: 1, eq: 1, bot: true }]); for (let i = 0; i < 400; i++) pasDeJeu(); etat = 'JEU'; }`);
+  await test('Marathon : l\'étape gagnée ouvre un portail vers la carte de l\'épreuve suivante', () => E(`(() => { if (modeIndex < 0 || CONFIG.maps.length < 2) return false; const avant = mapActuelle; etapeSuivante(1, 0);
+    if (!chemin || chemin.dest !== 1 || obj() !== 'route') return false; moi.x = chemin.x; moi.y = chemin.y; majChemin(); temps += 40; majChemin();
+    return avant === 0 && mapActuelle === 1 && !chemin && obj() === 'zone'; })()`));
 
   const ok = res.filter(Boolean).length;
   resume.textContent = (ok === res.length ? '✅ ' : '❌ ') + ok + ' / ' + res.length + ' tests réussis';

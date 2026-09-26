@@ -12,7 +12,12 @@ const Modele3D = (() => {
   let GRAD = null; // 3 tons : ombre / mi-ton / lumière (rendu "anime")
   const aplats = new Map();
   function aplat(t) { if (t) { t.anisotropy = 8; t.needsUpdate = true; } return t; } // texture Meshy telle quelle (pleine résolution)
-  const toon = (m, skin) => new THREE.MeshToonMaterial({ map: aplat(m.map) || null, color: m.color || new THREE.Color(0xffffff), gradientMap: GRAD, transparent: !!m.transparent, opacity: m.opacity === undefined ? 1 : m.opacity, alphaTest: m.alphaTest || 0, side: m.side === undefined ? THREE.FrontSide : m.side, skinning: skin, morphTargets: !!m.morphTargets }); // ombrage doux, couleurs d'origine
+  // ✨ blancs éclatants : les zones très claires de la texture gardent leur blanc au lieu d'être grisées par l'ombrage (réglage admin « eclatBlancs »)
+  const BLANC = { uBlK: { value: 0.7 } }, majBlanc = () => { BLANC.uBlK.value = Math.max(0, Math.min(1, typeof reglage === 'function' ? +reglage('eclatBlancs', 0.7) : 0.7)); };
+  function blancs(sh) { majBlanc(); Object.assign(sh.uniforms, BLANC); sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'uniform float uBlK;\nvoid main() {')
+    .replace('#include <tonemapping_fragment>', 'float blc = smoothstep(0.45, 0.9, min(diffuseColor.r, min(diffuseColor.g, diffuseColor.b))) * uBlK;\n  gl_FragColor.rgb = mix(gl_FragColor.rgb, max(gl_FragColor.rgb, diffuseColor.rgb * 1.02), blc);\n#include <tonemapping_fragment>'); }
+  const avecBlancs = m => { m.onBeforeCompile = blancs; m.customProgramCacheKey = () => 'blanc'; return m; };
+  const toon = (m, skin) => avecBlancs(new THREE.MeshToonMaterial({ map: aplat(m.map) || null, color: m.color || new THREE.Color(0xffffff), gradientMap: GRAD, transparent: !!m.transparent, opacity: m.opacity === undefined ? 1 : m.opacity, alphaTest: m.alphaTest || 0, side: m.side === undefined ? THREE.FrontSide : m.side, skinning: skin, morphTargets: !!m.morphTargets })); // ombrage doux, couleurs d'origine
   function contour(src, ep, cache = {}) { // ✒️ contour noir : silhouette élargie dessinée sous l'image
     const w = src.width, h = src.height;
     for (const k of ['sil', 'out']) { if (!cache[k]) cache[k] = document.createElement('canvas'); if (cache[k].width !== w || cache[k].height !== h) { cache[k].width = w; cache[k].height = h; } }
@@ -203,7 +208,7 @@ const Modele3D = (() => {
   }
   // 🎨 SKINS : transforment vraiment le perso (or, ombre, glace, lave, bonbon, galaxie…) grâce à un petit shader ajouté aux matériaux
   const UT = { value: 0 }, STYLES = { teinte: 0, dore: 1, ombre: 2, lave: 3, bonbon: 4, galaxie: 5, glace: 6 };
-  const tic = () => { UT.value = performance.now() / 1000; }; // horloge des skins animés (lave qui coule, étoiles…)
+  const tic = () => { UT.value = performance.now() / 1000; majBlanc(); }; // horloge des skins animés (lave qui coule, étoiles…)
   const coul = c => new THREE.Color(c || '#ffffff').convertSRGBToLinear();
   const VERT = ['#include <common>', '#include <common>\nvarying vec3 vPS;', '#include <begin_vertex>', '#include <begin_vertex>\nvPS = position;'];
   const FRAG_TETE = `#include <common>
@@ -229,17 +234,17 @@ const Modele3D = (() => {
         if (!m.isMeshToonMaterial && !m.isMeshStandardMaterial) continue;
         if (m.userData.t0 === undefined) { m.userData.t0 = m.transparent; m.userData.o0 = m.opacity; }
         const st = skin ? STYLES[skin.style] ?? 0 : -1;
-        if (st < 0) { if (m.userData.sk) { m.onBeforeCompile = () => {}; m.customProgramCacheKey = () => 'base'; m.transparent = m.userData.t0; m.userData.sk = null; m.needsUpdate = true; } continue; }
+        if (st < 0) { if (m.userData.sk) { avecBlancs(m); m.transparent = m.userData.t0; m.userData.sk = null; m.needsUpdate = true; } continue; }
         if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
         const U = { uC1: { value: coul(skin.couleur1) }, uC2: { value: coul(skin.couleur2) }, uRim: { value: coul(skin.lueur || '#000000') }, uStyle: { value: st },
           uForce: { value: Math.max(0, Math.min(1, skin.force === undefined ? 0.9 : +skin.force)) }, uT: UT, uEch: { value: 1 / Math.max(1e-4, o.geometry.boundingSphere.radius) } };
         const cle = 'skin' + st; m.userData.sk = U; m.transparent = st === 6 ? true : m.userData.t0;
         m.onBeforeCompile = sh => { Object.assign(sh.uniforms, U); sh.vertexShader = sh.vertexShader.replace(VERT[0], VERT[1]).replace(VERT[2], VERT[3]);
-          sh.fragmentShader = sh.fragmentShader.replace('#include <common>', FRAG_TETE).replace('#include <map_fragment>', FRAG_COULEUR).replace('#include <emissivemap_fragment>', FRAG_LUEUR); };
+          sh.fragmentShader = sh.fragmentShader.replace('#include <common>', FRAG_TETE).replace('#include <map_fragment>', FRAG_COULEUR).replace('#include <emissivemap_fragment>', FRAG_LUEUR); blancs(sh); };
         m.customProgramCacheKey = () => cle; m.needsUpdate = true;
       } });
   }
   const teinter = appliquerSkin; // (ancien nom)
   async function listeAnims(p) { const m = await charger(p); if (!m) return []; m.liberer(); return m.clips; } // noms des animations d'un modèle (admin)
-  return { dispo, generer, visage, vitrine, apercu, decor, instance: charger, listeAnims, teinter, tic }; // instance = modèle animé pour la vraie 3D
+  return { majBlanc, dispo, generer, visage, vitrine, apercu, decor, instance: charger, listeAnims, teinter, tic }; // instance = modèle animé pour la vraie 3D
 })();

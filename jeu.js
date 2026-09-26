@@ -144,7 +144,7 @@ const signature = m => { // empreinte unique d'un mode : deux joueurs ne se croi
   for (const c of t) h = (h * 31 + c.charCodeAt(0)) | 0;
   return String(m.nom || 'mode').replace(/[.#$\[\]\/\s]/g, '_').slice(0, 24) + '_' + (h >>> 0).toString(36);
 };
-const mapChoisie = m => (m.map >= 0 && CONFIG.maps[m.map]) ? +m.map : mapsActives()[mapIndex % mapsActives().length];
+const mapChoisie = m => m.objectif === 'marathon' && carteEpreuve(m, etapesDe(m)[0]) >= 0 ? carteEpreuve(m, etapesDe(m)[0]) : (m.map >= 0 && CONFIG.maps[m.map]) ? +m.map : mapsActives()[mapIndex % mapsActives().length];
 const joueurs = () => [moi, ...Object.values(autres)].filter(j => j && !j.parti);
 // 🧍 Persos 3D : vrais modèles .glb (voir modele3d.js) — sinon image 2D, sinon pastille de l'élément
 const sprites3D = new Map(), visages3D = new Map(), en3D = new Set(); let file3D = Promise.resolve();
@@ -330,7 +330,7 @@ function dessinerMeteo() { // effets à l'écran (au-dessus du monde, sous l'int
 function demarrer(mapIdx, liste) {
   plancheVue = false; plancheBD = null;
   mode = modeChoisi(); atterri = !mode.atterrissage; meteo = choisirMeteo(liste, mapIdx); bossMondialFait = !mode.bossMondial;
-  map = chargerMap(CONFIG.maps[mapIdx] || CONFIG.maps[0]);
+  map = chargerMap(CONFIG.maps[mapIdx] || CONFIG.maps[0]); mapActuelle = CONFIG.maps[mapIdx] ? +mapIdx : 0; chemin = null; arriveeT = -999;
   liste = liste || [{ uid: user.uid, nom: nomJoueur(), p: persoIndex }];
   const c = t => (t + 0.5) * TUILE, places = [];
   autres = {}; moi = null;
@@ -549,6 +549,8 @@ function recevoir(e) {
   else if (e.t === 'lt') lacherTresors(entite(e.u), e.n, true, e.x, e.y, e.id0);
   else if (e.t === 'cr') cristalCasse(e.p, e.eq, true);
   else if (e.t === 'et') etapeSuivante(e.n, e.eq, true);
+  else if (e.t === 'ce') { if (chemin) chemin.entres[e.u] = 1; }
+  else if (e.t === 'cm') partirChemin(e.m);
 }
 
 // ---------- 9. CONTRÔLES ----------
@@ -1119,7 +1121,7 @@ function maj() {
     if (tuile(r.tx, r.ty) === r.c) { setTuile(r.tx, r.ty, r.ancien); levees[r.tx + ',' + r.ty] = temps; if (bloque(r.ancien)) liberer(); }
     return false;
   });
-  majProjectiles(); majEffets(); majTresors();
+  majProjectiles(); majEffets(); majTresors(); majChemin();
   const vw = W / zoom, vh = H / zoom, cible = (p, v, m) => m <= v ? m / 2 : Math.max(v / 2, Math.min(m - v / 2, p));
   const vue = cibleCamera();
   cam.x += (cible(vue.x, vw, map.l * TUILE) - cam.x) * 0.12;
@@ -1833,7 +1835,7 @@ function menuHud() { // 📱 placer et redimensionner les boutons SUPER / ACTION
 }
 const boutonHUD = q => hudBoutons.find(b => Math.hypot(q.x - sa.l - b.x, q.y - sa.t - b.y) < b.r * 1.3);
 function hudElem() { // 🎮 boutons ronds façon arcade : SUPER (anneau de charge) + ACTION (recharge)
-  hudBoutons = []; hudObjectif();
+  hudBoutons = []; hudObjectif(); hudChemin();
   const e = infoElem(moi); if (!e || moi.pv <= 0 || etat !== 'JEU') return;
   const u = U(), tact = true, { S, A, T } = posHUD();
   const gk = gadgetDe(moi), gg = gk && CONFIG.gadgets[gk];
@@ -1894,8 +1896,70 @@ function bullesElem() { // 🫧 bulle protectrice de Naïa (par-dessus le perso)
 // ---------- 🏴‍☠️ CHASSE AU TRÉSOR & 🏃 MARATHON (plusieurs objectifs à la suite) ----------
 let tresors = [], scoreTresor = {}, etape = 0, scoreEtapes = {}, bandeauEtape = null, graine = 1;
 const etapesDe = m => String(m.etapes || 'bloc,zone').split(',').map(s => s.trim()).filter(s => ['bloc', 'zone', 'tresor'].includes(s));
-const obj = () => mode.objectif === 'marathon' ? (etapesDe(mode)[etape] || 'zone') : mode.objectif;
-const NOM_OBJ = { bloc: 'Assaut des tours', zone: 'Zone de contrôle', tresor: 'Chasse au trésor', standard: 'Élimination' };
+const obj = () => mode.objectif === 'marathon' ? (chemin ? 'route' : etapesDe(mode)[etape] || 'zone') : mode.objectif; // 'route' : on rejoint la carte suivante
+const NOM_OBJ = { bloc: 'Assaut des tours', zone: 'Zone de contrôle', tresor: 'Chasse au trésor', standard: 'Élimination', route: 'En route !' };
+// 🌀 marathon sur plusieurs cartes : chaque épreuve a sa carte (choisie dans l'admin, sinon une carte qui a ce qu'il faut)
+let mapActuelle = 0, chemin = null, arriveeT = -999;
+const carteEpreuve = (m, o) => { const v = String(m.cartesEtapes || '').split(',').map(x => x.split(':')).find(x => x[0] === o); return v && v[1] !== '' && CONFIG.maps[+v[1]] ? +v[1] : -1; };
+const CASES_OBJ = { zone: /Z/, bloc: /[T5-8N]/, tresor: /O/ };
+function carteEtape(n, avant) {
+  const o = etapesDe(mode)[n], choix = carteEpreuve(mode, o); if (choix >= 0) return choix;
+  const a = mapsActives().filter(i => i !== avant && !CONFIG.maps[i].grand && CONFIG.maps[i].grille), ok = a.filter(i => CASES_OBJ[o] && CASES_OBJ[o].test(CONFIG.maps[i].grille.join('')));
+  const l = ok.length ? ok : o === 'zone' ? [] : a; // la zone a besoin d'une carte avec une zone ; tours et trésors se placent partout
+  return l.length ? l[graine % l.length] : avant;
+}
+function ouvrirChemin(dest, eq) { // étape gagnée : un portail s'ouvre au milieu de la carte, on y entre pour rejoindre l'épreuve suivante
+  zoneProg = {}; zoneControle = null; cristauxCasses = []; tresors = []; if (hote) bosses = bosses.filter(b => !b.def.cristal);
+  const cx = Math.floor(map.l / 2), cy = Math.floor(map.h / 2); let p = { x: cx, y: cy };
+  cherche: for (let r = 0; r < Math.max(map.l, map.h); r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (Math.max(Math.abs(dx), Math.abs(dy)) === r && tuile(cx + dx, cy + dy) === '.') { p = { x: cx + dx, y: cy + dy }; break cherche; }
+  chemin = { x: (p.x + 0.5) * TUILE, y: (p.y + 0.5) * TUILE, dest, t: temps, entres: {}, depart: null };
+  bandeauEtape = { t: temps, txt: 'UN CHEMIN S\'OUVRE !', nous: eq === moi.eq }; choc = 1; flash = 0.5; secousse = Math.max(secousse, 12);
+}
+function majChemin() {
+  if (!chemin) return;
+  if (chemin.depart !== null) { if (temps - chemin.depart >= 36) changerCarte(chemin.dest); return; } // fondu au noir, puis nouvelle carte
+  if (moi.pv > 0 && !chemin.entres[moi.uid] && Math.hypot(moi.x - chemin.x, moi.y - chemin.y) < 70) {
+    chemin.entres[moi.uid] = 1; envoyer({ t: 'ce', u: moi.uid }); ono('WOOSH!', chemin.x, chemin.y - 60, 1.3, '#5ff0ff'); son('frappe', 0.6); }
+  if (!hote) return;
+  const humains = joueurs().filter(j => !j.bot && !j.parti);
+  if (humains.every(j => chemin.entres[j.uid]) || temps - chemin.t > reglage('delaiChemin', 12) * 60) { envoyer({ t: 'cm', m: chemin.dest }); partirChemin(chemin.dest); }
+}
+function partirChemin(dest) { if (chemin && chemin.depart === null) { chemin.dest = dest; chemin.depart = temps; } }
+function changerCarte(dest) { // 🗺️ arrivée sur la carte de l'épreuve suivante : nouveaux départs, décor, objectif
+  chemin = null; mapActuelle = dest; map = chargerMap(CONFIG.maps[dest] || CONFIG.maps[0]);
+  const c = t => (t + 0.5) * TUILE, places = [];
+  joueurs().slice().sort((a, b) => String(a.uid) < String(b.uid) ? -1 : 1).forEach((j, k) => { // même ordre chez tous : chacun place son perso (et l'hôte ses bots)
+    const libreE = (map.eqj[j.eq] || []).find(p => !p.pris);
+    const sp = libreE ? (libreE.pris = true, { x: c(libreE.x), y: c(libreE.y) }) : map.j[k] ? { x: c(map.j[k].x), y: c(map.j[k].y) } : caseLibre(places);
+    j.spawn = sp; places.push(sp); if (moiOuBot(j)) { j.x = sp.x; j.y = sp.y; if (j.pv > 0) j.pv = j.pvMax; }
+  });
+  projectiles = []; objets = []; degatsTuiles = {}; retours = []; levees = {}; decor3D = null;
+  if (typeof Modele3D !== 'undefined' && Modele3D.dispo()) Modele3D.decor(map.def).then(d => decor3D = d).catch(e => console.warn('Décor 3D', e));
+  cam.x = moi.x; cam.y = moi.y; arriveeT = temps; preparerObjectif();
+  bandeauEtape = { t: temps, txt: 'ÉTAPE ' + (etape + 1) + ' : ' + NOM_OBJ[obj()], arrivee: true }; choc = 1;
+}
+function dessinerChemin() { // portail tourbillonnant + chemin de flèches depuis mon perso
+  if (!chemin) return; const x = chemin.x, y = chemin.y, t = temps;
+  ctx.save(); const d = Math.hypot(x - moi.x, y - moi.y);
+  if (d > 90) { const n = Math.floor(d / 60), ax = (x - moi.x) / d, ay = (y - moi.y) / d; // flèches qui avancent vers le portail
+    for (let i = 1; i < n; i++) { const k = (i + (t % 30) / 30) * 60, px = moi.x + ax * k, py = moi.y + ay * k; if (Math.hypot(x - px, y - py) < 80) break;
+      ctx.save(); ctx.translate(px, py); ctx.rotate(Math.atan2(ay, ax)); ctx.globalAlpha = 0.85 * Math.min(1, i / 2);
+      ctx.beginPath(); ctx.moveTo(-10, -12); ctx.lineTo(8, 0); ctx.lineTo(-10, 12); ctx.lineWidth = 9; ctx.strokeStyle = NOIR; ctx.lineCap = ctx.lineJoin = 'round'; ctx.stroke(); ctx.lineWidth = 5; ctx.strokeStyle = '#5ff0ff'; ctx.stroke(); ctx.restore(); } }
+  const ouv = Math.min(1, (t - chemin.t) / 30), R = 62 * elastique(ouv);
+  ctx.globalAlpha = 0.35; ellipse(x, y, R * 1.6, R * 1.6, '#5ff0ff');
+  ctx.globalAlpha = 1; ctx.beginPath(); ctx.arc(x, y, R, 0, 7); ctx.fillStyle = '#0b0620'; ctx.fill(); ctx.lineWidth = 8; ctx.strokeStyle = NOIR; ctx.stroke();
+  for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(x, y, R * (0.9 - i * 0.25), t * 0.08 * (i % 2 ? -1 : 1) + i, t * 0.08 * (i % 2 ? -1 : 1) + i + 4.2); ctx.lineWidth = 7 - i * 1.5; ctx.strokeStyle = ['#5ff0ff', '#b67aff', '#ffffff'][i]; ctx.stroke(); }
+  ctx.restore();
+}
+function hudChemin() { // consigne + compte à rebours, puis fondu au noir / arrivée avec le nom de la carte
+  const u = U();
+  if (chemin && chemin.depart === null) { const reste = Math.max(0, Math.ceil(reglage('delaiChemin', 12) - (temps - chemin.t) / 60)), dest = CONFIG.maps[chemin.dest] || {};
+    verre(W / 2 - 210 * u, H - 120 * u, 420 * u, 34 * u, 17 * u);
+    texte(chemin.entres[moi.uid] ? '✅ Prêt ! On part dans ' + reste + ' s…' : '🌀 Entre dans le portail → ' + (dest.nom || 'carte suivante') + '  (' + reste + ' s)', W / 2, H - 103 * u, 14 * u, '#5ff0ff', 'center', 400 * u); }
+  const a = chemin && chemin.depart !== null ? Math.min(1, (temps - chemin.depart) / 30) : Math.max(0, 1 - (temps - arriveeT - 10) / 40);
+  if (a > 0) { ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = NOIR; ctx.fillRect(0, 0, W, H);
+    const dest = CONFIG.maps[chemin ? chemin.dest : mapActuelle] || {}; titre(dest.nom || '', W / 2, H / 2, 40 * u, '#5ff0ff'); ctx.restore(); }
+}
 let cristauxCasses = []; // { p: équipe du cristal (-2 = neutre), eq: équipe qui l'a cassé }
 function cristalCasse(p, eq, distant) {
   cristauxCasses.push({ p, eq }); if (!distant) envoyer({ t: 'cr', p, eq });
@@ -1967,6 +2031,7 @@ function etapeSuivante(n, eq, distant) {
   scoreEtapes[eq] = (scoreEtapes[eq] || 0) + 1; etape = n;
   if (etape >= etapesDe(mode).length) { const mien = scoreEtapes[moi.eq] || 0, leur = Math.max(0, ...Object.entries(scoreEtapes).filter(([k]) => +k !== moi.eq).map(([, v]) => v));
     return finir(mien > leur ? 'VICTOIRE' : mien < leur ? 'DEFAITE' : 'EGALITE', `Marathon ${mien} - ${leur}`); }
+  const dest = carteEtape(etape, mapActuelle); if (dest !== mapActuelle) return ouvrirChemin(dest, eq); // autre carte : on y va par un portail
   preparerObjectif(); bandeauEtape = { t: temps, txt: 'ÉTAPE ' + (etape + 1) + ' : ' + NOM_OBJ[obj()], nous: eq === moi.eq }; choc = 1; flash = 0.5;
 }
 // ---------- ☠️ MODE SURVIE : un gaz toxique referme la carte, le dernier debout gagne ----------
@@ -2013,12 +2078,12 @@ function hudObjectif() { // compteurs trésors / étapes + bandeau d'étape anim
   if (obj() === 'bloc' && nbNeutres()) { const sc = scoreNeutres(), eqs = [...new Set(joueurs().map(j => j.eq))];
     eqs.forEach((eq, i) => { const y = 84 * u + i * 24 * u; verre(W - 190 * u, y, 178 * u, 20 * u, 10 * u); texte((eq === moi.eq ? '🏰 Nous ' : '🏰 Équipe ' + (eq + 1) + ' ') + (sc[eq] || 0) + ' / ' + nbNeutres(), W - 101 * u, y + 10 * u, 11 * u, eq === moi.eq ? '#5ff0ff' : '#fff'); }); }
   if (mode.objectif === 'marathon') { const l = etapesDe(mode), mien = scoreEtapes[moi.eq] || 0, leur = Math.max(0, ...Object.entries(scoreEtapes).filter(([k]) => +k !== moi.eq).map(([, v]) => v));
-    verre(W / 2 - 120 * u, 44 * u, 240 * u, 26 * u, 13 * u); titre(`Étape ${Math.min(etape + 1, l.length)}/${l.length} • ${NOM_OBJ[obj()]}  ${mien}-${leur}`, W / 2, 57 * u, 14 * u, '#ffe14a', 'center', 230 * u); }
+    verre(W / 2 - 120 * u, 44 * u, 240 * u, 26 * u, 13 * u); titre(`Étape ${Math.min(etape + 1, l.length)}/${l.length} • ${chemin ? NOM_OBJ.route : NOM_OBJ[obj()]}  ${mien}-${leur}`, W / 2, 57 * u, 14 * u, '#ffe14a', 'center', 230 * u); }
   if (bandeauEtape && temps - bandeauEtape.t < 150) { const t = temps - bandeauEtape.t, e = elastique(Math.min(1, t / 20)), s = Math.max(0, (t - 120) / 30);
     ctx.save(); ctx.globalAlpha = 1 - s; ctx.translate(W / 2 + s * W, H * 0.4); ctx.rotate(-0.06);
     ctx.fillStyle = NOIR; ctx.fillRect(-W, -40 * u, W * 2, 80 * u); ctx.fillStyle = '#ffe14a'; ctx.fillRect(-W, -40 * u, W * 2, 5 * u); ctx.fillRect(-W, 35 * u, W * 2, 5 * u);
     ctx.scale(e, e); titre(bandeauEtape.txt, 0, 0, 34 * u, '#fff', 'center', W * 0.8); ctx.restore();
-    if (t > 8 && t < 120) bd(bandeauEtape.nous ? 'ÉTAPE GAGNÉE!!' : 'ÉTAPE PERDUE…', W / 2, H * 0.4 + 62 * u, 26 * u * elastique(Math.min(1, (t - 8) / 16)), bandeauEtape.nous ? '#b6ff4a' : '#ff5a6e', 0.04); }
+    if (t > 8 && t < 120 && !bandeauEtape.arrivee) bd(bandeauEtape.nous ? 'ÉTAPE GAGNÉE!!' : 'ÉTAPE PERDUE…', W / 2, H * 0.4 + 62 * u, 26 * u * elastique(Math.min(1, (t - 8) / 16)), bandeauEtape.nous ? '#b6ff4a' : '#ff5a6e', 0.04); }
 }
 
 // ---------- 🏖️ SABLE & CONTOURS ENCRÉS DE LA MAP ----------
@@ -2636,7 +2701,7 @@ function dessinerJeu() {
     ellipse(b.fx, b.fy, R, R * 0.8, 'rgba(255,40,40,.2)');
     ellipse(b.fx, b.fy, R * k, R * 0.8 * k, 'rgba(255,40,40,.45)');
   }
-  dessinerZone(); dessinerGaz(); dessinerFissuresSol(); dessinerTresors();
+  dessinerZone(); dessinerGaz(); dessinerFissuresSol(); dessinerTresors(); dessinerChemin();
   const objs = []; // tri par profondeur = effet 3D
   if (!v3) tuiles((c, x, y, px, py) => { if (c === '#') objs.push([(y + 1) * T - 1, () => { // les murs qui sortent du sol montent
                                    const f = levees[x + ',' + y] !== undefined ? Math.min(1, (temps - levees[x + ',' + y]) / 12) : 1;
@@ -2976,7 +3041,8 @@ function barreHaut(titreEcran, retour) {
     texte(mesStats.victoires + ' victoires • ' + mesStats.parties + ' parties', 58 * u, 39 * u, 10 * u, 'rgba(255,255,255,.65)', 'left');
     zones.push({ x: 12 * u, y: 9 * u, w: 230 * u, h: 42 * u, action: () => ouvrirProfil(auth, p => db && db.collection('joueurs').doc(user.uid).set({ pseudo: p }, { merge: true })) });
   }
-  pastille(W - 356 * u, 12 * u, 124 * u, 'trophee', mesStats.points + ' pts', null, '#ffd400'); zones.push({ x: W - 356 * u, y: 12 * u, w: 124 * u, h: 34 * u, action: () => allerA('classement') });
+  let x0 = 252 * u; if (retour) { ctx.font = `${33 * u}px ${POLICE_BD}`; x0 = 68 * u + ctx.measureText(String(titreEcran).toUpperCase()).width + 18 * u; }
+  barreRessources(x0, W - 234 * u);
   pastille(W - 224 * u, 12 * u, 118 * u, '●', enLigne + ' en ligne'); zones.push({ x: W - 224 * u, y: 12 * u, w: 118 * u, h: 34 * u, action: () => allerA('amis') });
   ctx.beginPath(); ctx.arc(W - 224 * u + 19 * u, 29 * u, 5 * u, 0, 7); ctx.fillStyle = '#34d399'; ctx.fill();
   if (estAdmin(user)) { verre(W - 98 * u, 12 * u, 36 * u, 34 * u, 17 * u); icone('reglages', W - 80 * u, 29 * u, 18 * u); // ⚙️ visible seulement pour les admins
@@ -2984,6 +3050,30 @@ function barreHaut(titreEcran, retour) {
   verre(W - 54 * u, 12 * u, 36 * u, 34 * u, 17 * u, 'rgba(255,80,80,.25)'); icone('quitter', W - 36 * u, 29 * u, 18 * u);
   zones.push({ x: W - 54 * u, y: 12 * u, w: 36 * u, h: 34 * u, action: () => { quitterGroupe(); if (rtdb && user) rtdb.ref('presence/' + user.uid).remove(); auth.signOut(); } });
   return h;
+}
+function barreRessources(x0, x1) { // 💰 ressources bien en évidence : grosses cases (icône, valeur, nom), cliquables
+  const u = U(), y = 6 * u, h = 46 * u, ess = mesStats.essences || {}, els = Object.entries(CONFIG.elements || {}), nb = v => (+v || 0).toLocaleString('fr-FR');
+  const cases = [{ ic: '🏆', v: nb(mesStats.points), nom: 'Trophées', c: '#ffd400', a: () => allerA('classement') },
+    { ic: '🎟️', v: nb(mesStats.jetons), nom: 'Jetons perso', c: '#ff7ac0', a: () => allerA('persos') }];
+  if (els.length) cases.push({ v: els.map(([k, e]) => e.icone + ' ' + nb(ess[k])).join('   '), nom: 'Essences (faire évoluer les persos)', c: '#5ff0ff', a: () => allerA('persos') });
+  const mesure = (c, k) => { ctx.font = `${17 * u * k * 1.1}px ${POLICE_BD}`; let wv = ctx.measureText(c.v).width;
+    if (!c.ic) { ctx.font = `600 ${15 * u * k}px ${POLICE}`; wv = els.reduce((a, [k2, e]) => a + 15 * u * k * 1.3 + ctx.measureText(' ' + nb(ess[k2]) + '   ').width, 0); }
+    ctx.font = `600 ${8.5 * u * k}px ${POLICE}`; return (c.ic ? h * 0.82 : 12 * u) + Math.max(wv, ctx.measureText(c.nom.toUpperCase()).width) + 14 * u; };
+  let k = 1, tot = () => cases.reduce((a, c) => a + mesure(c, k) + 8 * u, 0);
+  while (tot() > x1 - x0 && k > 0.62) k -= 0.04;
+  if (tot() > x1 - x0 && cases.length > 2) cases.pop(); // écran trop étroit : les essences restent visibles dans l'écran Persos
+  let x = x0;
+  for (const c of cases) {
+    const w = mesure(c, k), r = 14 * u, tx = x + (c.ic ? h * 0.82 : 12 * u), lw = w - (tx - x) - 10 * u;
+    rect(x + 3 * u, y + 4 * u, w, h, r, 'rgba(11,6,32,.6)'); rect(x, y, w, h, r, '#171042');
+    ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.clip(); ctx.globalAlpha = 0.22; ctx.fillStyle = c.c; ctx.fillRect(x, y, w, h * 0.45); ctx.restore(); // reflet teinté
+    rect(x, y, w, h, r, null, NOIR, Math.max(2, 3 * u)); rect(x + 3 * u, y + 3 * u, w - 6 * u, h - 6 * u, r - 3 * u, null, c.c, 2 * u);
+    if (c.ic) { ctx.beginPath(); ctx.arc(x + h * 0.44, y + h / 2, h * 0.3, 0, 7); ctx.fillStyle = c.c; ctx.fill(); ctx.lineWidth = 2.5 * u; ctx.strokeStyle = NOIR; ctx.stroke(); emoji(c.ic, x + h * 0.44, y + h / 2, h * 0.36);
+      titre(c.v, tx, y + h * 0.4, 17 * u * k, '#fff', 'left', lw); }
+    else texte(c.v, tx, y + h * 0.4, 15 * u * k, '#fff', 'left', lw);
+    texte(c.nom.toUpperCase(), tx, y + h * 0.78, 8.5 * u * k, c.c, 'left', lw);
+    zones.push({ x, y, w, h, action: c.a }); x += w + 8 * u;
+  }
 }
 function statBarre(x, y, w, icone, lab, val, txt, couleur) {
   const u = U();

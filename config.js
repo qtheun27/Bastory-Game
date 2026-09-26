@@ -1050,6 +1050,8 @@ const CONFIG_PAR_DEFAUT = {
     "butinArme": 75,
     "dureeChute": 4,
     "vitesseChute": 1.6,
+    "delaiChemin": 12,
+    "eclatBlancs": 0.7,
     "coutMur": 10,
     "matMur": 10,
     "matBuisson": 4,
