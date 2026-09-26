@@ -2483,16 +2483,17 @@ let mesAmis = {}, demandesAmis = {}, amisOnglet = 'amis', rechercheAmis = null, 
 const nomAmi = v => typeof v === 'string' ? v : (v && v.nom) || 'Joueur';
 function ecouterAmis() {
   if (!rtdb || !user) return;
-  rtdb.ref('amis/' + user.uid).on('value', s => { mesAmis = s.val() || {}; if (!mesAmis._init) initAmis(); });
-  rtdb.ref('demandes/' + user.uid).on('value', s => demandesAmis = s.val() || {});
+  rtdb.ref('amis/' + user.uid).on('value', s => { mesAmis = s.val() || {}; }, e => notif('⚠️ Liste d\'amis illisible : ' + e.message));
+  let premiere = true;
+  rtdb.ref('demandes/' + user.uid).on('value', s => { const v = s.val() || {}; // 📩 nouvelle demande : message + son, même hors de l'écran Amis
+    if (!premiere) Object.entries(v).filter(([k]) => !demandesAmis[k]).forEach(([, d]) => { notif('📩 ' + nomAmi(d) + ' veut être ton ami ! (menu Amis)'); if (typeof son === 'function') son('piece', 0.8); });
+    premiere = false; demandesAmis = v; }, e => notif('⚠️ Demandes d\'amis illisibles : ' + e.message));
 }
-async function initAmis() { // les joueurs inscrits avant cette mise à jour sont tous amis entre eux
-  const cree = Date.parse((user.metadata || {}).creationTime || '') || Date.now(), maj = { _init: true };
-  if (cree < Date.parse('2026-09-24T00:00:00Z') && db) { try { (await db.collection('joueurs').get()).forEach(d => { if (d.id !== user.uid) maj[d.id] = d.data().pseudo || 'Joueur'; }); } catch (e) {} }
-  rtdb.ref('amis/' + user.uid).update(maj);
-}
-function demanderAmi(uid, nom) { if (!rtdb || uid === user.uid || mesAmis[uid]) return; rtdb.ref(`demandes/${uid}/${user.uid}`).set({ nom: nomJoueur(), t: firebase.database.ServerValue.TIMESTAMP }); demandesEnvoyees[uid] = true; notif('Demande envoyée à ' + nom); }
-function accepterAmi(uid, nom) { rtdb.ref(`amis/${user.uid}/${uid}`).set(nom); rtdb.ref(`amis/${uid}/${user.uid}`).set(nomJoueur()); rtdb.ref(`demandes/${user.uid}/${uid}`).remove(); notif('🤝 ' + nom + ' est ton ami !'); }
+function demanderAmi(uid, nom) { if (!rtdb || uid === user.uid || mesAmis[uid]) return; demandesEnvoyees[uid] = true;
+  rtdb.ref(`demandes/${uid}/${user.uid}`).set({ nom: nomJoueur(), t: firebase.database.ServerValue.TIMESTAMP })
+    .then(() => notif('📨 Demande envoyée à ' + nom)).catch(e => { delete demandesEnvoyees[uid]; notif('⚠️ Demande refusée par la base : ' + e.message); console.warn('Demande d\'ami', e); }); }
+function accepterAmi(uid, nom) { Promise.all([rtdb.ref(`amis/${user.uid}/${uid}`).set(nom), rtdb.ref(`amis/${uid}/${user.uid}`).set(nomJoueur())])
+  .then(() => { rtdb.ref(`demandes/${user.uid}/${uid}`).remove(); notif('🤝 ' + nom + ' est ton ami !'); }).catch(e => notif('⚠️ Ajout refusé par la base : ' + e.message)); }
 const refuserAmi = uid => rtdb.ref(`demandes/${user.uid}/${uid}`).remove();
 const retirerAmi = uid => { rtdb.ref(`amis/${user.uid}/${uid}`).remove(); rtdb.ref(`amis/${uid}/${user.uid}`).remove(); };
 async function chercherAmi() {

@@ -28,7 +28,15 @@ const Son = (() => {
     else if (voulue && !courante) musique(voulue);
     if (ac.state === 'running') ['touchend', 'click', 'pointerup', 'keydown', 'touchstart', 'pointerdown'].forEach(e => removeEventListener(e, debloquer, true)); }; // 1er geste
   ['touchend', 'click', 'pointerup', 'keydown', 'touchstart', 'pointerdown'].forEach(e => addEventListener(e, debloquer, true));
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && ac && ac.state !== 'running') ac.resume(); }); // retour dans l'appli
+  function arrierePlan(cache) { // 📱 appli en arrière-plan : on coupe tout, sinon l'iPhone affiche la musique du jeu dans le centre de notifications
+    if (!cache) { if (ac) ['touchend', 'click', 'pointerup', 'keydown', 'touchstart', 'pointerdown'].forEach(e => addEventListener(e, debloquer, true)); if (ac && ac.state !== 'running') { const r = ac.resume(); if (r && r.then) r.then(() => { if (voulue && !courante) musique(voulue); }).catch(() => {}); } return; } // retour : relancé au 1er appui
+    for (const a of [muet, fichier]) if (a) { a.pause(); a.removeAttribute('src'); a.load(); }
+    muet = null; fichier = null; clearInterval(minuteur); minuteur = null; courante = null;
+    if (ac && ac.state === 'running') ac.suspend();
+    try { if ('mediaSession' in navigator) { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } } catch (e) {}
+  }
+  document.addEventListener('visibilitychange', () => arrierePlan(document.hidden));
+  addEventListener('pagehide', () => arrierePlan(true));
 
   // briques de base
   function osc(type, f0, f1, t, dur, v, dest = busSons) {
