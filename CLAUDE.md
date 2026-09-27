@@ -8,6 +8,7 @@ Le propriétaire (Quentin) parle français et n'est pas développeur : répondre
 - **Ne jamais citer le nom d'un autre jeu** (ni dans l'appli, ni dans le code, ni dans les commits). On parle de style « arcade ».
 - Garder le style manga/comics, mais les effets ne doivent pas cacher les coups (onomatopées modérées).
 - Ne rien casser : travailler par petites étapes, lancer `tests.html`, puis **commit + push à chaque étape** (le jeu est publié sur GitHub Pages).
+- **Mise en ligne : le propriétaire a donné son accord permanent** (« oui et à chaque fois ») : une fois les tests ✅, pousser aussi directement sur `main` (en plus de la branche de travail), sans redemander.
 - Commentaires et textes de l'interface en français.
 - **Mettre ce fichier CLAUDE.md à jour à chaque demande réalisée** (fonctionnalités, règles, décisions, version de config), et le pousser avec le reste.
 
