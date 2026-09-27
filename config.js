@@ -1044,6 +1044,8 @@ const CONFIG_PAR_DEFAUT = {
     "tailleDegats": 1,
     "esquiveBots": 1,
     "quetesParJour": 3,
+    "teamMax": 30,
+    "teamCout": 0,
     "comboDelai": 3,
     "bossMondialPV": 3,
     "bossMondialButin": 3,
@@ -1368,6 +1370,10 @@ function migrerConfig(c) {
     if (!c.persos.some(p => p.nom === 'NIMBUS')) c.persos.push({ nom: 'NIMBUS', element: 'air', modele: 'modeles/nimbus.glb', image: '', imageCarte: '', couleur: '#b6f0ff', deBase: false, coutJetons: 3,
       pvMax: 4200, vitesse: 3.4, degats: 1100, portee: 420, delaiTir: 26, munitions: 3, recharge: 55, modeleEchelle: 1, modeleRotation: 0, animVictoire: 'Bubble_Dance', animChute: 'Fall1', arme: 'eventail' });
     c.version = Math.max(c.version || 0, 24);
+  }
+  if ((c.version || 0) < 25) { // v25 : 🛡️ teams (clubs de joueurs) — taille maximum et prix de création
+    c.app = c.app || {}; if (c.app.teamMax === undefined) c.app.teamMax = 30; if (c.app.teamCout === undefined) c.app.teamCout = 0;
+    c.version = Math.max(c.version || 0, 25);
   }
 
 

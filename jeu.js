@@ -411,9 +411,10 @@ function finir(r, msg) {
     db.collection('joueurs').doc(user.uid).set({ pseudo: nomJoueur(), points: inc(finInfo.points), ...(elJ ? { essences: { [baseDe(moi.perso).element]: inc(gainE) } } : {}), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0),
       persos: { [cleP(baseDe(moi.perso))]: { points: inc(finInfo.points), parties: inc(1), victoires: inc(r === 'VICTOIRE' ? 1 : 0) } },
       quetes: avancerQuetes(r), ...majXpPass((r === 'VICTOIRE' ? +PASS().xpVictoire || 100 : +PASS().xpDefaite || 35) + ((moi.st || {}).ko || 0) * (+PASS().xpKO || 15)), ...(mesStats.saisonId === saisonId() ? { saisonPts: inc(finInfo.points) } : { saisonId: saisonId(), saisonPts: finInfo.points }) }, { merge: true }).catch(e => console.warn(e));
+    pointsTeam(finInfo.points); // 🛡️ les points comptent aussi pour ma team
   }
 }
-function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; if (!persoCharge && v.perso !== undefined) { persoCharge = true; persoIndex = persoSauve = Math.max(0, Math.min(CONFIG.persos.length - 1, +v.perso)); } if (v.hud) Object.assign(hudPerso, v.hud); mesPoints = v.points || 0; if (v.touches && !toucheAttendue) mesTouches = { ...TOUCHES_DEF, ...v.touches }; mesStats = { passId: v.passId || '', passXP: v.passXP || 0, passPris: v.passPris || [], skins: v.skins || {}, skinChoisi: v.skinChoisi || {}, quetes: v.quetes || null, saisonId: v.saisonId || '', saisonPts: v.saisonPts || 0, points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {}, essences: v.essences || {}, recompenses: v.recompenses || [], jetons: v.jetons || 0, persosDebloques: v.persosDebloques || [], avatars: v.avatars || [], avatar: v.avatar || null }; }, () => {}); }
+function ecouterPoints() { if (db && user) db.collection('joueurs').doc(user.uid).onSnapshot(d => { const v = d.data() || {}; if (!persoCharge && v.perso !== undefined) { persoCharge = true; persoIndex = persoSauve = Math.max(0, Math.min(CONFIG.persos.length - 1, +v.perso)); } if (v.hud) Object.assign(hudPerso, v.hud); mesPoints = v.points || 0; if (v.touches && !toucheAttendue) mesTouches = { ...TOUCHES_DEF, ...v.touches }; mesStats = { passId: v.passId || '', passXP: v.passXP || 0, passPris: v.passPris || [], skins: v.skins || {}, skinChoisi: v.skinChoisi || {}, quetes: v.quetes || null, saisonId: v.saisonId || '', saisonPts: v.saisonPts || 0, points: v.points || 0, victoires: v.victoires || 0, parties: v.parties || 0, persos: v.persos || {}, essences: v.essences || {}, recompenses: v.recompenses || [], jetons: v.jetons || 0, persosDebloques: v.persosDebloques || [], avatars: v.avatars || [], avatar: v.avatar || null, team: v.team || '', teamNom: v.teamNom || '', teamDemande: v.teamDemande || '' }; }, () => {}); }
 
 // ---------- 8. MULTIJOUEUR (Realtime Database) ----------
 // Salle d'attente → départ quand le max est atteint (ou 10 s après avoir atteint le minimum).
@@ -2508,6 +2509,143 @@ async function chercherAmi() {
 }
 
 
+// ---------- 🛡️ TEAMS : clubs permanents (≠ groupe de jeu) — admins, ouverte / fermée, classement des teams chaque saison ----------
+// Realtime DB `teams/<id>` = { nom, embleme, ouverte, createur, admins: {uid: true}, membres: {uid: {nom, pts}}, demandes: {uid: {nom, t}}, saisonId, saisonPts, cree }
+// Profil Firestore du joueur : team, teamNom (ma team) • teamDemande (team fermée où j'attends une réponse)
+let maTeam = null, teamEcoute = null, listeTeams = null, listeTeamsT = -9999;
+const EMBLEMES = ['🛡️', '🐉', '🦅', '🐺', '🦁', '🔥', '⚡', '🌊', '🌪️', '💀', '👑', '⭐', '🗡️', '🌙'];
+const refTeam = id => rtdb.ref('teams/' + id);
+const estAdminTeam = (t = maTeam) => !!(t && user && (t.admins || {})[user.uid]);
+const nbMembres = t => Object.keys((t && t.membres) || {}).length;
+const erreurBase = e => notif('⚠️ Refusé par la base : ' + e.message);
+function majProfilTeam(m) { Object.assign(mesStats, m); return db ? db.collection('joueurs').doc(user.uid).set(m, { merge: true }) : Promise.resolve(); }
+function ecouterTeam() { // suit ma team (ou celle où j'ai fait une demande) ; appelé à chaque image du menu, ne fait rien si rien n'a changé
+  const id = mesStats.team || mesStats.teamDemande || '';
+  if (!rtdb || !user || (teamEcoute ? teamEcoute.id : '') === id) return;
+  if (teamEcoute) teamEcoute.ref.off('value', teamEcoute.f); teamEcoute = null; maTeam = null; if (!id) return;
+  const ref = refTeam(id), f = s => {
+    const t = s.val() ? { id, ...s.val() } : null, dedans = !!(t && (t.membres || {})[user.uid]);
+    if (mesStats.team === id && !dedans) { majProfilTeam({ team: '', teamNom: '' }); notif(t ? '🛡️ Tu ne fais plus partie de la team ' + t.nom : '🛡️ Ta team a été dissoute'); return; }
+    if (!mesStats.team && mesStats.teamDemande === id) {
+      if (dedans) { majProfilTeam({ team: id, teamNom: t.nom, teamDemande: '' }); notif('🛡️ Bienvenue dans la team ' + t.nom + ' !'); if (typeof son === 'function') son('piece'); }
+      else if (!t || !(t.demandes || {})[user.uid]) { majProfilTeam({ teamDemande: '' }); if (t) notif('🛡️ La team ' + t.nom + ' a refusé ta demande'); }
+    }
+    maTeam = t;
+  };
+  ref.on('value', f, e => notif('⚠️ Team illisible : ' + e.message)); teamEcoute = { id, ref, f };
+}
+function chargerTeams(force) { // liste des teams (rafraîchie toutes les ~15 s)
+  if (!rtdb || (!force && temps - listeTeamsT < 900)) return; listeTeamsT = temps;
+  rtdb.ref('teams').orderByChild('saisonPts').limitToLast(40).once('value').then(s => { const l = []; s.forEach(c => { l.push({ id: c.key, ...c.val() }); });
+    listeTeams = l.map(t => ({ ...t, pts: t.saisonId === saisonId() ? +t.saisonPts || 0 : 0 })).sort((a, b) => b.pts - a.pts); }).catch(e => { listeTeams = listeTeams || []; notif('⚠️ Teams illisibles : ' + e.message); });
+}
+async function creerTeam() {
+  if (!rtdb || !user) return; if (mesStats.team) return notif('Quitte ta team pour en créer une');
+  const cout = +reglage('teamCout', 0) || 0; if (cout > (mesStats.jetons || 0)) return notif('Il faut ' + cout + ' 🎟️ pour créer une team');
+  const nom = (prompt('Nom de ta team :') || '').trim().slice(0, 20); if (!nom) return;
+  const ouverte = confirm('Team OUVERTE ?\n\nOK = tout le monde peut entrer\nAnnuler = FERMÉE (les admins acceptent les demandes)');
+  const ref = rtdb.ref('teams').push();
+  try {
+    await ref.set({ nom, embleme: EMBLEMES[hacher(nom) % EMBLEMES.length], ouverte, createur: user.uid, admins: { [user.uid]: true }, membres: { [user.uid]: { nom: nomJoueur(), pts: 0 } }, saisonId: saisonId(), saisonPts: 0, cree: Date.now() });
+    await annulerDemandeTeam(true); await majProfilTeam({ team: ref.key, teamNom: nom, teamDemande: '' });
+    if (cout && db) db.collection('joueurs').doc(user.uid).set({ jetons: firebase.firestore.FieldValue.increment(-cout) }, { merge: true });
+    notif('🛡️ Team ' + nom + ' créée ! Tu en es l\'admin'); listeTeamsT = -9999;
+  } catch (e) { erreurBase(e); }
+}
+async function rejoindreTeam(t) {
+  if (!rtdb || !user) return; if (mesStats.team) return notif('Quitte ta team d\'abord');
+  if (nbMembres(t) >= (+reglage('teamMax', 30) || 30)) return notif('Cette team est complète');
+  try {
+    await annulerDemandeTeam(true);
+    if (t.ouverte) { await refTeam(t.id).child('membres/' + user.uid).set({ nom: nomJoueur(), pts: 0 }); await majProfilTeam({ team: t.id, teamNom: t.nom, teamDemande: '' }); notif('🛡️ Tu as rejoint la team ' + t.nom); }
+    else { await refTeam(t.id).child('demandes/' + user.uid).set({ nom: nomJoueur(), t: Date.now() }); await majProfilTeam({ teamDemande: t.id }); notif('📨 Demande envoyée à la team ' + t.nom); }
+  } catch (e) { erreurBase(e); }
+}
+async function annulerDemandeTeam(silence) {
+  const id = mesStats.teamDemande; if (!id) return;
+  await majProfilTeam({ teamDemande: '' }); refTeam(id).child('demandes/' + user.uid).remove().catch(() => {}); if (!silence) notif('Demande annulée');
+}
+async function quitterTeam() {
+  const t = maTeam; if (!t || !confirm('Quitter la team ' + t.nom + ' ?')) return;
+  const autres = Object.keys(t.membres || {}).filter(k => k !== user.uid);
+  await majProfilTeam({ team: '', teamNom: '' });
+  if (!autres.length) return refTeam(t.id).remove().then(() => notif('🛡️ Team ' + t.nom + ' supprimée (plus personne)')).catch(erreurBase);
+  const admins = Object.keys(t.admins || {}).filter(k => k !== user.uid && t.membres[k]); // le dernier admin qui part laisse sa place au meilleur joueur
+  const m = { ['membres/' + user.uid]: null, ['admins/' + user.uid]: null }; if (!admins.length) m['admins/' + autres.sort((a, b) => (t.membres[b].pts || 0) - (t.membres[a].pts || 0))[0]] = true;
+  refTeam(t.id).update(m).then(() => notif('Tu as quitté la team ' + t.nom)).catch(erreurBase);
+}
+const majTeam = (m, ok) => maTeam && refTeam(maTeam.id).update(m).then(() => ok && notif(ok)).catch(erreurBase);
+function accepterTeam(uid, nom) { if (nbMembres(maTeam) >= (+reglage('teamMax', 30) || 30)) return notif('La team est complète'); majTeam({ ['membres/' + uid]: { nom, pts: 0 }, ['demandes/' + uid]: null }, '✔ ' + nom + ' fait partie de la team'); }
+const refuserTeam = uid => majTeam({ ['demandes/' + uid]: null });
+function exclureTeam(uid, nom) { if (confirm('Exclure ' + nom + ' de la team ?')) majTeam({ ['membres/' + uid]: null, ['admins/' + uid]: null }, nom + ' a été exclu'); }
+function basculerAdminTeam(uid, nom) {
+  const ad = !!(maTeam.admins || {})[uid];
+  if (ad && Object.keys(maTeam.admins).length <= 1) return notif('Il faut au moins un admin');
+  if (confirm(ad ? 'Retirer ' + nom + ' des admins ?' : 'Nommer ' + nom + ' admin de la team ?')) majTeam({ ['admins/' + uid]: ad ? null : true }, ad ? nom + ' n\'est plus admin' : '⭐ ' + nom + ' est admin');
+}
+const basculerOuverte = () => majTeam({ ouverte: !maTeam.ouverte }, maTeam.ouverte ? '🔒 Team fermée : les admins acceptent les demandes' : '🔓 Team ouverte à tous');
+function renommerTeam() { const n = (prompt('Nouveau nom de la team :', maTeam.nom) || '').trim().slice(0, 20); if (n) majTeam({ nom: n }, 'Nom changé'); }
+function pointsTeam(pts) { // 🏆 compétition entre teams : les points gagnés en partie comptent pour la team pendant la saison
+  const t = maTeam; if (!t || !rtdb || mesStats.team !== t.id || !pts) return;
+  const inc = firebase.database.ServerValue.increment, m = t.saisonId === saisonId() ? { saisonPts: inc(pts), ['membres/' + user.uid + '/pts']: inc(pts), ['membres/' + user.uid + '/nom']: nomJoueur() }
+    : { saisonId: saisonId(), saisonPts: pts, membres: Object.fromEntries(Object.entries(t.membres || {}).map(([k, v]) => [k, { nom: v.nom, pts: k === user.uid ? pts : 0 }])) }; // nouvelle saison : tout repart de 0
+  refTeam(t.id).update(m).catch(e => console.warn('Points team', e));
+}
+function panneauTeam(x, y, w, h) { // onglet 🛡️ Team du menu Amis
+  const u = U(), B = (bx, by, bw, bh, t, c1, c2, f, fz = 13) => { bouton3D(bx, by, bw, bh, c1, c2, f); texte(t, bx + bw / 2, by + bh / 2, fz * u, '#fff', 'center', bw - 8 * u); };
+  const max = +reglage('teamMax', 30) || 30, rh = 50 * u;
+  if (mesStats.team && !maTeam) return texte('Chargement de ta team…', x + w / 2, y + 60 * u, 14 * u, '#fff');
+  if (!maTeam || !mesStats.team) { // pas de team : créer ou rejoindre
+    chargerTeams(); const cout = +reglage('teamCout', 0) || 0;
+    B(x, y, Math.min(260 * u, w * 0.5), 40 * u, '➕ Créer une team' + (cout ? ' (' + cout + ' 🎟️)' : ''), '#ffd23f', '#ff8a1f', creerTeam, 14);
+    if (mesStats.teamDemande) { const t = maTeam; texte('⏳ Demande en attente' + (t ? ' : ' + t.nom : ''), x + Math.min(270 * u, w * 0.52), y + 20 * u, 12 * u, '#ffe8a3', 'left', w * 0.3);
+      B(x + w - 100 * u, y + 4 * u, 100 * u, 32 * u, 'Annuler', '#8b8fa8', '#5d6778', () => annulerDemandeTeam()); }
+    texte('Une team = ton club permanent. Les points de chaque partie comptent pour le classement des teams de la saison.', x, y + 58 * u, 11 * u, 'rgba(255,255,255,.75)', 'left', w);
+    if (!listeTeams) return texte('Chargement…', x + w / 2, y + 100 * u, 14 * u, '#fff');
+    if (!listeTeams.length) return texte('Aucune team pour l\'instant : crée la première !', x + w / 2, y + 100 * u, 14 * u, '#fff');
+    listeTeams.slice(0, Math.max(1, Math.floor((h - 80 * u) / (rh + 6 * u)))).forEach((t, i) => {
+      const ry = y + 76 * u + i * (rh + 6 * u), n = nbMembres(t); verre(x, ry, w, rh, 14 * u);
+      emoji(t.embleme || '🛡️', x + 26 * u, ry + rh / 2, 22 * u); texte(t.nom, x + 50 * u, ry + rh / 2 - 8 * u, 15 * u, '#fff', 'left', w - 280 * u);
+      texte((t.ouverte ? '🔓 Ouverte' : '🔒 Fermée') + ' • 👥 ' + n + '/' + max + ' • 🏆 ' + t.pts + ' pts', x + 50 * u, ry + rh / 2 + 10 * u, 10 * u, 'rgba(255,255,255,.7)', 'left', w - 200 * u);
+      const bw = 120 * u, bx = x + w - bw - 10 * u;
+      if (mesStats.teamDemande === t.id) texte('Demande envoyée', bx + bw, ry + rh / 2, 12 * u, 'rgba(255,255,255,.6)', 'right');
+      else if (n >= max) texte('Complète', bx + bw, ry + rh / 2, 12 * u, 'rgba(255,255,255,.6)', 'right');
+      else B(bx, ry + 8 * u, bw, rh - 16 * u, t.ouverte ? 'Rejoindre' : 'Demander', t.ouverte ? '#34d399' : '#3a9bff', t.ouverte ? '#1f9d5a' : '#0a6cff', () => rejoindreTeam(t));
+    });
+    return;
+  }
+  const t = maTeam, ad = estAdminTeam(), pts = t.saisonId === saisonId() ? +t.saisonPts || 0 : 0;
+  verre(x, y, w, 58 * u, 16 * u, 'rgba(255,210,63,.18)');
+  emoji(t.embleme || '🛡️', x + 32 * u, y + 29 * u, 30 * u); titre(t.nom, x + 60 * u, y + 20 * u, 20 * u, '#fff', 'left', w - 330 * u);
+  texte('👥 ' + nbMembres(t) + '/' + max + ' • 🏆 ' + pts + ' pts (' + nomSaison() + ')' + (ad ? ' • tu es admin ⭐' : ''), x + 60 * u, y + 42 * u, 11 * u, 'rgba(255,255,255,.8)', 'left', w - 330 * u);
+  const bw = 120 * u; let bx = x + w - bw - 10 * u;
+  B(bx, y + 12 * u, bw, 34 * u, 'Quitter', '#ff6b61', '#d93a30', quitterTeam); bx -= bw + 8 * u;
+  if (ad) { B(bx, y + 12 * u, bw, 34 * u, t.ouverte ? '🔓 Ouverte' : '🔒 Fermée', t.ouverte ? '#34d399' : '#8b8fa8', t.ouverte ? '#1f9d5a' : '#5d6778', basculerOuverte); zones.push({ x: x + 50 * u, y, w: 160 * u, h: 30 * u, action: renommerTeam }); }
+  else texte(t.ouverte ? '🔓 Ouverte' : '🔒 Fermée', bx + bw, y + 29 * u, 12 * u, '#fff', 'right');
+  const dem = ad ? Object.entries(t.demandes || {}).map(([uid, v]) => ({ uid, nom: v.nom, dem: true })) : [];
+  const mem = Object.entries(t.membres || {}).map(([uid, v]) => ({ uid, nom: v.nom || 'Joueur', pts: t.saisonId === saisonId() ? v.pts || 0 : 0, ad: !!(t.admins || {})[uid] })).sort((a, b) => b.pts - a.pts);
+  const l = [...dem, ...mem], lh = 44 * u, nb = Math.max(1, Math.floor((h - 70 * u) / (lh + 5 * u)));
+  l.slice(0, nb).forEach((m, i) => {
+    const ry = y + 68 * u + i * (lh + 5 * u), moiM = m.uid === user.uid; verre(x, ry, w, lh, 12 * u, m.dem ? 'rgba(90,200,250,.22)' : moiM ? 'rgba(255,210,63,.22)' : null);
+    photoJoueur(m.uid, m.nom, x + 26 * u, ry + lh / 2, 16 * u, m.ad ? '#ffd23f' : '#fff');
+    texte(m.nom + (m.ad ? '  ⭐ ADMIN' : '') + (m.dem ? '  • veut rejoindre' : ''), x + 50 * u, ry + lh / 2, 14 * u, '#fff', 'left', w - 330 * u);
+    const b = 90 * u, by = ry + 7 * u, bh = lh - 14 * u; let bx2 = x + w - b - 8 * u;
+    if (m.dem) { B(bx2, by, b, bh, 'Refuser', '#ff6b61', '#d93a30', () => refuserTeam(m.uid)); B(bx2 - b - 6 * u, by, b, bh, 'Accepter', '#34d399', '#1f9d5a', () => accepterTeam(m.uid, m.nom)); return; }
+    texte('🏆 ' + m.pts, x + w - (ad && !moiM ? 2 * b + 30 * u : 14 * u), ry + lh / 2, 12 * u, '#ffe8a3', 'right');
+    if (ad && !moiM) { B(bx2, by, b, bh, '✕ Exclure', '#8b8fa8', '#5d6778', () => exclureTeam(m.uid, m.nom), 11); B(bx2 - b - 6 * u, by, b, bh, m.ad ? '− Admin' : '⭐ Admin', '#ffd23f', '#ff8a1f', () => basculerAdminTeam(m.uid, m.nom), 11); }
+  });
+}
+function classementTeams(x, y, w, h) { // 🏆 compétition : classement des teams de la saison
+  const u = U(); chargerTeams(); if (!listeTeams) return texte('Chargement…', x + w / 2, y + 40 * u, 16 * u, '#fff');
+  const l = listeTeams.filter(t => t.pts > 0 || t.id === mesStats.team); if (!l.length) return texte('Aucune team n\'a encore de points cette saison… crée ou rejoins une team (menu Amis) !', x + w / 2, y + 40 * u, 14 * u, '#fff', 'center', w - 20 * u);
+  const rh = 36 * u; l.slice(0, Math.max(1, Math.floor(h / (rh + 6 * u)))).forEach((t, k) => {
+    const ry = y + k * (rh + 6 * u), mien = t.id === mesStats.team; rect(x, ry, w, rh, 10 * u, mien ? 'rgba(255,210,63,.35)' : 'rgba(255,255,255,.1)', mien ? '#ffd23f' : null, 2);
+    const med = ['🥇', '🥈', '🥉'][k]; if (med) emoji(med, x + 18 * u, ry + rh / 2, 18 * u); else texte('#' + (k + 1), x + 18 * u, ry + rh / 2, 12 * u, '#cfd8ff');
+    emoji(t.embleme || '🛡️', x + 50 * u, ry + rh / 2, 18 * u); texte(t.nom, x + 70 * u, ry + rh / 2, 14 * u, '#fff', 'left', w - 250 * u);
+    texte('👥 ' + nbMembres(t) + '   🏆 ' + t.pts + ' pts', x + w - 10 * u, ry + rh / 2, 12 * u, '#ffe8a3', 'right');
+  });
+}
+
 // ---------- 🖼️ PHOTOS DE PROFIL (4 par perso / boss, créées automatiquement) & 🔓 PERSOS À DÉBLOQUER ----------
 const estDebloque = p => p.deBase !== false || (mesStats.persosDebloques || []).includes(cleP(p));
 function bboxImage(im) { // zone réellement dessinée d'un portrait (pour bien centrer)
@@ -2535,6 +2673,16 @@ function avatarDe(a, p) { // photo de profil d'un joueur (importée, choisie dan
   if (a && a.d) { const i = img(a.d); if (pret(i)) return i; }
   const l = a && a.cle && libAvatars().find(o => o.cle === a.cle); return l ? avatarPerso(l.p, l.v) : p ? avatarPerso(p, 1) : null; }
 const monAvatar = () => avatarDe(mesStats.avatar, selPerso());
+const profils = {}; // 🖼️ photo + perso des autres joueurs (lus une seule fois dans la base)
+function profilDe(uid) {
+  if (!uid || !db) return null;
+  if (!(uid in profils)) { profils[uid] = null; db.collection('joueurs').doc(uid).get().then(d => { const v = d.data() || {}; profils[uid] = { avatar: v.avatar || null, perso: v.perso }; }).catch(() => {}); }
+  return profils[uid];
+}
+function photoJoueur(uid, nom, x, y, r, col) { // photo ronde d'un joueur (pastille avec l'initiale en attendant)
+  const moiP = user && uid === user.uid, pr = moiP ? null : profilDe(uid), im = moiP ? monAvatar() : pr && avatarDe(pr.avatar, CONFIG.persos[+pr.perso]);
+  if (im) dessinerAvatar(im, x, y, r, col || '#fff'); else avatarLettre(nom || 'Joueur', x, y, r);
+}
 function dessinerAvatar(im, x, y, r, col = '#fff') { ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.clip(); if (im && pret(im)) ctx.drawImage(im, x - r, y - r, r * 2, r * 2); else { ctx.fillStyle = '#3a2d9c'; ctx.fillRect(x - r, y - r, r * 2, r * 2); } ctx.restore();
   ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.lineWidth = Math.max(2, r * 0.12); ctx.strokeStyle = col; ctx.stroke(); }
 const sauverAvatar = a => { if (db && user) db.collection('joueurs').doc(user.uid).set({ avatar: a }, { merge: true }).then(() => notif('🖼️ Photo de profil changée')).catch(e => notif('Impossible : ' + e.message)); };
@@ -2958,30 +3106,59 @@ function modaleInvitation() {
   zones = []; // seule la fenêtre répond
   ctx.fillStyle = 'rgba(3,6,20,.65)'; ctx.fillRect(-100, -100, W + 200, H + 200);
   verre(x, y, w, h, 26 * u, 'rgba(40,48,90,.9)');
-  avatarLettre(inv.nom, x + w / 2, y + 40 * u, 24 * u);
+  photoJoueur(inv.de, inv.nom, x + w / 2, y + 40 * u, 24 * u);
   titre('Invitation', x + w / 2, y + 84 * u, 28 * u, '#fff');
   texte(inv.nom + " t'invite à jouer dans son équipe", x + w / 2, y + 112 * u, 14 * u, 'rgba(255,255,255,.8)', 'center', w - 40 * u);
   const bw = (w - 60 * u) / 2, by = y + h - 62 * u;
   bouton3D(x + 20 * u, by, bw, 44 * u, '#4a5078', '#30355a', () => refuser(inv)); texte('Refuser', x + 20 * u + bw / 2, by + 22 * u, 15 * u, '#fff');
   bouton3D(x + 40 * u + bw, by, bw, 44 * u, '#34d399', '#059669', () => accepter(inv)); texte('Accepter', x + 40 * u + bw * 1.5, by + 22 * u, 15 * u, '#fff');
 }
+let ficheJoueur = null, choixReglages = false;
+function fenetre(w, h) { // fenêtre par-dessus le menu (seule elle répond)
+  const u = U(), x = W / 2 - w / 2, y = H / 2 - h / 2; zones = [];
+  ctx.fillStyle = 'rgba(3,6,20,.65)'; ctx.fillRect(-100, -100, W + 200, H + 200); verre(x, y, w, h, 26 * u, 'rgba(40,48,90,.95)');
+  return [x, y];
+}
+const fermerAcote = (x, y, w, h, f) => zones.push({ x, y, w, h, action: () => {} }, { x: -100, y: -100, w: W + 200, h: H + 200, action: f }); // à appeler en dernier : toucher à côté ferme
+function modaleReglages() { // ⚙️ admins : 2 choix
+  const u = U(), w = Math.min(420 * u, W - 40), h = 200 * u, [x, y] = fenetre(w, h), bw = w - 60 * u;
+  titre('Paramètres', x + w / 2, y + 34 * u, 26 * u, '#fff');
+  bouton3D(x + 30 * u, y + 66 * u, bw, 48 * u, '#5ff0ff', '#1e7bff', () => { choixReglages = false; allerA('commandes'); }); titre('🎮 Commandes', x + w / 2, y + 90 * u, 18 * u, '#fff');
+  bouton3D(x + 30 * u, y + 128 * u, bw, 48 * u, '#ffd23f', '#ff8a1f', () => location.href = 'admin.html'); titre('🛠️ Console admin', x + w / 2, y + 152 * u, 18 * u, '#fff');
+  fermerAcote(x, y, w, h, () => choixReglages = false);
+}
+function modaleFiche() { // 👤 fiche d'un joueur du classement
+  const u = U(), j = ficheJoueur, w = Math.min(400 * u, W - 40), h = Math.min(300 * u, H - 30), [x, y] = fenetre(w, h), cx = x + w / 2;
+  photoJoueur(j.uid, j.pseudo, cx, y + 54 * u, 38 * u, '#ffd23f');
+  titre(j.pseudo || 'Joueur', cx, y + 112 * u, 24 * u, '#fff', 'center', w - 30 * u);
+  const rj = rangDe(j.saisonId === saisonId() ? j.saisonPts || 0 : 0);
+  texte((rj.icone || '') + ' ' + rj.nom + (j.teamNom ? '  •  🛡️ ' + j.teamNom : ''), cx, y + 140 * u, 13 * u, '#ffe8a3', 'center', w - 30 * u);
+  texte('🏆 ' + (j.points || 0) + '   ⭐ ' + (j.victoires || 0) + ' victoires   🎮 ' + (j.parties || 0) + ' parties', cx, y + 164 * u, 12 * u, 'rgba(255,255,255,.8)', 'center', w - 30 * u);
+  const bw = w - 60 * u, by = y + h - 70 * u;
+  if (mesAmis[j.uid]) titre('✔ Déjà ton ami', cx, by + 24 * u, 18 * u, '#34d399');
+  else if (demandesEnvoyees[j.uid]) titre('📨 Demande envoyée', cx, by + 24 * u, 18 * u, 'rgba(255,255,255,.8)');
+  else if (demandesAmis[j.uid]) { bouton3D(x + 30 * u, by, bw, 48 * u, '#34d399', '#1f9d5a', () => accepterAmi(j.uid, j.pseudo || 'Joueur')); titre('🤝 Accepter sa demande', cx, by + 24 * u, 17 * u, '#fff'); }
+  else { bouton3D(x + 30 * u, by, bw, 48 * u, '#ffd23f', '#ff8a1f', () => demanderAmi(j.uid, j.pseudo || 'Joueur')); titre('➕ Ajouter en ami', cx, by + 24 * u, 18 * u, '#fff'); }
+  fermerAcote(x, y, w, h, () => ficheJoueur = null);
+}
 function menuAmis() {
   const u = U(), top = barreHaut('Amis', true), x0 = 20 * u, y0 = top + 14 * u, gw = Math.min(310 * u, W * 0.36), h = H - y0 - 18 * u;
   verre(x0, y0, gw, h, 22 * u);
-  titre('Mon groupe', x0 + 20 * u, y0 + 26 * u, 22 * u, '#fff', 'left');
+  titre('Groupe de jeu', x0 + 20 * u, y0 + 26 * u, 22 * u, '#fff', 'left');
   const chefMoi = !groupe.chef || groupe.chef === user.uid;
-  const l = [{ nom: chefMoi ? nomJoueur() : groupe.nomChef, tag: 'CHEF' }, ...Object.entries(groupe.membres).map(([uid, m]) => ({ nom: m.nom, tag: uid === user.uid ? 'TOI' : '' }))];
+  const l = [{ uid: chefMoi ? user.uid : groupe.chef, nom: chefMoi ? nomJoueur() : groupe.nomChef, tag: '👑 CHEF' }, ...Object.entries(groupe.membres).map(([uid, m]) => ({ uid, nom: m.nom, tag: uid === user.uid ? 'TOI' : '' }))];
   l.forEach((m, i) => {
-    const y = y0 + 56 * u + i * 50 * u; if (y > y0 + h - 110 * u) return;
-    avatarLettre(m.nom, x0 + 38 * u, y + 18 * u, 17 * u); texte(m.nom, x0 + 64 * u, y + 18 * u, 15 * u, '#fff', 'left', gw - 140 * u);
-    if (m.tag) { rect(x0 + gw - 64 * u, y + 8 * u, 46 * u, 20 * u, 10 * u, m.tag === 'CHEF' ? 'rgba(255,212,0,.25)' : 'rgba(90,200,250,.25)'); texte(m.tag, x0 + gw - 41 * u, y + 18 * u, 10 * u, '#fff'); }
+    const y = y0 + 56 * u + i * 50 * u; if (y > y0 + h - 150 * u) return;
+    photoJoueur(m.uid, m.nom, x0 + 38 * u, y + 18 * u, 17 * u); texte(m.nom, x0 + 64 * u, y + 18 * u, 15 * u, '#fff', 'left', gw - 150 * u);
+    if (m.tag) { rect(x0 + gw - 78 * u, y + 8 * u, 60 * u, 20 * u, 10 * u, m.tag !== 'TOI' ? 'rgba(255,212,0,.25)' : 'rgba(90,200,250,.25)'); texte(m.tag, x0 + gw - 48 * u, y + 18 * u, 10 * u, '#fff'); }
   });
-  texte('Le chef lance la partie : tout le groupe', x0 + gw / 2, y0 + h - 92 * u, 11 * u, 'rgba(255,255,255,.6)');
-  texte('joue dans la même équipe.', x0 + gw / 2, y0 + h - 76 * u, 11 * u, 'rgba(255,255,255,.6)');
+  // ℹ️ le groupe = pour jouer ensemble tout de suite (≠ team, qui est permanente)
+  ['Pour jouer ensemble tout de suite.', 'Le 👑 chef = celui qui invite : il choisit', 'le mode et lance, le groupe le suit', 'dans la même équipe.'].forEach((t, i) => texte(t, x0 + gw / 2, y0 + h - 124 * u + i * 15 * u, 11 * u, 'rgba(255,255,255,.7)', 'center', gw - 20 * u));
   if (l.length > 1) { bouton3D(x0 + 20 * u, y0 + h - 60 * u, gw - 40 * u, 42 * u, '#ff6b61', '#d93a30', quitterGroupe); texte(chefMoi ? 'Dissoudre le groupe' : 'Quitter le groupe', x0 + gw / 2, y0 + h - 39 * u, 14 * u, '#fff'); }
-  const lx = x0 + gw + 16 * u, lw = W - lx - 20 * u, enL = new Set(enLigneListe.map(j => j.uid)), nd = Object.keys(demandesAmis).length, tw = (lw - 30 * u) / 4;
-  [['amis', 'Amis'], ['demandes', 'Demandes' + (nd ? ' (' + nd + ')' : '')], ['journal', 'Journal'], ['recherche', '🔍 Rechercher']].forEach(([k, t], i) => { const x = lx + i * (tw + 10 * u), on = amisOnglet === k;
-    bouton3D(x, y0, tw, 36 * u, on ? '#ffe14a' : '#6a5cff', on ? '#ff8a1f' : '#3a2d9c', () => { amisOnglet = k; if (k === 'recherche') chercherAmi(); }); titre(t, x + tw / 2, y0 + 17 * u, 14 * u, '#fff', 'center', tw - 10 * u); });
+  const lx = x0 + gw + 16 * u, lw = W - lx - 20 * u, enL = new Set(enLigneListe.map(j => j.uid)), nd = Object.keys(demandesAmis).length, tw = (lw - 40 * u) / 5, ndT = estAdminTeam() && mesStats.team ? Object.keys(maTeam.demandes || {}).length : 0;
+  [['amis', 'Amis'], ['demandes', 'Demandes' + (nd ? ' (' + nd + ')' : '')], ['journal', 'Journal'], ['recherche', '🔍 Rechercher'], ['team', '🛡️ Team' + (ndT ? ' (' + ndT + ')' : '')]].forEach(([k, t], i) => { const x = lx + i * (tw + 10 * u), on = amisOnglet === k;
+    bouton3D(x, y0, tw, 36 * u, on ? '#ffe14a' : '#6a5cff', on ? '#ff8a1f' : '#3a2d9c', () => { amisOnglet = k; if (k === 'recherche') chercherAmi(); if (k === 'team') chargerTeams(true); }); titre(t, x + tw / 2, y0 + 17 * u, 14 * u, '#fff', 'center', tw - 10 * u); });
+  if (amisOnglet === 'team') return panneauTeam(lx, y0 + 48 * u, lw, h - 48 * u);
   let la = [];
   if (amisOnglet === 'amis') la = Object.entries(mesAmis).filter(([k]) => k !== '_init').map(([uid, v]) => ({ uid, nom: nomAmi(v), en: enL.has(uid) })).sort((a, b) => b.en - a.en);
   else if (amisOnglet === 'demandes') la = Object.entries(demandesAmis).map(([uid, v]) => ({ uid, nom: nomAmi(v), dem: true }));
@@ -2992,7 +3169,7 @@ function menuAmis() {
   const rh = 54 * u, nb = Math.max(1, Math.floor((h - 50 * u) / (rh + 8 * u)));
   la.slice(0, nb).forEach((j, i) => {
     const y = y0 + 48 * u + i * (rh + 8 * u), bw = 120 * u, bx = lx + lw - bw - 12 * u, by = y + 9 * u, bh = rh - 18 * u; verre(lx, y, lw, rh, 16 * u);
-    avatarLettre(j.nom, lx + 32 * u, y + rh / 2, 18 * u); texte(j.nom, lx + 60 * u, y + rh / 2 - (j.info ? 8 * u : 0), 15 * u, '#fff', 'left', lw - 320 * u);
+    photoJoueur(j.uid, j.nom, lx + 32 * u, y + rh / 2, 18 * u); texte(j.nom, lx + 60 * u, y + rh / 2 - (j.info ? 8 * u : 0), 15 * u, '#fff', 'left', lw - 320 * u);
     if (j.info) texte(j.info, lx + 60 * u, y + rh / 2 + 10 * u, 10 * u, 'rgba(255,255,255,.65)', 'left', lw - 320 * u);
     if (j.en) { ctx.beginPath(); ctx.arc(lx + 46 * u, y + rh / 2 + 12 * u, 5 * u, 0, 7); ctx.fillStyle = '#34d399'; ctx.fill(); }
     const B = (x, t, c1, c2, f) => { bouton3D(x, by, bw, bh, c1, c2, f); texte(t, x + bw / 2, y + rh / 2, 13 * u, '#fff', 'center', bw - 8 * u); };
@@ -3052,8 +3229,8 @@ function barreHaut(titreEcran, retour) {
   barreRessources(x0, W - 234 * u);
   pastille(W - 224 * u, 12 * u, 118 * u, '●', enLigne + ' en ligne'); zones.push({ x: W - 224 * u, y: 12 * u, w: 118 * u, h: 34 * u, action: () => allerA('amis') });
   ctx.beginPath(); ctx.arc(W - 224 * u + 19 * u, 29 * u, 5 * u, 0, 7); ctx.fillStyle = '#34d399'; ctx.fill();
-  if (estAdmin(user)) { verre(W - 98 * u, 12 * u, 36 * u, 34 * u, 17 * u); icone('reglages', W - 80 * u, 29 * u, 18 * u); // ⚙️ visible seulement pour les admins
-    zones.push({ x: W - 98 * u, y: 12 * u, w: 36 * u, h: 34 * u, action: () => location.href = 'admin.html' }); }
+  verre(W - 98 * u, 12 * u, 36 * u, 34 * u, 17 * u); icone('reglages', W - 80 * u, 29 * u, 18 * u); // ⚙️ paramètres : commandes (tout le monde) • + console admin (admins)
+  zones.push({ x: W - 98 * u, y: 12 * u, w: 36 * u, h: 34 * u, action: () => estAdmin(user) ? choixReglages = true : allerA('commandes') });
   verre(W - 54 * u, 12 * u, 36 * u, 34 * u, 17 * u, 'rgba(255,80,80,.25)'); icone('quitter', W - 36 * u, 29 * u, 18 * u);
   zones.push({ x: W - 54 * u, y: 12 * u, w: 36 * u, h: 34 * u, action: () => { quitterGroupe(); if (rtdb && user) rtdb.ref('presence/' + user.uid).remove(); auth.signOut(); } });
   return h;
@@ -3102,7 +3279,8 @@ function dessinerMenu() {
   if (etat === 'AUTH') return;
   ({ accueil: menuAccueil, persos: menuPersos, modes: menuModes, classement: menuClassement, pouvoirs: menuPouvoirs, amis: menuAmis, recompenses: menuRecompenses, quetes: menuQuetes, pass: menuPass, commandes: menuCommandes, hud: menuHud, avatar: menuAvatar })[ecranMenu]();
   const kt = Math.min(1, (temps - transT) / 14); if (kt < 1) { ctx.fillStyle = `rgba(5,7,15,${(1 - kt) * 0.9})`; ctx.fillRect(-100, -100, W + 200, H + 200); } // fondu entre écrans
-  dessinerVagues(); dessinerNotif();
+  dessinerVagues(); dessinerNotif(); ecouterTeam();
+  if (choixReglages) modaleReglages(); else if (ficheJoueur) modaleFiche();
   if (invitations.length) modaleInvitation();
 }
 
@@ -3111,7 +3289,7 @@ function menuAccueil() {
   const u = U(), p = selPerso(), a = CONFIG.armes[p.arme] || {}, m = modeChoisi(), [, c1, c2, lab] = modesStyle(m), multi = m.type === 'multi';
   const top = barreHaut();
   // navigation à gauche
-  const nav = [['perso', 'Persos', 'persos', '#5ac8fa', '#2f6bff'], ['amis', 'Amis', 'amis', '#4ade80', '#059669'], ['classement', 'Classement', 'classement', '#ffc24b', '#ff7a00'], ['eclair', 'Pouvoirs', 'pouvoirs', '#ff7ac0', '#b43cff'], ['trophee', 'Récompenses', 'recompenses', '#ffe14a', '#ff8a1f'], ['check', 'Quêtes', 'quetes', '#b6ff4a', '#1fc46b'], ['reglages', 'Commandes', 'commandes', '#5ff0ff', '#1e7bff']];
+  const nav = [['perso', 'Persos', 'persos', '#5ac8fa', '#2f6bff'], ['amis', 'Amis', 'amis', '#4ade80', '#059669'], ['classement', 'Classement', 'classement', '#ffc24b', '#ff7a00'], ['eclair', 'Pouvoirs', 'pouvoirs', '#ff7ac0', '#b43cff'], ['trophee', 'Récompenses', 'recompenses', '#ffe14a', '#ff8a1f'], ['check', 'Quêtes', 'quetes', '#b6ff4a', '#1fc46b']]; // (Commandes : dans ⚙️ en haut)
   nav.forEach(([ic, t, e, a1, a2], k) => {
     const pas = Math.min(52 * u, (H - top - 24 * u) / nav.length), y = top + 14 * u + k * pas, w = 158 * u, bh = Math.min(42 * u, pas - 6 * u), fz = Math.min(20 * u, bh * 0.5);
     boutonJeu(14 * u, y, w, bh, a1, a2, () => allerA(e));
@@ -3365,10 +3543,10 @@ function menuModes() { // 🖥️ ordi : grille de cases • 📱 mobile : une g
 }
 function menuClassement() {
   const u = U(), top = barreHaut('CLASSEMENT', true);
-  if (db && temps - classementT > 900) { // rafraîchi toutes les ~15 s
+  if (db && classementVue !== 'teams' && temps - classementT > 900) { // rafraîchi toutes les ~15 s
     classementT = temps;
     const sa = classementVue === 'saison';
-    db.collection('joueurs').orderBy(sa ? 'saisonPts' : 'points', 'desc').limit(sa ? 60 : 30).get().then(s => classement = s.docs.map(d => ({ uid: d.id, ...d.data() })).filter(j => !sa || j.saisonId === saisonId()).slice(0, 30)).catch(() => classement = classement || []);
+    db.collection('joueurs').orderBy(sa ? 'saisonPts' : 'points', 'desc').limit(sa ? 60 : 30).get().then(s => classement = s.docs.map(d => { const v = d.data(); profils[d.id] = { avatar: v.avatar || null, perso: v.perso }; return { uid: d.id, ...v }; }).filter(j => !sa || j.saisonId === saisonId()).slice(0, 30)).catch(() => classement = classement || []);
   }
   const cw = Math.min(260 * u, W * 0.3), x0 = 14 * u, y0 = top + 14 * u, h = H - y0 - 14 * u;
   rect(x0, y0, cw, h, 18 * u, 'rgba(255,255,255,.1)', '#ffd23f', 3 * u);
@@ -3381,8 +3559,9 @@ function menuClassement() {
    ['📈', 'Taux de victoire', mesStats.parties ? Math.round(mesStats.victoires / mesStats.parties * 100) + ' %' : '-'], ['🥇', 'Rang', rang ? '#' + rang : '-']]
     .forEach(([i, l, v], k) => { const y = y0 + is + 50 * u + k * 26 * u; if (y > y0 + h - 14 * u) return; emoji(i, x0 + 22 * u, y, 15 * u); texte(l, x0 + 38 * u, y, 12 * u, '#cfd8ff', 'left'); texte(String(v), x0 + cw - 14 * u, y, 14 * u, '#fff', 'right'); });
   const lx = x0 + cw + 14 * u, lw = W - lx - 14 * u;
-  [['saison', '📅 Saison ' + nomSaison()], ['total', '🏆 Depuis toujours']].forEach(([v, t], k) => { const bw = Math.min(200 * u, (lw - 10 * u) / 2), bx = lx + k * (bw + 10 * u), on = classementVue === v;
-    bouton3D(bx, y0, bw, 32 * u, on ? '#ffe14a' : '#8e7bff', on ? '#ff8a1f' : '#5b3fd6', () => { if (classementVue !== v) { classementVue = v; classementT = -9999; classement = null; } }); texte(t, bx + bw / 2, y0 + 16 * u, 12 * u, on ? '#1f1300' : '#fff', 'center', bw - 10 * u); });
+  [['saison', '📅 Saison ' + nomSaison()], ['total', '🏆 Depuis toujours'], ['teams', '🛡️ Teams']].forEach(([v, t], k) => { const bw = Math.min(200 * u, (lw - 20 * u) / 3), bx = lx + k * (bw + 10 * u), on = classementVue === v;
+    bouton3D(bx, y0, bw, 32 * u, on ? '#ffe14a' : '#8e7bff', on ? '#ff8a1f' : '#5b3fd6', () => { if (classementVue !== v) { classementVue = v; classementT = -9999; if (v !== 'teams') classement = null; else chargerTeams(true); } }); texte(t, bx + bw / 2, y0 + 16 * u, 12 * u, on ? '#1f1300' : '#fff', 'center', bw - 10 * u); });
+  if (classementVue === 'teams') return classementTeams(lx, y0 + 44 * u, lw, h - 44 * u);
   if (!classement) return texte('Chargement…', lx + lw / 2, y0 + 80 * u, 16 * u, '#fff');
   if (!classement.length) return texte(classementVue === 'saison' ? 'Personne cette saison… joue une partie !' : 'Personne encore… joue une partie !', lx + lw / 2, y0 + 80 * u, 16 * u, '#fff');
   const yL = y0 + 44 * u, hL = h - 44 * u, rh = 32 * u, parCol = Math.max(1, Math.floor(hL / (rh + 6 * u))), cols = classement.length > parCol && lw > 500 * u ? 2 : 1, colW = (lw - (cols - 1) * 12 * u) / cols;
@@ -3391,8 +3570,8 @@ function menuClassement() {
     rect(x, y, colW, rh, 10 * u, moiL ? 'rgba(255,210,63,.35)' : 'rgba(255,255,255,.1)', moiL ? '#ffd23f' : null, 2);
     const med = ['🥇', '🥈', '🥉'][k];
     if (med) emoji(med, x + 18 * u, y + rh / 2, 18 * u); else texte('#' + (k + 1), x + 18 * u, y + rh / 2, 12 * u, '#cfd8ff');
-    const ar = rh / 2 - 3 * u, ax = x + 36 * u + ar, av = moiL ? monAvatar() : avatarDe(j.avatar, CONFIG.persos[+j.perso]); // 🖼️ photo de profil
-    if (av) dessinerAvatar(av, ax, y + rh / 2, ar, moiL ? '#ffd23f' : '#fff'); else avatarLettre(j.pseudo || 'Joueur', ax, y + rh / 2, ar);
+    const ar = rh / 2 - 3 * u, ax = x + 36 * u + ar; photoJoueur(j.uid, j.pseudo, ax, y + rh / 2, ar, moiL ? '#ffd23f' : '#fff'); // 🖼️ photo de profil
+    if (!moiL) zones.push({ x, y, w: colW, h: rh, action: () => ficheJoueur = j }); // 👆 fiche du joueur (ajouter en ami)
     texte(j.pseudo || 'Joueur', ax + ar + 8 * u, y + rh / 2, 13 * u, '#fff', 'left', colW - 170 * u - ar * 2 - 8 * u);
     const rj = rangDe(j.saisonId === saisonId() ? j.saisonPts || 0 : 0); emoji(rj.icone || '', x + colW - (sa ? 96 : 130) * u, y + rh / 2, 14 * u);
     texte(sa ? '📅 ' + (j.saisonPts || 0) + ' pts' : '⭐' + (j.victoires || 0) + '   🏆 ' + (j.points || 0), x + colW - 10 * u, y + rh / 2, 12 * u, '#ffe8a3', 'right');
