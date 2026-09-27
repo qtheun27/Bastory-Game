@@ -1049,6 +1049,7 @@ const CONFIG_PAR_DEFAUT = {
     "quetesParJour": 3,
     "teamMax": 30,
     "teamCout": 0,
+    "chatTeamMax": 200,
     "comboDelai": 3,
     "bossMondialPV": 3,
     "bossMondialButin": 3,
@@ -1396,6 +1397,10 @@ function migrerConfig(c) {
       else if (m.equipes !== 'coop') si(m, 'duree', 150, 240); // duel, équipes
     });
     c.version = Math.max(c.version || 0, 27);
+  }
+  if ((c.version || 0) < 28) { // v28 : 💬 chat de team (historique)
+    c.app = c.app || {}; if (c.app.chatTeamMax === undefined) c.app.chatTeamMax = 200;
+    c.version = Math.max(c.version || 0, 28);
   }
 
 

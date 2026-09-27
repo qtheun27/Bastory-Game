@@ -2649,20 +2649,21 @@ function panneauTeam(x, y, w, h) { // onglet 🛡️ Team du menu Amis
     });
     return;
   }
-  const t = maTeam, ad = estAdminTeam(), pts = t.saisonId === saisonId() ? +t.saisonPts || 0 : 0;
-  verre(x, y, w, 58 * u, 16 * u, 'rgba(255,210,63,.18)');
-  emoji(t.embleme || '🛡️', x + 32 * u, y + 29 * u, 30 * u); titre(t.nom, x + 60 * u, y + 20 * u, 20 * u, '#fff', 'left', w - 460 * u);
-  texte('👥 ' + nbMembres(t) + '/' + max + ' • 🏆 ' + pts + ' pts (' + nomSaison() + ')' + (ad ? ' • tu es admin ⭐' : ''), x + 60 * u, y + 42 * u, 11 * u, 'rgba(255,255,255,.8)', 'left', w - 460 * u);
-  const bw = 120 * u; let bx = x + w - bw - 10 * u;
-  B(bx, y + 12 * u, bw, 34 * u, 'Quitter', '#ff6b61', '#d93a30', quitterTeam); bx -= bw + 8 * u;
-  B(bx, y + 12 * u, bw, 34 * u, '⚔️ Jouer ensemble', '#4ade80', '#059669', jouerAvecTeam, 12); bx -= bw + 8 * u;
-  if (ad) { B(bx, y + 12 * u, bw, 34 * u, t.ouverte ? '🔓 Ouverte' : '🔒 Fermée', t.ouverte ? '#34d399' : '#8b8fa8', t.ouverte ? '#1f9d5a' : '#5d6778', basculerOuverte); zones.push({ x: x + 50 * u, y, w: 160 * u, h: 30 * u, action: renommerTeam }); }
-  else texte(t.ouverte ? '🔓 Ouverte' : '🔒 Fermée', bx + bw, y + 29 * u, 12 * u, '#fff', 'right');
+  const t = maTeam, ad = estAdminTeam(), pts = t.saisonId === saisonId() ? +t.saisonPts || 0 : 0; B.l = Math.min(130 * u, (w - 50 * u) / 4);
+  const HT = 94 * u; verre(x, y, w, HT, 16 * u, 'rgba(255,210,63,.18)');
+  emoji(t.embleme || '🛡️', x + 32 * u, y + 29 * u, 30 * u); titre(t.nom, x + 60 * u, y + 20 * u, 20 * u, '#fff', 'left', w - 80 * u);
+  texte('👥 ' + nbMembres(t) + '/' + max + ' • 🏆 ' + pts + ' pts (' + nomSaison() + ')' + (ad ? ' • tu es admin ⭐' : ''), x + 60 * u, y + 40 * u, 11 * u, 'rgba(255,255,255,.8)', 'left', w - 80 * u);
+  const bw = B.l; let bx = x + w - bw - 10 * u;
+  B(bx, y + 54 * u, bw, 32 * u, 'Quitter', '#ff6b61', '#d93a30', quitterTeam); bx -= bw + 8 * u;
+  B(bx, y + 54 * u, bw, 32 * u, '⚔️ Jouer ensemble', '#4ade80', '#059669', jouerAvecTeam, 12); bx -= bw + 8 * u;
+  const nlT = nbNonLusTeam(); B(bx, y + 54 * u, bw, 32 * u, '💬 Chat' + (nlT ? ' (' + nlT + ')' : ''), nlT ? '#ff7ac0' : '#5ac8fa', nlT ? '#b43cff' : '#2f6bff', () => ouvrirChat('team'), 12); bx -= bw + 8 * u;
+  if (ad) { B(bx, y + 54 * u, bw, 32 * u, t.ouverte ? '🔓 Ouverte' : '🔒 Fermée', t.ouverte ? '#34d399' : '#8b8fa8', t.ouverte ? '#1f9d5a' : '#5d6778', basculerOuverte); zones.push({ x: x + 50 * u, y, w: 160 * u, h: 30 * u, action: renommerTeam }); }
+  else texte(t.ouverte ? '🔓 Ouverte' : '🔒 Fermée', bx + bw, y + 70 * u, 12 * u, '#fff', 'right');
   const dem = ad ? Object.entries(t.demandes || {}).map(([uid, v]) => ({ uid, nom: v.nom, dem: true })) : [];
   const mem = Object.entries(t.membres || {}).map(([uid, v]) => ({ uid, nom: v.nom || 'Joueur', pts: t.saisonId === saisonId() ? v.pts || 0 : 0, ad: !!(t.admins || {})[uid] })).sort((a, b) => b.pts - a.pts);
-  const l = [...dem, ...mem], lh = 44 * u, nb = Math.max(1, Math.floor((h - 70 * u) / (lh + 5 * u)));
+  const l = [...dem, ...mem], lh = 44 * u, nb = Math.max(1, Math.floor((h - HT - 12 * u) / (lh + 5 * u)));
   l.slice(0, nb).forEach((m, i) => {
-    const ry = y + 68 * u + i * (lh + 5 * u), moiM = m.uid === user.uid; verre(x, ry, w, lh, 12 * u, m.dem ? 'rgba(90,200,250,.22)' : moiM ? 'rgba(255,210,63,.22)' : null);
+    const ry = y + HT + 10 * u + i * (lh + 5 * u), moiM = m.uid === user.uid; verre(x, ry, w, lh, 12 * u, m.dem ? 'rgba(90,200,250,.22)' : moiM ? 'rgba(255,210,63,.22)' : null);
     photoJoueur(m.uid, m.nom, x + 26 * u, ry + lh / 2, 16 * u, m.ad ? '#ffd23f' : '#fff');
     texte(m.nom + (m.ad ? '  ⭐ ADMIN' : '') + (m.dem ? '  • veut rejoindre' : ''), x + 50 * u, ry + lh / 2, 14 * u, '#fff', 'left', w - 330 * u);
     const b = 90 * u, by = ry + 7 * u, bh = lh - 14 * u; let bx2 = x + w - b - 8 * u;
@@ -2683,6 +2684,63 @@ function classementTeams(x, y, w, h) { // 🏆 compétition : classement des tea
   });
 }
 
+// ---------- 💬 CHATS : team (historique gardé dans `chatTeams/<team>`) • groupe de jeu (éphémère, dans `groupes/<créateur>/chat` : effacé avec le groupe) ----------
+let chatTeam = [], chatOuvert = null, chatDefil = 0, ecouteChatT = null, ecouteChatG = null;
+const vuChat = k => { try { return +localStorage.getItem('bastoryChatVu_' + k) || 0; } catch (e) { return 0; } };
+const marquerVu = (k, l) => { try { localStorage.setItem('bastoryChatVu_' + k, String(l.length ? l[l.length - 1].t || 0 : Date.now())); } catch (e) {} };
+const nonLus = (k, l) => { const v = vuChat(k); return l.filter(m => m.uid !== (user && user.uid) && (m.t || 0) > v).length; };
+function suivreChat(ref, cle, garder, ancien) { // écoute un chat ; message + son quand quelqu'un écrit (hors du chat ouvert)
+  if (ancien) ancien.ref.off('value', ancien.f); if (!ref) return null; let premier = true;
+  const f = s => { const l = []; s.forEach(c => { l.push({ k: c.key, ...c.val() }); }); const avant = garder(); garder(l);
+    if (!premier && chatOuvert !== cle.split('_')[0]) { const n = l.filter(m => m.uid !== user.uid && !avant.some(a => a.k === m.k)).pop(); if (n) { notif('💬 ' + n.nom + ' : ' + String(n.txt).slice(0, 60)); if (typeof son === 'function') son('clic', 0.8); } }
+    if (chatOuvert === cle.split('_')[0]) marquerVu(cle, l); premier = false; };
+  ref.on('value', f, e => notif(/permission/i.test(e.message) ? '⚠️ Chat pas encore autorisé dans la base (règle « chatTeams » à ajouter)' : '⚠️ Chat illisible : ' + e.message));
+  return { ref, f, id: cle };
+}
+function ecouterChats() { // appelé à chaque image du menu : suit le chat de ma team et celui de mon groupe
+  if (!rtdb || !user) return;
+  const t = mesStats.team || '', idT = t ? 'team_' + t : '';
+  if ((ecouteChatT ? ecouteChatT.id : '') !== idT) { chatTeam = []; ecouteChatT = suivreChat(t ? rtdb.ref('chatTeams/' + t).limitToLast(Math.max(10, reglage('chatTeamMax', 200))) : null, idT, l => l ? chatTeam = l : chatTeam, ecouteChatT); }
+  const g = groupe.chef && idsGroupe().length > 1 ? groupe.chef : '', idG = g ? 'groupe_' + g : '';
+  if ((ecouteChatG ? ecouteChatG.id : '') !== idG) { chatGroupe = []; ecouteChatG = suivreChat(g ? rtdb.ref('groupes/' + g + '/chat').limitToLast(100) : null, idG, l => l ? chatGroupe = l : chatGroupe, ecouteChatG); }
+  if (chatOuvert === 'groupe' && !g) chatOuvert = null; if (chatOuvert === 'team' && !t) chatOuvert = null;
+}
+const nbNonLusTeam = () => mesStats.team ? nonLus('team_' + mesStats.team, chatTeam) : 0, nbNonLusGroupe = () => groupe.chef ? nonLus('groupe_' + groupe.chef, chatGroupe) : 0;
+function ouvrirChat(k) { chatOuvert = k; chatDefil = 0; const l = k === 'team' ? chatTeam : chatGroupe; marquerVu(k === 'team' ? 'team_' + mesStats.team : 'groupe_' + groupe.chef, l); }
+function ecrireChat() {
+  const k = chatOuvert, txt = (prompt(k === 'team' ? 'Message pour ta team :' : 'Message pour ton groupe :') || '').trim().slice(0, 200); if (!txt || !rtdb) return;
+  const ref = k === 'team' ? rtdb.ref('chatTeams/' + mesStats.team) : rtdb.ref('groupes/' + groupe.chef + '/chat'), l = k === 'team' ? chatTeam : chatGroupe;
+  ref.push({ uid: user.uid, nom: nomJoueur(), txt, t: firebase.database.ServerValue.TIMESTAMP }).then(() => { chatDefil = 0;
+    const max = Math.max(10, reglage('chatTeamMax', 200)); if (k === 'team' && l.length >= max) l.slice(0, l.length - max + 1).forEach(m => ref.child(m.k).remove()); }) // 🧹 garde les N derniers messages
+    .catch(e => notif(/permission/i.test(e.message) ? '⚠️ Chat pas encore autorisé dans la base (règle « chatTeams » à ajouter)' : '⚠️ Message refusé : ' + e.message));
+}
+function modaleChat() {
+  const u = U(), k = chatOuvert, l = k === 'team' ? chatTeam : chatGroupe, w = Math.min(640 * u, W - 30), h = H - 30, [x, y] = fenetre(w, h);
+  titre(k === 'team' ? '💬 Team ' + ((maTeam && maTeam.nom) || '') : '💬 Chat du groupe', x + 22 * u, y + 26 * u, 20 * u, '#fff', 'left', w - 90 * u);
+  texte(k === 'team' ? 'Les messages restent (historique de la team)' : 'S\'efface quand le groupe se sépare', x + 22 * u, y + 48 * u, 10 * u, 'rgba(255,255,255,.65)', 'left');
+  bouton3D(x + w - 54 * u, y + 12 * u, 40 * u, 36 * u, '#ff6b61', '#d93a30', () => chatOuvert = null); texte('✕', x + w - 34 * u, y + 30 * u, 16 * u, '#fff');
+  const zy = y + 62 * u, zh = h - 62 * u - 66 * u, fz = 13 * u, lh = 17 * u, mw = w - 150 * u; // messages, du plus récent (en bas) vers le plus ancien
+  ctx.save(); ctx.beginPath(); ctx.rect(x + 6 * u, zy, w - 12 * u, zh); ctx.clip();
+  let by = zy + zh - 6 * u, cach = 0; const lst = l.slice(0, Math.max(0, l.length - chatDefil));
+  if (!l.length) texte(k === 'team' ? 'Aucun message : dis bonjour à ta team !' : 'Aucun message pour l\'instant', x + w / 2, zy + zh / 2, 14 * u, 'rgba(255,255,255,.7)');
+  for (let i = lst.length - 1; i >= 0; i--) {
+    const m = lst[i], mien = m.uid === user.uid, L = lignes(m.txt, mw * 0.78, fz), bh = L.length * lh + 26 * u, bw = Math.min(mw, Math.max(...L.map(t => { ctx.font = `900 ${fz}px Arial`; return ctx.measureText(t).width * 1.22; }), 110 * u)) + 24 * u; // marge : la police affichée est plus large
+    by -= bh + 8 * u; if (by < zy - bh) { cach = i + 1; break; }
+    const bx = mien ? x + w - 20 * u - bw : x + 58 * u;
+    if (!mien) photoJoueur(m.uid, m.nom, x + 34 * u, by + 18 * u, 16 * u);
+    rect(bx, by, bw, bh, 12 * u, mien ? 'rgba(255,210,63,.9)' : 'rgba(255,255,255,.14)', mien ? null : 'rgba(255,255,255,.25)', 1.5);
+    const hr = m.t ? new Date(m.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
+    texte((mien ? 'Moi' : m.nom || 'Joueur') + (hr ? '  ' + (new Date(m.t).toDateString() === new Date().toDateString() ? hr : new Date(m.t).toLocaleDateString('fr-FR') + ' ' + hr) : ''), bx + 12 * u, by + 11 * u, 9 * u, mien ? 'rgba(40,24,0,.7)' : 'rgba(255,255,255,.6)', 'left');
+    L.forEach((t, n) => texte(t, bx + 12 * u, by + 26 * u + n * lh, fz, mien ? '#1f1300' : '#fff', 'left'));
+  }
+  ctx.restore();
+  if (cach > 0 || chatDefil > 0) { // ▲▼ remonter dans l'historique
+    if (cach > 0) { bouton3D(x + w - 54 * u, zy + 4 * u, 40 * u, 32 * u, '#8e7bff', '#5b3fd6', () => chatDefil = Math.min(l.length - 1, chatDefil + 5)); texte('▲', x + w - 34 * u, zy + 20 * u, 13 * u, '#fff'); }
+    if (chatDefil > 0) { bouton3D(x + w - 54 * u, zy + zh - 36 * u, 40 * u, 32 * u, '#8e7bff', '#5b3fd6', () => chatDefil = Math.max(0, chatDefil - 5)); texte('▼', x + w - 34 * u, zy + zh - 20 * u, 13 * u, '#fff'); }
+  }
+  bouton3D(x + 16 * u, y + h - 56 * u, w - 32 * u, 44 * u, '#4ade80', '#059669', ecrireChat); titre('✏️ Écrire un message…', x + w / 2, y + h - 34 * u, 16 * u, '#fff');
+  fermerAcote(x, y, w, h, () => chatOuvert = null);
+}
 // ---------- 🖼️ PHOTOS DE PROFIL (4 par perso / boss, créées automatiquement) & 🔓 PERSOS À DÉBLOQUER ----------
 const estDebloque = p => p.deBase !== false || (mesStats.persosDebloques || []).includes(cleP(p));
 function bboxImage(im) { // zone réellement dessinée d'un portrait (pour bien centrer)
@@ -3217,7 +3275,7 @@ function modaleFiche() { // 👤 fiche d'un joueur du classement
 function menuAmis() {
   const u = U(), top = barreHaut('Amis', true), x0 = 20 * u, y0 = top + 14 * u, gw = Math.min(310 * u, W * 0.36), h = H - y0 - 18 * u;
   verre(x0, y0, gw, h, 22 * u);
-  titre('Groupe de jeu', x0 + 20 * u, y0 + 26 * u, 22 * u, '#fff', 'left');
+  titre('Groupe de jeu', x0 + 20 * u, y0 + 26 * u, 22 * u, '#fff', 'left', idsGroupe().length > 1 ? gw - 180 * u : gw - 30 * u);
   const chefMoi = !groupe.chef || groupe.chef === user.uid;
   const l = [{ uid: chefMoi ? user.uid : groupe.chef, nom: chefMoi ? nomJoueur() : groupe.nomChef }, ...Object.entries(groupe.membres).map(([uid, m]) => ({ uid, nom: m.nom }))].map((m, i, t) => ({ ...m, tag: t.length > 1 ? (pretsGroupe[m.uid] ? '✔ PRÊT' : '⏳') : '' }));
   l.forEach((m, i) => {
@@ -3227,6 +3285,7 @@ function menuAmis() {
   });
   // ℹ️ le groupe = pour jouer ensemble tout de suite (≠ team, qui est permanente)
   ['Pour jouer ensemble tout de suite :', 'chacun appuie sur PRÊT, la partie démarre', 'quand tout le monde est prêt, dans la', 'même équipe (mode choisi par ' + (chefMoi ? 'toi' : groupe.nomChef) + ').'].forEach((t, i) => texte(t, x0 + gw / 2, y0 + h - 124 * u + i * 15 * u, 11 * u, 'rgba(255,255,255,.7)', 'center', gw - 20 * u));
+  if (l.length > 1) { const nlG = nbNonLusGroupe(); bouton3D(x0 + gw - 150 * u, y0 + 12 * u, 132 * u, 34 * u, nlG ? '#ff7ac0' : '#5ac8fa', nlG ? '#b43cff' : '#2f6bff', () => ouvrirChat('groupe')); texte('💬 Chat' + (nlG ? ' (' + nlG + ')' : ''), x0 + gw - 84 * u, y0 + 29 * u, 13 * u, '#fff'); }
   if (l.length > 1) { bouton3D(x0 + 20 * u, y0 + h - 60 * u, gw - 40 * u, 42 * u, '#ff6b61', '#d93a30', quitterGroupe); texte(chefMoi ? 'Fermer le groupe' : 'Quitter le groupe', x0 + gw / 2, y0 + h - 39 * u, 14 * u, '#fff'); }
   const lx = x0 + gw + 16 * u, lw = W - lx - 20 * u, enL = new Set(enLigneListe.map(j => j.uid)), nd = Object.keys(demandesAmis).length, tw = (lw - 40 * u) / 5, ndT = estAdminTeam() && mesStats.team ? Object.keys(maTeam.demandes || {}).length : 0;
   [['amis', 'Amis'], ['demandes', 'Demandes' + (nd ? ' (' + nd + ')' : '')], ['journal', 'Journal'], ['recherche', '🔍 Rechercher'], ['team', '🛡️ Team' + (ndT ? ' (' + ndT + ')' : '')]].forEach(([k, t], i) => { const x = lx + i * (tw + 10 * u), on = amisOnglet === k;
@@ -3358,8 +3417,8 @@ function dessinerMenu() {
   if (etat === 'AUTH') return;
   ({ accueil: menuAccueil, persos: menuPersos, modes: menuModes, classement: menuClassement, pouvoirs: menuPouvoirs, amis: menuAmis, recompenses: menuRecompenses, quetes: menuQuetes, pass: menuPass, commandes: menuCommandes, hud: menuHud, avatar: menuAvatar })[ecranMenu]();
   const kt = Math.min(1, (temps - transT) / 14); if (kt < 1) { ctx.fillStyle = `rgba(5,7,15,${(1 - kt) * 0.9})`; ctx.fillRect(-100, -100, W + 200, H + 200); } // fondu entre écrans
-  dessinerVagues(); dessinerNotif(); ecouterTeam(); publierModeGroupe();
-  if (choixReglages) modaleReglages(); else if (ficheJoueur) modaleFiche();
+  dessinerVagues(); dessinerNotif(); ecouterTeam(); publierModeGroupe(); ecouterChats();
+  if (chatOuvert) modaleChat(); else if (choixReglages) modaleReglages(); else if (ficheJoueur) modaleFiche();
   if (invitations.length) modaleInvitation();
 }
 
@@ -3373,7 +3432,8 @@ function menuAccueil() {
     const pas = Math.min(52 * u, (H - top - 24 * u) / nav.length), y = top + 14 * u + k * pas, w = 158 * u, bh = Math.min(42 * u, pas - 6 * u), fz = Math.min(20 * u, bh * 0.5);
     boutonJeu(14 * u, y, w, bh, a1, a2, () => allerA(e));
     icone(ic, 40 * u, y + bh / 2, fz, '#fff'); titre(t, 58 * u, y + bh / 2 + 1 * u, fz, '#fff', 'left', w - 80 * u);
-    if (e === 'amis' && Object.keys(demandesAmis).length) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(Object.keys(demandesAmis).length), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
+    const nA = e === 'amis' ? Object.keys(demandesAmis).length + nbNonLusTeam() + nbNonLusGroupe() : 0; // 📩 demandes + 💬 messages non lus
+    if (nA) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(nA), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
     if (e === 'quetes' && nbQuetesPretes()) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String(nbQuetesPretes()), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
     if (e === 'recompenses' && (nbRecompenses() + nbPaliersPrets())) { ctx.save(); ctx.translate(w - 6 * u, y + 4 * u); eclat(0, 0, 11 * u, 8, '#ff2d55', 2, NOIR, 2 * u); ctx.restore(); texte(String((nbRecompenses() + nbPaliersPrets())), w - 6 * u, y + 5 * u, 11 * u, '#fff'); }
     if (k === 1 && Object.keys(groupe.membres).length) { ctx.beginPath(); ctx.arc(14 * u + w - 22 * u, y + 23 * u, 10 * u, 0, 7); ctx.fillStyle = '#34d399'; ctx.fill(); texte(String(Object.keys(groupe.membres).length + 1), 14 * u + w - 22 * u, y + 24 * u, 11 * u, '#fff'); }
