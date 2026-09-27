@@ -2205,16 +2205,20 @@ function avancerQuetes(r) { // progression après une partie
   const e = etatQuetes(), st = moi.st || {}, vic = r === 'VICTOIRE', p = [...(e.p || [])], nom = (baseDe(moi.perso) || {}).nom;
   quetesDuJour().forEach((q, k) => { const g = { victoire: vic ? 1 : 0, partie: 1, deg: st.deg || 0, ko: st.ko || 0, sup: st.sup || 0, gad: st.gad || 0, victoirePerso: vic && nom === q.perso ? 1 : 0 }[q.type] || 0;
     p[k] = Math.min(q.n, (p[k] || 0) + g); if (g && p[k] >= q.n && (e.p || [])[k] < q.n) notif('📜 Quête terminée : ' + q.txt); });
-  return mesStats.quetes = { jour: e.jour, p, pris: e.pris || [] };
+  return mesStats.quetes = { jour: e.jour, p: quetesDuJour().map((_, k) => +p[k] || 0), pris: quetesDuJour().map((_, k) => !!(e.pris || [])[k]) }; // sans trou (Firestore)
 }
 const recQuete = q => ({ type: q.recompense || 'jetons', quantite: q.quantite ?? q.jetons ?? 1, element: q.element || 'tous' }); // récompense choisie dans l'admin
 const nbQuetesPretes = () => { const e = etatQuetes(); return quetesDuJour().filter((q, k) => (e.p || [])[k] >= q.n && !(e.pris || [])[k]).length; };
+let queteEnCours = false; // évite de récupérer 2 fois la même quête (double appui)
 async function reclamerQuete(k) {
-  const q = quetesDuJour()[k], e = etatQuetes(); if (!q || !db || !((e.p || [])[k] >= q.n) || (e.pris || [])[k]) return;
-  const pris = [...(e.pris || [])]; pris[k] = true;
-  const r = recQuete(q);
-  try { await db.collection('joueurs').doc(user.uid).set(majRecompense(r, { quetes: { jour: e.jour, p: e.p || [], pris }, ...majXpPass(+PASS().xpQuete || 60) }), { merge: true }); notif('🎁 ' + libRecompense(r) + ' récupéré !'); vagues.push({ x: W / 2, y: H / 2, t: temps }); }
+  const l = quetesDuJour(), q = l[k], e = etatQuetes(); if (!q || !db || !user || queteEnCours || !((e.p || [])[k] >= q.n) || (e.pris || [])[k]) return;
+  // ⚠️ tableaux « pleins » (sans trou) : Firestore refuse les cases vides (ex. récupérer la 3e quête avant la 1re faisait échouer l'enregistrement)
+  const p = l.map((_, i) => +(e.p || [])[i] || 0), pris = l.map((_, i) => i === k || !!(e.pris || [])[i]);
+  const r = recQuete(q); queteEnCours = true;
+  try { await db.collection('joueurs').doc(user.uid).set(majRecompense(r, { quetes: { jour: e.jour, p, pris }, ...majXpPass(+PASS().xpQuete || 60) }), { merge: true });
+    mesStats.quetes = { jour: e.jour, p, pris }; notif('🎁 ' + libRecompense(r) + ' récupéré !'); vagues.push({ x: W / 2, y: H / 2, t: temps }); son('piece'); }
   catch (er) { notif('Impossible : ' + er.message); }
+  queteEnCours = false;
 }
 function menuQuetes() {
   const u = U(), top = barreHaut('QUÊTES DU JOUR', true), l = quetesDuJour(), e = etatQuetes();
@@ -2527,8 +2531,10 @@ function avatarPerso(p, v = 0) { // 4 styles : en pied • gros plan • gros pl
   x.drawImage(im, sx, sy, cw, ch, S / 2 - cw * k2 / 2, S / 2 - ch * k2 / 2 + (gros ? S * 0.04 : 0), cw * k2, ch * k2); x.restore();
   return cache[v] = c;
 }
-function monAvatar() { const a = mesStats.avatar; if (a && a.d) { const i = img(a.d); if (pret(i)) return i; }
-  const l = a && a.cle && libAvatars().find(o => o.cle === a.cle); return l ? avatarPerso(l.p, l.v) : avatarPerso(selPerso(), 1); }
+function avatarDe(a, p) { // photo de profil d'un joueur (importée, choisie dans la collection, sinon son perso en gros plan)
+  if (a && a.d) { const i = img(a.d); if (pret(i)) return i; }
+  const l = a && a.cle && libAvatars().find(o => o.cle === a.cle); return l ? avatarPerso(l.p, l.v) : p ? avatarPerso(p, 1) : null; }
+const monAvatar = () => avatarDe(mesStats.avatar, selPerso());
 function dessinerAvatar(im, x, y, r, col = '#fff') { ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.clip(); if (im && pret(im)) ctx.drawImage(im, x - r, y - r, r * 2, r * 2); else { ctx.fillStyle = '#3a2d9c'; ctx.fillRect(x - r, y - r, r * 2, r * 2); } ctx.restore();
   ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.lineWidth = Math.max(2, r * 0.12); ctx.strokeStyle = col; ctx.stroke(); }
 const sauverAvatar = a => { if (db && user) db.collection('joueurs').doc(user.uid).set({ avatar: a }, { merge: true }).then(() => notif('🖼️ Photo de profil changée')).catch(e => notif('Impossible : ' + e.message)); };
@@ -3366,8 +3372,9 @@ function menuClassement() {
   }
   const cw = Math.min(260 * u, W * 0.3), x0 = 14 * u, y0 = top + 14 * u, h = H - y0 - 14 * u;
   rect(x0, y0, cw, h, 18 * u, 'rgba(255,255,255,.1)', '#ffd23f', 3 * u);
-  const im = carteDe(selPerso()), is = Math.min(cw * 0.45, h * 0.3);
-  if (pret(im)) ctx.drawImage(im, x0 + cw / 2 - is / 2, y0 + 10 * u, is, is);
+  const is = Math.min(cw * 0.45, h * 0.3);
+  const mav = monAvatar(), im = carteDe(selPerso()); // ma photo de profil (sinon l'image du perso, le temps qu'elle se prépare)
+  if (mav) dessinerAvatar(mav, x0 + cw / 2, y0 + 10 * u + is / 2, is / 2, '#ffd23f'); else if (pret(im)) ctx.drawImage(im, x0 + cw / 2 - is / 2, y0 + 10 * u, is, is);
   texte(nomJoueur(), x0 + cw / 2, y0 + is + 24 * u, 18 * u, '#fff');
   const rang = classement ? classement.findIndex(j => j.uid === (user && user.uid)) + 1 : 0, sa = classementVue === 'saison', mesPtsS = mesStats.saisonId === saisonId() ? mesStats.saisonPts : 0, rg = rangDe(mesPtsS);
   [[rg.icone || '🏅', 'Rang de la saison', rg.nom], ['📅', 'Points ' + nomSaison(), mesPtsS], ['🏆', 'Points (total)', mesStats.points], ['⭐', 'Victoires', mesStats.victoires], ['🎮', 'Parties', mesStats.parties],
@@ -3384,7 +3391,9 @@ function menuClassement() {
     rect(x, y, colW, rh, 10 * u, moiL ? 'rgba(255,210,63,.35)' : 'rgba(255,255,255,.1)', moiL ? '#ffd23f' : null, 2);
     const med = ['🥇', '🥈', '🥉'][k];
     if (med) emoji(med, x + 18 * u, y + rh / 2, 18 * u); else texte('#' + (k + 1), x + 18 * u, y + rh / 2, 12 * u, '#cfd8ff');
-    texte(j.pseudo || 'Joueur', x + 38 * u, y + rh / 2, 13 * u, '#fff', 'left', colW - 170 * u);
+    const ar = rh / 2 - 3 * u, ax = x + 36 * u + ar, av = moiL ? monAvatar() : avatarDe(j.avatar, CONFIG.persos[+j.perso]); // 🖼️ photo de profil
+    if (av) dessinerAvatar(av, ax, y + rh / 2, ar, moiL ? '#ffd23f' : '#fff'); else avatarLettre(j.pseudo || 'Joueur', ax, y + rh / 2, ar);
+    texte(j.pseudo || 'Joueur', ax + ar + 8 * u, y + rh / 2, 13 * u, '#fff', 'left', colW - 170 * u - ar * 2 - 8 * u);
     const rj = rangDe(j.saisonId === saisonId() ? j.saisonPts || 0 : 0); emoji(rj.icone || '', x + colW - (sa ? 96 : 130) * u, y + rh / 2, 14 * u);
     texte(sa ? '📅 ' + (j.saisonPts || 0) + ' pts' : '⭐' + (j.victoires || 0) + '   🏆 ' + (j.points || 0), x + colW - 10 * u, y + rh / 2, 12 * u, '#ffe8a3', 'right');
   });
