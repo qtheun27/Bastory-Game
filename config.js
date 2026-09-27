@@ -1043,6 +1043,9 @@ const CONFIG_PAR_DEFAUT = {
     "flashEcran": 0.4,
     "tailleDegats": 1,
     "esquiveBots": 1,
+    "botsVariete": 1,
+    "multPV": 1.3,
+    "multPVBoss": 1.25,
     "quetesParJour": 3,
     "teamMax": 30,
     "teamCout": 0,
@@ -1379,6 +1382,20 @@ function migrerConfig(c) {
   if ((c.version || 0) < 26) { // v26 : 📱 son en mode silencieux de l'iPhone (réglable)
     c.app = c.app || {}; if (c.app.sonSilencieux === undefined) c.app.sonSilencieux = true;
     c.version = Math.max(c.version || 0, 26);
+  }
+  if ((c.version || 0) < 27) { // v27 : ⏳ parties moins rapides (seules les valeurs d'origine sont changées, pas celles modifiées dans l'admin) + bots aux chemins variés
+    c.app = c.app || {}; [['botsVariete', 1], ['multPV', 1.3], ['multPVBoss', 1.25]].forEach(([k, v]) => { if (c.app[k] === undefined) c.app[k] = v; });
+    const si = (m, k, avant, apres) => { if (m[k] === undefined || +m[k] === avant) m[k] = apres; };
+    c.modes.forEach(m => {
+      if (m.objectif === 'survie') { if (m.map === 6 || m.nom === 'Royaume') { si(m, 'gazDebut', 45, 75); si(m, 'gazDuree', 180, 300); } else { si(m, 'gazDebut', 20, 40); si(m, 'gazDuree', 90, 150); } return; }
+      if (m.type !== 'multi') return;
+      if (m.objectif === 'zone') { si(m, 'tempsZone', 40, 70); si(m, 'duree', 180, 300); }
+      else if (m.objectif === 'bloc') { si(m, 'pvCristal', 20000, 35000); si(m, 'duree', 240, 360); }
+      else if (m.objectif === 'marathon') { si(m, 'tempsZone', 25, 45); si(m, 'pvCristal', 15000, 25000); }
+      else if (m.objectif === 'tresor') { si(m, 'nbTresors', 14, 20); si(m, 'objectifTresors', 7, 10); si(m, 'duree', 150, 240); }
+      else if (m.equipes !== 'coop') si(m, 'duree', 150, 240); // duel, équipes
+    });
+    c.version = Math.max(c.version || 0, 27);
   }
 
 

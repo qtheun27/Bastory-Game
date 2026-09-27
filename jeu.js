@@ -294,7 +294,7 @@ async function evoluer(p) { // dépense les essences de l'élément pour passer 
   catch (err) { notif('Évolution impossible : ' + err.message); }
 }
 function creerJoueur(pi, x, y, uid, nom, eq, nv) {
-  const b = CONFIG.persos[pi] || CONFIG.persos[0], p = statsNiveau(b, nv || 1), el = elemDe(b);
+  const b = CONFIG.persos[pi] || CONFIG.persos[0], p0 = statsNiveau(b, nv || 1), p = { ...p0, pvMax: Math.round(p0.pvMax * Math.max(0.2, reglage('multPV', 1.3))) }, el = elemDe(b); // ❤️ vie × réglage (combats plus longs)
   return { uid, nom, eq, perso: p, dep: DEP_BASE[b.capacite || (el ? el.capacite : 'sol')] || b.capacite || (el ? el.capacite : 'sol'), depSpecial: b.capacite || '', arme: CONFIG.armes[p.arme] || Object.values(CONFIG.armes)[0], x, y, tx: x, ty: y, r: Math.round(Math.min(60, Math.max(14, +b.taille || 26))),
            pv: p.pvMax, pvMax: p.pvMax, angle: 0, recharge: 0, mun: +p.munitions || 3, flash: 0, marche: 0, kx: 0, ky: 0, cache: false, bonus: {}, bo: [], gadgets: reglage('gadgetsParPartie', 3), gadgetT: 0, st: { deg: 0, ko: 0, sup: 0, gad: 0 } };
 }
@@ -302,7 +302,7 @@ function creerBoss(id, x, y, i) {
   const ids = Object.keys(CONFIG.bosses);
   if (id !== 'bloc' && !CONFIG.bosses[id]) id = ids[Math.floor(Math.random() * ids.length)]; // 'aleatoire' ou inconnu
   const d = id === 'bloc' ? { nom: 'TOUR', cristal: true, image: '', pvMax: +mode.pvCristal || 20000, taille: 40, vitesse: 0, degats: 0, delaiAttaque: 9999, rayonAttaque: 0,
-    arme: CONFIG.armes.eclair ? 'eclair' : Object.keys(CONFIG.armes)[0], porteeTir: +mode.porteeCristal || 350, degatsTir: +mode.degatsCristal || 800, cadenceTir: +mode.cadenceCristal || 60 } : (b => { const n = +mode.niveauBoss || 1; return { ...b, pvMax: Math.round(b.pvMax * n), degats: Math.round(b.degats * n), degatsTir: Math.round((+b.degatsTir || b.degats / 2) * n), vitesse: b.vitesse * (0.85 + 0.15 * n) }; })(CONFIG.bosses[id]); // niveau du boss
+    arme: CONFIG.armes.eclair ? 'eclair' : Object.keys(CONFIG.armes)[0], porteeTir: +mode.porteeCristal || 350, degatsTir: +mode.degatsCristal || 800, cadenceTir: +mode.cadenceCristal || 60 } : (b => { const n = +mode.niveauBoss || 1; return { ...b, pvMax: Math.round(b.pvMax * n * Math.max(0.2, reglage('multPVBoss', 1.25))), degats: Math.round(b.degats * n), degatsTir: Math.round((+b.degatsTir || b.degats / 2) * n), vitesse: b.vitesse * (0.85 + 0.15 * n) }; })(CONFIG.bosses[id]); // niveau du boss
   return { i, id, def: d, x, y, tx: x, ty: y, r: d.taille || 48, pv: d.pvMax, pvMax: d.pvMax, angle: Math.PI, recharge: 60,
            flash: 0, marche: 0, kx: 0, ky: 0, charge: 0, chargeMax: 1, rage: false, cx: x, cy: y, fx: x, fy: y,
            uid: 'boss' + i, eq: -1, tir: 60, arme: CONFIG.armes[d.arme] || null, perso: { portee: +d.porteeTir || 400, degats: +d.degatsTir || Math.round(d.degats / 2) } };
@@ -872,7 +872,7 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     su.vx = (c.x - su.x) * 0.5 + su.vx * 0.5; su.vy = (c.y - su.y) * 0.5 + su.vy * 0.5; su.x = c.x; su.y = c.y;
     const A0 = j.arme || {}, tv = A0.type === 'lob' ? Math.max(18, dm / (+A0.vitesse || 10)) : dm / (+A0.vitesse || 10), pr = Math.min(1, 0.35 + 0.25 * nv); // 🎯 vise là où la cible va être
     const cx2 = c.x + su.vx * tv * pr, cy2 = c.y + su.vy * tv * pr;
-    const a = Math.atan2(cy2 - j.y, cx2 - j.x), ideal = j.perso.portee * 0.7, cote = Math.sin(temps / 50 + j.x * 0.01) > 0 ? 1 : -1;
+    const a = Math.atan2(cy2 - j.y, cx2 - j.x), ideal = j.perso.portee * 0.7, cote = Math.sin(temps / (40 + (j.rythme || (j.rythme = 20 + Math.random() * 40))) + (j.phase ?? (j.phase = Math.random() * 7))) > 0 ? 1 : -1; // chaque bot tourne autour à son rythme
     const libre = A0.type === 'lob' || porteeLibre(j.x, j.y, a, dm) >= dm - c.r; // 🧱 pas de tir dans un mur
     const av = dm > ideal ? 1 : dm < ideal * 0.5 ? -1 : 0, ax = j.x, ay = j.y;
     deplacer(j, (Math.cos(a) * av - Math.sin(a) * cote * 0.6) * v, (Math.sin(a) * av + Math.cos(a) * cote * 0.6) * v);
@@ -2710,13 +2710,26 @@ async function debloquerPerso(p) { const c = +p.coutJetons || 3; if ((mesStats.j
 
 
 // ---------- 🤖 DÉPLACEMENT MALIN DES BOTS (contourne les murs) & OBJECTIFS ----------
+function passageBot(j, tx, ty) { // 🔀 chaque bot choisit son propre chemin : un point de passage sur le côté (réglage admin botsVariete)
+  const va = reglage('botsVariete', 1), D = Math.hypot(tx - j.x, ty - j.y); if (va <= 0 || D < 280) { j.via = null; return null; }
+  if (j.via && Math.hypot(j.via.tx - tx, j.via.ty - ty) < 200 && temps < j.via.fin) { if (Math.hypot(j.via.x - j.x, j.via.y - j.y) > 50) return j.via; j.via.fait = true; }
+  if (j.via && j.via.fait && Math.hypot(j.via.tx - tx, j.via.ty - ty) < 200) return null; // passage atteint : tout droit jusqu'au but
+  j.via = null; if (Math.random() < 0.25) { j.via = { tx, ty, fait: true, fin: temps + 600 }; return null; } // parfois tout droit
+  const nx = -(ty - j.y) / D, ny = (tx - j.x) / D, W = (map.l || 20) * TUILE, H2 = (map.h || 12) * TUILE;
+  for (let k = 0; k < 8; k++) { const t = 0.3 + Math.random() * 0.4, o = (Math.random() < 0.5 ? -1 : 1) * (0.15 + Math.random() * 0.4) * D * Math.min(1.5, va),
+      x = Math.max(TUILE, Math.min(W - TUILE, j.x + (tx - j.x) * t + nx * o)), y = Math.max(TUILE, Math.min(H2 - TUILE, j.y + (ty - j.y) * t + ny * o));
+    if (libre(x, y, j.r, j.dep)) return j.via = { x, y, tx, ty, fin: temps + 900 }; }
+  j.via = { tx, ty, fait: true, fin: temps + 600 }; return null;
+}
 function allerVers(j, tx, ty, v) {
+  const pa = passageBot(j, tx, ty); if (pa) { tx = pa.x; ty = pa.y; }
+  if (j.cotePref === undefined) j.cotePref = Math.random() < 0.5 ? 1 : -1; // chaque bot a son côté préféré pour contourner
   let a = Math.atan2(ty - j.y, tx - j.x);
   if (j.detourT > temps) a = j.detourA;
   else { const d = j.r + 30, px = j.x + Math.cos(a) * d, py = j.y + Math.sin(a) * d;
-    if (!libre(px, py, j.r, j.dep)) { // un mur devant : on tente à gauche, sinon à droite
-      const g = libre(j.x + Math.cos(a - 1.1) * d, j.y + Math.sin(a - 1.1) * d, j.r, j.dep);
-      a += g ? -1.1 : 1.1; j.detourA = a; j.detourT = temps + 24; } }
+    if (!libre(px, py, j.r, j.dep)) { // un mur devant : on tente son côté préféré, sinon l'autre
+      const s = j.cotePref, g = libre(j.x + Math.cos(a - 1.1 * s) * d, j.y + Math.sin(a - 1.1 * s) * d, j.r, j.dep);
+      a += (g ? -1.1 : 1.1) * s; j.detourA = a; j.detourT = temps + 18 + Math.floor(Math.random() * 14); } }
   const ax = j.x, ay = j.y;
   deplacer(j, Math.cos(a) * v, Math.sin(a) * v); j.marche += v; tourner(j, a, 0.15);
   if (Math.hypot(j.x - ax, j.y - ay) < v * 0.35) { // toujours coincé : grand contournement
