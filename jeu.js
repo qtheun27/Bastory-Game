@@ -285,6 +285,15 @@ function statsNiveau(p, nv) { // chaque niveau augmente les stats (réglable dan
   return { ...p, base: p, niveau: nv, pvMax: Math.round(p.pvMax * (1 + k * (+g.bonusPV || 0) / 100)), degats: Math.round(p.degats * (1 + k * (+g.bonusDegats || 0) / 100)), vitesse: p.vitesse * (1 + k * (+g.bonusVitesse || 0) / 100) };
 }
 const statsJeu = (p, nv) => { const s = statsNiveau(baseDe(p) || p, nv || niveauDe(p)); return { ...s, pvMax: Math.round(s.pvMax * Math.max(0.2, reglage('multPV', 1.3))) }; }; // 📊 stats réelles en partie (niveau + vie × réglage)
+function styleJeu(p, a) { // 🗣️ la façon de jouer du perso en une phrase (au lieu des chiffres)
+  const t = { lob: 'Tire en cloche, par-dessus les murs', retour: 'Son arme revient comme un boomerang', droit: 'Tire en ligne droite', terrain: 'Attaque le sol devant lui', frappe: 'Frappe au corps à corps' }[a.type] || 'Attaque à distance';
+  return (a.nom || '') + ' : ' + t.toLowerCase() + (a.rebonds > 0 ? ', ricoche sur les murs' : '') + (a.chaine > 0 ? ', les tirs cherchent les ennemis' : '') + '.';
+}
+function jaugesPerso(p) { // 📊 4 jauges de 1 à 5, comparées aux autres persos (avec le niveau du perso)
+  const att = q => (+q.degats || 0) * 60 / Math.max(10, +q.delaiTir || 30), L = CONFIG.persos.map(q => statsJeu(q, 1)), me = statsJeu(p);
+  const note = (f, v) => { const vs = L.map(f), mn = Math.min(...vs), mx = Math.max(...vs); return Math.max(1, Math.min(5, mx > mn ? 1 + Math.round(4 * (v - mn) / (mx - mn)) : 3)); };
+  return [['❤️', 'Vie', note(q => q.pvMax, me.pvMax), '#ff5a6e'], ['💥', 'Attaque', note(att, att(me)), '#ff9f43'], ['🏃', 'Vitesse', note(q => +q.vitesse, +me.vitesse), '#4cd964'], ['🎯', 'Portée', note(q => +q.portee, +p.portee), '#5ac8fa']];
+}
 async function evoluer(p) { // dépense les essences de l'élément pour passer au niveau suivant
   const el = p.element, nv = niveauDe(p), cout = coutNiveau(nv), max = +(CONFIG.progression || {}).niveauMax || 10, e = (CONFIG.elements || {})[el];
   if (!e) return notif('Ce perso n\'a pas d\'élément');
@@ -2735,7 +2744,7 @@ function modaleChat() {
   let by = zy + zh - 6 * u, cach = 0; const lst = l.slice(0, Math.max(0, l.length - chatDefil));
   if (!l.length) texte(k === 'team' ? 'Aucun message : dis bonjour à ta team !' : 'Aucun message pour l\'instant', x + w / 2, zy + zh / 2, 14 * u, 'rgba(255,255,255,.7)');
   for (let i = lst.length - 1; i >= 0; i--) {
-    const m = lst[i], mien = m.uid === user.uid, L = lignes(m.txt, mw * 0.78, fz), bh = L.length * lh + 26 * u, bw = Math.min(mw, Math.max(...L.map(t => { ctx.font = `900 ${fz}px Arial`; return ctx.measureText(t).width * 1.22; }), 110 * u)) + 24 * u; // marge : la police affichée est plus large
+    const m = lst[i], mien = m.uid === user.uid, L = lignes(m.txt, mw * 0.9, fz), bh = L.length * lh + 26 * u, bw = Math.min(mw, Math.max(...L.map(t => { ctx.font = `600 ${fz}px ${POLICE}`; return ctx.measureText(t).width * 1.05; }), 110 * u)) + 24 * u;
     by -= bh + 8 * u; if (by < zy - bh) { cach = i + 1; break; }
     const bx = mien ? x + w - 20 * u - bw : x + 58 * u;
     if (!mien) photoJoueur(m.uid, m.nom, x + 34 * u, by + 18 * u, 16 * u);
@@ -3370,7 +3379,7 @@ function pastille(x, y, w, icon, txt, action, couleurIcone) {
   if (action) zones.push({ x, y, w, h, action });
 }
 function lignes(txt, maxW, taille) { // coupe un texte en lignes
-  ctx.font = `900 ${taille}px Arial`; const out = []; let l = '';
+  ctx.font = `600 ${taille}px ${POLICE}`; const out = []; let l = ''; maxW -= taille * 0.5; // même police que texte() (+ place du contour)
   for (const m of String(txt || '').split(' ')) { const t = l ? l + ' ' + m : m; if (ctx.measureText(t).width > maxW && l) { out.push(l); l = m; } else l = t; }
   if (l) out.push(l); return out;
 }
@@ -3618,24 +3627,17 @@ function menuPersos() {
 
   // droite : arme, rôle, super, stats, essences, boutons
   verre(sx, y0, sw, zoneH, 18 * u); rect(sx, y0, sw, 6 * u, 3 * u, c);
-  let y = y0 + 22 * u; const tx = (t, col, taille = 11) => { lignes(t, sw - 24 * u, taille * u).slice(0, 2).forEach(l => { texte(l, sx + sw / 2, y, taille * u, col, 'center'); y += (taille + 4) * u; }); y += 3 * u; };
-  tx((TYPES_ARME[a.type] ? TYPES_ARME[a.type] + ' • ' : '') + (a.nom || p.arme) + (a.rebonds > 0 ? ' • ' + a.rebonds + ' ricochets' : '') + (a.chaine > 0 ? ' • chercheur ×' + a.chaine : ''), '#ffe8a3', 12);
-  const ro = roleDe(p); if (ro) tx(CONFIG.roles[ro].nom + ' : ' + (CONFIG.roles[ro].description || ''), '#9cff57');
-  const ie = ELEM_DEF[cleElem(p)] && { ...ELEM_DEF[cleElem(p)], ...el }; if (ie) tx(`⭐ ${ie.superNom}  •  🎮 ${ie.actionNom}`, '#ffe14a');
-  const gk = gadgetDe({ perso: p }), gg = gk && CONFIG.gadgets[gk]; if (gg) tx(`🧰 ${gg.icone || ''} ${gg.nom} (×${reglage('gadgetsParPartie', 3)})`, '#b6f0ff');
-  const sj = statsJeu(p), f1 = v => Math.round(v).toLocaleString('fr'); // 📊 stats avec le niveau du perso (celles qu'il a vraiment en partie)
-  const st = [['❤️', 'Vie', sj.pvMax / 12000, f1(sj.pvMax), '#ff5a6e'], ['💥', 'Dégâts', sj.degats / 3000, f1(sj.degats), '#ff9f43'], ['🏃', 'Vitesse', sj.vitesse / 5, +sj.vitesse.toFixed(2), '#4cd964'],
-    ['🎯', 'Portée', p.portee / 600, p.portee, '#5ac8fa'], ['🔋', 'Munitions', (p.munitions || 3) / 6, p.munitions || 3, '#ffd23f'],
-    ['⚡', 'Cadence', 1 - (p.delaiTir || 30) / 90, ((p.delaiTir || 30) / 60).toFixed(2) + 's', '#b57bff'], ['♻️', 'Recharge', 1 - (p.recharge || 60) / 150, ((p.recharge || 60) / 60).toFixed(1) + 's', '#ff7ab6']];
-  const bh = 40 * u, by = y0 + zoneH - bh - 10 * u, eY = by - 50 * u, pas = Math.max(13 * u, Math.min(24 * u, (eY - y - 8 * u) / st.length));
-  st.forEach((s2, m) => { const yy = y + m * pas + 6 * u; if (yy > eY - 6 * u) return; if (pas >= 18 * u) return statBarre(sx + 12 * u, yy, sw - 24 * u, ...s2);
-    const [ic, lab, f, v, colr] = s2; texte(ic + ' ' + lab, sx + 12 * u, yy - 3 * u, 10 * u, '#fff', 'left'); texte(String(v), sx + sw - 12 * u, yy - 3 * u, 10 * u, '#fff', 'right');
-    rect(sx + 12 * u, yy + 4 * u, sw - 24 * u, 4 * u, 2 * u, 'rgba(11,6,32,.6)'); rect(sx + 12 * u, yy + 4 * u, Math.max(3, (sw - 24 * u) * Math.max(0, Math.min(1, f))), 4 * u, 2 * u, colr); });
-  const els = Object.entries(CONFIG.elements || {}), pw = (sw - 24 * u - (els.length - 1) * 6 * u) / Math.max(1, els.length);
-  els.forEach(([k2, e2], m) => { const ex = sx + 12 * u + m * (pw + 6 * u); verre(ex, eY, pw, 24 * u, 12 * u); texte(e2.icone + ' ' + ((mesStats.essences || {})[k2] || 0), ex + pw / 2, eY + 12 * u, 11 * u, '#fff', 'center', pw - 6 * u); });
+  let y = y0 + 26 * u; const tx = (t, col, taille = 11) => { lignes(t, sw - 24 * u, taille * u).slice(0, 2).forEach(l => { texte(l, sx + sw / 2, y, taille * u, col, 'center'); y += (taille + 4) * u; }); y += 3 * u; };
+  // ✨ fiche simplifiée : rôle, façon de jouer en une phrase, super / action / gadget, 4 jauges sans chiffres
+  const ro = roleDe(p), R = ro && CONFIG.roles[ro]; if (R) { titre(R.nom, sx + sw / 2, y, 19 * u, '#9cff57', 'center', sw - 20 * u); y += 20 * u; }
+  tx(styleJeu(p, a), 'rgba(255,255,255,.88)', 11);
+  const ie = ELEM_DEF[cleElem(p)] && { ...ELEM_DEF[cleElem(p)], ...el }, gk = gadgetDe({ perso: p }), gg = gk && CONFIG.gadgets[gk];
+  if (ie || gg) tx([ie ? '⭐ ' + ie.superNom : '', ie ? '🎮 ' + ie.actionNom : '', gg ? '🧰 ' + gg.nom : ''].filter(Boolean).join('   '), '#ffe14a', 11);
+  const bh = 40 * u, by = y0 + zoneH - bh - 10 * u, J = jaugesPerso(p), pas = Math.max(18 * u, Math.min(30 * u, (by - 30 * u - y) / J.length)), gw = (sw - 130 * u) / 5;
+  J.forEach(([ic, lab, n, col], m) => { const yy = y + m * pas + 8 * u; if (yy > by - 26 * u) return; emoji(ic, sx + 22 * u, yy, 14 * u); texte(lab, sx + 36 * u, yy, 12 * u, '#fff', 'left');
+    for (let q = 0; q < 5; q++) rect(sx + 112 * u + q * gw, yy - 6 * u, gw - 5 * u, 12 * u, 6 * u, q < n ? col : 'rgba(11,6,32,.55)'); });
   const choisi = persoVue === persoIndex, bw = (sw - 34 * u) / 2, nvP = niveauDe(p), maxN = +(CONFIG.progression || {}).niveauMax || 10, verrou = !estDebloque(p);
-  { const g = CONFIG.progression || {}, k = nvP - 1, pc = v => Math.round(k * (+v || 0)); // ⬆️ ce que le niveau apporte, et le prochain
-    texte(`Niv. ${nvP} : ❤️ +${pc(g.bonusPV)} % 💥 +${pc(g.bonusDegats)} % 🏃 +${pc(g.bonusVitesse)} %` + (nvP < maxN ? `  •  prochain : +${+g.bonusPV || 0} / +${+g.bonusDegats || 0} / +${+g.bonusVitesse || 0} %` : ''), sx + sw / 2, by - 13 * u, 10 * u, '#b6ff4a', 'center', sw - 16 * u); }
+  texte(nvP >= maxN ? '🏆 Niveau max atteint' : `Niveau ${nvP} • évoluer = plus de vie, d'attaque et de vitesse`, sx + sw / 2, by - 13 * u, 10 * u, '#b6ff4a', 'center', sw - 16 * u);
   if (el) { bouton3D(sx + 12 * u, by, bw, bh, nvP >= maxN ? '#9aa5b8' : el.couleur, nvP >= maxN ? '#5d6778' : ombrer(el.couleur, -0.35), () => evoluer(p));
     texte(nvP >= maxN ? 'Niveau max' : `Évoluer • ${coutNiveau(nvP)} ${el.icone}`, sx + 12 * u + bw / 2, by + bh / 2, 12 * u, '#fff', 'center', bw - 10 * u); }
   bouton3D(el ? sx + 22 * u + bw : sx + 12 * u, by, el ? bw : sw - 24 * u, bh, verrou ? '#ffd23f' : choisi ? '#9aa5b8' : '#4cd964', verrou ? '#ff8a1f' : choisi ? '#5d6778' : '#1f9d3a', verrou ? () => debloquerPerso(p) : choisi ? null : () => { persoIndex = persoVue; allerA('accueil'); });
