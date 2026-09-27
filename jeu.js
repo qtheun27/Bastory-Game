@@ -2219,7 +2219,7 @@ function quetesDuJour() {
   for (let k = 0; T.length && l.length < Math.min(T.length, reglage('quetesParJour', 3)); k++) { const q = T[(h + k * 7919) % T.length]; if (!l.some(x => x.i === q.i)) l.push(q); if (k > 200) break; }
   const persos = CONFIG.persos.filter(p => p.deBase !== false); quetesDuJour.j = j;
   return quetesDuJour.l = l.map((q, k) => { const r = (hacher(j + k) % 1000) / 1000, n = Math.round((+q.min || 1) + r * ((+q.max || q.min || 1) - (+q.min || 1))), perso = (persos[hacher(j + 'p' + k) % Math.max(1, persos.length)] || {}).nom || '';
-    const nn = n >= 1000 ? Math.round(n / 1000) * 1000 : n; return { ...q, n: nn, perso, txt: String(q.texte || '').replace('{n}', nn.toLocaleString('fr')).replace('{perso}', perso) }; });
+    const nn = n >= 1000 ? Math.round(n / 1000) * 1000 : n; return { ...q, n: nn, perso, txt: String(q.texte || '').replace('{n}', nn.toLocaleString('fr')).replace('{perso}', perso).replace(/\((s|x|es)\)/g, nn > 1 ? '$1' : '') }; }); // « partie(s) » → « parties »
 }
 const etatQuetes = () => { const e = mesStats.quetes; return e && e.jour === jourJ() ? e : { jour: jourJ(), p: [], pris: [] }; };
 function avancerQuetes(r) { // progression après une partie
@@ -2291,7 +2291,7 @@ function menuPass() {
   const bw = Math.min(560 * u, W - 60 * u), bx = (W - bw) / 2, by = top + 38 * u, f = niv >= l.length ? 1 : (xp % pas) / pas; // barre du palier en cours
   rect(bx, by, bw, 16 * u, 8 * u, 'rgba(11,6,32,.6)', NOIR, 2 * u); rect(bx, by, Math.max(16 * u, bw * f), 16 * u, 8 * u, '#ffe14a');
   texte(niv >= l.length ? 'Pass terminé ! 🏁' : (xp % pas) + ' / ' + pas + ' XP vers le palier ' + (niv + 1), W / 2, by + 8 * u, 10 * u, '#1f1300');
-  texte('XP : victoire +' + (P.xpVictoire || 100) + ' • défaite +' + (P.xpDefaite || 35) + ' • K.O. +' + (P.xpKO || 15) + ' • quête +' + (P.xpQuete || 60), W / 2, by + 30 * u, 10 * u, 'rgba(255,255,255,.75)');
+  texte('Joue pour faire avancer la barre : chaque partie, K.O. et quête rapporte de l\'XP ⭐', W / 2, by + 30 * u, 10 * u, 'rgba(255,255,255,.75)');
   const par = Math.max(2, Math.min(6, Math.floor((W - 40 * u) / (130 * u)))), pages = Math.max(1, Math.ceil(l.length / par));
   if (pass0 !== transT) { pass0 = transT; pageMenu = Math.min(pages - 1, Math.floor(Math.max(0, niv - 1) / par)); } pageMenu = Math.min(pageMenu, pages - 1); // s'ouvre sur le palier en cours
   const cw = (W - 40 * u) / par - 12 * u, y = by + 48 * u, ch = Math.min(H - y - 60 * u, cw * 1.35);
@@ -3148,7 +3148,7 @@ function dessinerHUD() {
   }
   dessinerJoystick(joyG, '#ffffff');
   dessinerJoystick(joyD, '#ffb000'); if (joyS.actif) dessinerJoystick(joyS, '#ffe14a'); ecran();
-  if (!mobile) texte(`${['haut', 'gauche', 'bas', 'droite'].map(a => libTouche(mesTouches[a])).join('')}/flèches : bouger • Clic : tirer • ${libTouche(mesTouches.auto)} : tir auto • ${libTouche(mesTouches.action)} : action • ${libTouche(mesTouches.super)} : super • Échap : quitter`, W / 2, H - 16, 12, '#fff');
+  if (!mobile && (etat !== 'JEU' || temps - debutJeu < 600)) texte(`${['haut', 'gauche', 'bas', 'droite'].map(a => libTouche(mesTouches[a])).join('')}/flèches : bouger • Clic : tirer • ${libTouche(mesTouches.auto)} : tir auto • ${libTouche(mesTouches.action)} : action • ${libTouche(mesTouches.super)} : super • Échap : quitter`, W / 2, H - 16, 12, '#fff');
 }
 function dessinerJoystick(j, c) {
   if (!j.actif) return;
@@ -3290,11 +3290,12 @@ function fenetre(w, h) { // fenêtre par-dessus le menu (seule elle répond)
   return [x, y];
 }
 const fermerAcote = (x, y, w, h, f) => zones.push({ x, y, w, h, action: () => {} }, { x: -100, y: -100, w: W + 200, h: H + 200, action: f }); // à appeler en dernier : toucher à côté ferme
-function modaleReglages() { // ⚙️ admins : 2 choix
-  const u = U(), w = Math.min(420 * u, W - 40), h = 200 * u, [x, y] = fenetre(w, h), bw = w - 60 * u;
+function modaleReglages() { // ⚙️ Paramètres : commandes (+ sons), comment jouer, et console admin pour les admins
+  const u = U(), l = [['🎮 Commandes et sons', '#5ff0ff', '#1e7bff', () => { choixReglages = false; allerA('commandes'); }], ['📖 Comment jouer', '#ff7ac0', '#b43cff', () => { choixReglages = false; allerA('pouvoirs'); }],
+    ...(estAdmin(user) ? [['🛠️ Console admin', '#ffd23f', '#ff8a1f', () => location.href = 'admin.html']] : [])];
+  const w = Math.min(420 * u, W - 40), h = 76 * u + l.length * 60 * u, [x, y] = fenetre(w, h), bw = w - 60 * u;
   titre('Paramètres', x + w / 2, y + 34 * u, 26 * u, '#fff');
-  bouton3D(x + 30 * u, y + 66 * u, bw, 48 * u, '#5ff0ff', '#1e7bff', () => { choixReglages = false; allerA('commandes'); }); titre('🎮 Commandes', x + w / 2, y + 90 * u, 18 * u, '#fff');
-  bouton3D(x + 30 * u, y + 128 * u, bw, 48 * u, '#ffd23f', '#ff8a1f', () => location.href = 'admin.html'); titre('🛠️ Console admin', x + w / 2, y + 152 * u, 18 * u, '#fff');
+  l.forEach(([t, c1, c2, f], i) => { const by = y + 64 * u + i * 60 * u; bouton3D(x + 30 * u, by, bw, 48 * u, c1, c2, f); titre(t, x + w / 2, by + 24 * u, 18 * u, '#fff'); });
   fermerAcote(x, y, w, h, () => choixReglages = false);
 }
 function modaleFiche() { // 👤 fiche d'un joueur du classement
@@ -3403,7 +3404,7 @@ function barreHaut(titreEcran, retour) {
   pastille(W - 224 * u, 12 * u, 118 * u, '●', enLigne + ' en ligne'); zones.push({ x: W - 224 * u, y: 12 * u, w: 118 * u, h: 34 * u, action: () => allerA('amis') });
   ctx.beginPath(); ctx.arc(W - 224 * u + 19 * u, 29 * u, 5 * u, 0, 7); ctx.fillStyle = '#34d399'; ctx.fill();
   verre(W - 98 * u, 12 * u, 36 * u, 34 * u, 17 * u); icone('reglages', W - 80 * u, 29 * u, 18 * u); // ⚙️ paramètres : commandes (tout le monde) • + console admin (admins)
-  zones.push({ x: W - 98 * u, y: 12 * u, w: 36 * u, h: 34 * u, action: () => estAdmin(user) ? choixReglages = true : allerA('commandes') });
+  zones.push({ x: W - 98 * u, y: 12 * u, w: 36 * u, h: 34 * u, action: () => choixReglages = true });
   verre(W - 54 * u, 12 * u, 36 * u, 34 * u, 17 * u, 'rgba(255,80,80,.25)'); icone('quitter', W - 36 * u, 29 * u, 18 * u);
   zones.push({ x: W - 54 * u, y: 12 * u, w: 36 * u, h: 34 * u, action: () => { quitterGroupe(); if (rtdb && user) rtdb.ref('presence/' + user.uid).remove(); auth.signOut(); } });
   return h;
@@ -3412,7 +3413,7 @@ function barreRessources(x0, x1) { // 💰 ressources bien en évidence : grosse
   const u = U(), y = 6 * u, h = 46 * u, ess = mesStats.essences || {}, els = Object.entries(CONFIG.elements || {}), nb = v => (+v || 0).toLocaleString('fr-FR');
   const cases = [{ ic: '🏆', v: nb(mesStats.points), nom: 'Trophées', c: '#ffd400', a: () => allerA('classement') },
     { ic: '🎟️', v: nb(mesStats.jetons), nom: 'Jetons perso', c: '#ff7ac0', a: () => allerA('persos') }];
-  if (els.length) cases.push({ v: els.map(([k, e]) => e.icone + ' ' + nb(ess[k])).join('   '), nom: 'Essences (faire évoluer les persos)', c: '#5ff0ff', a: () => allerA('persos') });
+  if (els.length) cases.push({ v: els.map(([k, e]) => e.icone + ' ' + nb(ess[k])).join('   '), nom: 'Essences', c: '#5ff0ff', a: () => allerA('persos') });
   const mesure = (c, k) => { ctx.font = `${17 * u * k * 1.1}px ${POLICE_BD}`; let wv = ctx.measureText(c.v).width;
     if (!c.ic) { ctx.font = `600 ${15 * u * k}px ${POLICE}`; wv = els.reduce((a, [k2, e]) => a + 15 * u * k * 1.3 + ctx.measureText(' ' + nb(ess[k2]) + '   ').width, 0); }
     ctx.font = `600 ${8.5 * u * k}px ${POLICE}`; return (c.ic ? h * 0.82 : 12 * u) + Math.max(wv, ctx.measureText(c.nom.toUpperCase()).width) + 14 * u; };
@@ -3467,7 +3468,7 @@ function menuAccueil() {
   const u = U(), p = selPerso(), a = CONFIG.armes[p.arme] || {}, m = modeChoisi(), [, c1, c2, lab] = modesStyle(m), multi = m.type === 'multi';
   const top = barreHaut();
   // navigation à gauche
-  const nav = [['perso', 'Persos', 'persos', '#5ac8fa', '#2f6bff'], ['amis', 'Amis', 'amis', '#4ade80', '#059669'], ['classement', 'Classement', 'classement', '#ffc24b', '#ff7a00'], ['eclair', 'Pouvoirs', 'pouvoirs', '#ff7ac0', '#b43cff'], ['trophee', 'Récompenses', 'recompenses', '#ffe14a', '#ff8a1f'], ['check', 'Quêtes', 'quetes', '#b6ff4a', '#1fc46b']]; // (Commandes : dans ⚙️ en haut)
+  const nav = [['perso', 'Persos', 'persos', '#5ac8fa', '#2f6bff'], ['amis', 'Amis', 'amis', '#4ade80', '#059669'], ['classement', 'Classement', 'classement', '#ffc24b', '#ff7a00'], ['trophee', 'Récompenses', 'recompenses', '#ffe14a', '#ff8a1f'], ['check', 'Quêtes', 'quetes', '#b6ff4a', '#1fc46b']]; // (Commandes : dans ⚙️ en haut)
   nav.forEach(([ic, t, e, a1, a2], k) => {
     const pas = Math.min(52 * u, (H - top - 24 * u) / nav.length), y = top + 14 * u + k * pas, w = 158 * u, bh = Math.min(42 * u, pas - 6 * u), fz = Math.min(20 * u, bh * 0.5);
     boutonJeu(14 * u, y, w, bh, a1, a2, () => allerA(e));
@@ -3501,7 +3502,7 @@ function menuAccueil() {
   const ny = Math.min(H - 64 * u, sol + 34 * u), sp = (mesStats.persos || {})[cleP(p)] || {};
   titre(p.nom, cx, ny, 46 * u, '#fff', 'center', Math.max(160 * u, taille * 1.1));
   const lw = Math.min(taille, 220 * u); rect(cx - lw / 2, ny + 22 * u, lw, 3 * u, 2, p.couleur);
-  const elA = elemDe(p), infos = [['eclair', (elA ? elA.icone + ' ' : '') + 'Niv. ' + niveauDe(p)], ['coeur', statsJeu(p).pvMax], ['cible', a.nom || p.arme], ['trophee', (sp.points || 0) + ' pts']];
+  const elA = elemDe(p), roA = roleDe(p), infos = [['eclair', (elA ? elA.icone + ' ' : '') + 'Niv. ' + niveauDe(p)], ...(roA ? [['coeur', CONFIG.roles[roA].nom]] : []), ['cible', a.nom || p.arme]]; // simple : niveau, rôle, arme
   ctx.font = `700 ${12 * u}px Fredoka, system-ui, sans-serif`; // infos centrées, espacées selon leur longueur réelle
   const largeurs = infos.map(([, v]) => Math.min(150 * u, ctx.measureText(String(v)).width) + 30 * u), tot = largeurs.reduce((a, b) => a + b, 0);
   let ix = cx - tot / 2;
@@ -3514,7 +3515,7 @@ function menuAccueil() {
   const def = CONFIG.maps[mapChoisie(m)], mm = miniMap(def); ctx.imageSmoothingEnabled = false; ctx.drawImage(mm, mx + colD * 0.45, my, colD * 0.6, mh); ctx.imageSmoothingEnabled = true; ctx.globalAlpha = 1;
   const fg = ctx.createLinearGradient(mx, 0, mx + colD, 0); fg.addColorStop(0.35, c2); fg.addColorStop(0.75, c2 + '00'); ctx.fillStyle = fg; ctx.fillRect(mx, my, colD, mh);
   ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(mx, my, colD, 1.5); ctx.restore();
-  texte('MODE DE JEU • ' + lab.toUpperCase(), mx + 20 * u, my + 22 * u, 10 * u, 'rgba(255,255,255,.75)', 'left');
+  texte(m.type === 'multi' ? 'EN LIGNE • ' + lab.toUpperCase() : 'SOLO', mx + 20 * u, my + 22 * u, 10 * u, 'rgba(255,255,255,.75)', 'left');
   titre(m.nom, mx + 20 * u, my + 50 * u, 32 * u, '#fff', 'left', colD - 70 * u);
   icone('carte', mx + 28 * u, my + mh - 24 * u, 15 * u); texte(def.nom, mx + 42 * u, my + mh - 24 * u, 12 * u, '#fff', 'left');
   const obj = { zone: '  •  Zone', bloc: '  •  Tour', survie: '  •  ☠️ Gaz' }[m.objectif] || '';
@@ -3660,7 +3661,7 @@ function carteMode(md, x, y, w, h, sel, grand) { // case de BD d'un mode (mini-m
   const fg = ctx.createLinearGradient(x, 0, x + w, 0); fg.addColorStop(0.4, c2); fg.addColorStop(0.85, c2 + '00'); ctx.fillStyle = fg; ctx.fillRect(x, y, w, h);
   trame(0.07, '#000'); ctx.restore();
   rect(x, y, w, h, r, null, sel ? '#ffe14a' : NOIR, (sel ? 4.5 : 3) * u);
-  texte(lab.toUpperCase() + (md.type === 'multi' ? ' • EN LIGNE' : ' • SOLO'), x + 16 * u, y + 18 * u * s, 10 * u * s, '#fff', 'left', w - 60 * u);
+  texte(md.type === 'multi' ? lab.toUpperCase() + ' • EN LIGNE' : 'SOLO', x + 16 * u, y + 18 * u * s, 10 * u * s, '#fff', 'left', w - 60 * u);
   titre(md.nom, x + 16 * u, y + 44 * u * s, 24 * u * s, '#fff', 'left', w - 32 * u);
   lignes(md.description || '', w * 0.6, 11 * u * s).slice(0, grand ? 3 : h > 120 * u ? 2 : 1).forEach((l, j) => texte(l, x + 16 * u, y + (68 + j * 15) * u * s, 11 * u * s, '#fff', 'left', w * 0.6));
   const OBJ = { zone: 'Zone', bloc: 'Tours', tresor: 'Trésors', marathon: 'Marathon' };
@@ -3730,9 +3731,8 @@ function menuClassement() {
   if (mav) dessinerAvatar(mav, x0 + cw / 2, y0 + 10 * u + is / 2, is / 2, '#ffd23f'); else if (pret(im)) ctx.drawImage(im, x0 + cw / 2 - is / 2, y0 + 10 * u, is, is);
   texte(nomJoueur(), x0 + cw / 2, y0 + is + 24 * u, 18 * u, '#fff');
   const rang = classement ? classement.findIndex(j => j.uid === (user && user.uid)) + 1 : 0, sa = classementVue === 'saison', mesPtsS = mesStats.saisonId === saisonId() ? mesStats.saisonPts : 0, rg = rangDe(mesPtsS);
-  [[rg.icone || '🏅', 'Rang de la saison', rg.nom], ['📅', 'Points ' + nomSaison(), mesPtsS], ['🏆', 'Points (total)', mesStats.points], ['⭐', 'Victoires', mesStats.victoires], ['🎮', 'Parties', mesStats.parties],
-   ['📈', 'Taux de victoire', mesStats.parties ? Math.round(mesStats.victoires / mesStats.parties * 100) + ' %' : '-'], ['🥇', 'Rang', rang ? '#' + rang : '-']]
-    .forEach(([i, l, v], k) => { const y = y0 + is + 50 * u + k * 26 * u; if (y > y0 + h - 14 * u) return; emoji(i, x0 + 22 * u, y, 15 * u); texte(l, x0 + 38 * u, y, 12 * u, '#cfd8ff', 'left'); texte(String(v), x0 + cw - 14 * u, y, 14 * u, '#fff', 'right'); });
+  [[rg.icone || '🏅', 'Rang', rg.nom], ['📅', 'Points du mois', mesPtsS], ['🏆', 'Trophées', mesStats.points], ['⭐', 'Victoires', mesStats.victoires + (mesStats.parties ? ' (' + Math.round(mesStats.victoires / mesStats.parties * 100) + ' %)' : '')], ['🥇', 'Ma place', rang ? '#' + rang : '-']]
+    .forEach(([i, l, v], k) => { const y = y0 + is + 50 * u + k * 28 * u; if (y > y0 + h - 14 * u) return; emoji(i, x0 + 22 * u, y, 15 * u); texte(l, x0 + 38 * u, y, 12 * u, '#cfd8ff', 'left'); texte(String(v), x0 + cw - 14 * u, y, 14 * u, '#fff', 'right'); });
   const lx = x0 + cw + 14 * u, lw = W - lx - 14 * u;
   [['saison', '📅 Saison ' + nomSaison()], ['total', '🏆 Depuis toujours'], ['teams', '🛡️ Teams']].forEach(([v, t], k) => { const bw = Math.min(200 * u, (lw - 20 * u) / 3), bx = lx + k * (bw + 10 * u), on = classementVue === v;
     bouton3D(bx, y0, bw, 32 * u, on ? '#ffe14a' : '#8e7bff', on ? '#ff8a1f' : '#5b3fd6', () => { if (classementVue !== v) { classementVue = v; classementT = -9999; if (v !== 'teams') classement = null; else chargerTeams(true); } }); texte(t, bx + bw / 2, y0 + 16 * u, 12 * u, on ? '#1f1300' : '#fff', 'center', bw - 10 * u); });
@@ -3754,24 +3754,22 @@ function menuClassement() {
 }
 
 // --- Super pouvoirs + aide
-function menuPouvoirs() {
-  const u = U(), top = barreHaut('SUPER POUVOIRS', true), l = Object.values(CONFIG.pouvoirs);
-  const x0 = 14 * u, y0 = top + 14 * u, zoneW = W - 28 * u, aideH = 64 * u;
-  const cols = Math.max(2, Math.floor(zoneW / (200 * u))), cw = (zoneW - (cols - 1) * 12 * u) / cols, chh = 70 * u;
-  const desc = p => ({ vitesse: `Vitesse ×${p.valeur}`, degats: `Dégâts ×${p.valeur}`, bouclier: `Dégâts reçus ×${p.valeur}`, soin: `Soigne ${Math.round(p.valeur * 100)} % des PV`,
-    munitions: 'Munitions illimitées', invisible: 'Invisible pour les ennemis' })[p.effet] + (p.effet !== 'soin' ? ` • ${p.duree} s` : '');
-  l.forEach((p, k) => {
-    const x = x0 + (k % cols) * (cw + 12 * u), y = y0 + Math.floor(k / cols) * (chh + 10 * u); if (y + chh > H - aideH - 20 * u) return;
-    rect(x, y, cw, chh, 14 * u, 'rgba(255,255,255,.1)', p.couleur, 3 * u);
-    ctx.beginPath(); ctx.arc(x + 34 * u, y + chh / 2, 24 * u, 0, 7); ctx.fillStyle = p.couleur; ctx.fill();
-    emoji(p.icone || '✨', x + 34 * u, y + chh / 2, 24 * u);
-    texte(p.nom, x + 66 * u, y + chh / 2 - 10 * u, 15 * u, '#fff', 'left');
-    texte(desc(p), x + 66 * u, y + chh / 2 + 12 * u, 11 * u, '#cfd8ff', 'left');
-  });
-  const ay = H - aideH - 12 * u;
-  rect(x0, ay, zoneW, aideH, 14 * u, 'rgba(255,255,255,.1)');
-  texte('🎁 Casse les murs, buissons et coffres pour trouver des pouvoirs — marche dessus pour les ramasser.', x0 + 14 * u, ay + 20 * u, 12 * u, '#fff', 'left');
-  texte('🕹️ Joystick gauche : bouger • Joystick droit : viser et relâcher pour tirer (petit tap = tir auto) • 🌳 Buisson = caché', x0 + 14 * u, ay + 44 * u, 11 * u, '#cfd8ff', 'left');
+function menuPouvoirs() { // 📖 COMMENT JOUER (ouvert depuis ⚙️) : commandes, ton perso, bonus à ramasser, astuces
+  const u = U(), top = barreHaut('COMMENT JOUER', true), l = Object.values(CONFIG.pouvoirs || {});
+  const x0 = 14 * u, y0 = top + 12 * u, zw = W - 28 * u, cw = (zw - 12 * u) / 2, h1 = Math.min(150 * u, (H - y0) * 0.46);
+  const bloc = (x, y, w, h, t, lignesTxt, col) => { verre(x, y, w, h, 16 * u); titre(t, x + 14 * u, y + 18 * u, 16 * u, col, 'left', w - 20 * u);
+    let yy = y + 42 * u; lignesTxt.forEach(t2 => lignes(t2, w - 28 * u, 11 * u).forEach(l2 => { if (yy < y + h - 8 * u) texte(l2, x + 14 * u, yy, 11 * u, '#fff', 'left'); yy += 15 * u; })); };
+  bloc(x0, y0, cw, h1, '🕹️ Commandes', mobile ? ['Joystick gauche : se déplacer.', 'Joystick droit : viser, puis relâcher pour tirer. Un petit appui = tir automatique sur l\'ennemi le plus proche.', 'Boutons ronds : 🎮 action, ⭐ super, 🧰 gadget.']
+    : ['ZQSD ou flèches : se déplacer. Clic : tirer vers la souris.', 'ESPACE : tir automatique • E : action • R : super • G : gadget.', 'Tout se change dans ⚙️ › Commandes.'], '#5ff0ff');
+  bloc(x0 + cw + 12 * u, y0, cw, h1, '⭐ Ton perso', ['Attaque : ton arme (elle se recharge toute seule).', 'Action 🎮 : un pouvoir de ton élément, utilisable souvent.', 'Super ⭐ : se charge en touchant les ennemis, puis déclenche une attaque énorme.', 'Gadget 🧰 : ' + reglage('gadgetsParPartie', 3) + ' utilisations par partie.'], '#ffe14a');
+  const y1 = y0 + h1 + 10 * u, h2 = H - y1 - 12 * u; verre(x0, y1, zw, h2, 16 * u);
+  titre('🎁 Bonus à ramasser (casse murs, buissons et coffres)', x0 + 14 * u, y1 + 18 * u, 16 * u, '#9cff57', 'left', zw - 20 * u);
+  const cols = Math.max(2, Math.min(3, Math.floor(zw / (230 * u)))), bw = (zw - 28 * u) / cols, bh = 34 * u;
+  const desc = p => ({ vitesse: 'Tu cours plus vite', degats: 'Tes coups font plus mal', bouclier: 'Tu prends moins de dégâts', soin: 'Te soigne', munitions: 'Tirs illimités', invisible: 'Les ennemis ne te voient plus' })[p.effet] || '';
+  l.forEach((p, k) => { const x = x0 + 14 * u + (k % cols) * bw, y = y1 + 40 * u + Math.floor(k / cols) * (bh + 6 * u); if (y + bh > y1 + h2 - 30 * u) return;
+    ctx.beginPath(); ctx.arc(x + 15 * u, y + bh / 2, 14 * u, 0, 7); ctx.fillStyle = p.couleur || '#888'; ctx.fill(); emoji(p.icone || '✨', x + 15 * u, y + bh / 2, 15 * u);
+    texte(p.nom, x + 36 * u, y + bh / 2 - 7 * u, 12 * u, '#fff', 'left', bw - 44 * u); texte(desc(p), x + 36 * u, y + bh / 2 + 8 * u, 10 * u, 'rgba(255,255,255,.75)', 'left', bw - 44 * u); });
+  texte('🌿 Astuce : dans un buisson, tu es caché • ❤️ ta vie remonte quand tu ne te bats pas • 💥 2 éléments différents sur un ennemi = combo !', x0 + zw / 2, y1 + h2 - 14 * u, 10 * u, '#ffe8a3', 'center', zw - 24 * u);
 }
 
 function dessinerAttente() {
