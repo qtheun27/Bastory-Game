@@ -1064,6 +1064,7 @@ const CONFIG_PAR_DEFAUT = {
     "regenBoss": 0.5,
     "volumeSons": 1,
     "volumeMusique": 1,
+    "sonSilencieux": true,
     "musiqueMenu": "",
     "musiqueJeu": "",
     "decor3D": 1
@@ -1374,6 +1375,10 @@ function migrerConfig(c) {
   if ((c.version || 0) < 25) { // v25 : 🛡️ teams (clubs de joueurs) — taille maximum et prix de création
     c.app = c.app || {}; if (c.app.teamMax === undefined) c.app.teamMax = 30; if (c.app.teamCout === undefined) c.app.teamCout = 0;
     c.version = Math.max(c.version || 0, 25);
+  }
+  if ((c.version || 0) < 26) { // v26 : 📱 son en mode silencieux de l'iPhone (réglable)
+    c.app = c.app || {}; if (c.app.sonSilencieux === undefined) c.app.sonSilencieux = true;
+    c.version = Math.max(c.version || 0, 26);
   }
 
 

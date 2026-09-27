@@ -1,7 +1,7 @@
 // 🔊 SONS & MUSIQUE — tout est synthétisé (aucun fichier à télécharger), style cartoon / manga
 // Son.jouer('tir', volume) • Son.musique('menu' | 'jeu' | null) • Son.regler({ sons, musique })
 const Son = (() => {
-  let ac = null, sortie = null, busSons = null, busMus = null, busMusIn = null, bruit = null;
+  let ac = null, gainFichier = null, sortie = null, busSons = null, busMus = null, busMusIn = null, bruit = null;
   const pref = { sons: true, musique: true }; try { Object.assign(pref, JSON.parse(localStorage.getItem('bastorySon') || '{}')); } catch (e) {}
   const volApp = k => { const a = (typeof CONFIG !== 'undefined' && CONFIG.app) || {}, v = a[k]; return v === undefined || v === '' || isNaN(+v) ? 1 : Math.max(0, +v); };
   function init() {
@@ -10,29 +10,25 @@ const Son = (() => {
     ac = new AC(); sortie = ac.createDynamicsCompressor(); sortie.connect(ac.destination);
     busSons = ac.createGain(); busSons.connect(sortie); busMus = ac.createGain(); busMus.connect(sortie);
     const echo = ac.createDelay(1), fb = ac.createGain(), fl = ac.createBiquadFilter(), mixE = ac.createGain(); echo.delayTime.value = 0.3; fb.gain.value = 0.28; fl.type = 'lowpass'; fl.frequency.value = 2600; mixE.gain.value = 0.22; // petit écho = son plus « produit »
-    busMusIn = ac.createGain(); busMusIn.connect(busMus); busMusIn.connect(echo); echo.connect(fl); fl.connect(fb); fb.connect(echo); fl.connect(mixE); mixE.connect(busMus); appliquer();
+    busMusIn = ac.createGain(); gainFichier = ac.createGain(); gainFichier.connect(sortie); busMusIn.connect(busMus); busMusIn.connect(echo); echo.connect(fl); fl.connect(fb); fb.connect(echo); fl.connect(mixE); mixE.connect(busMus); appliquer();
     const n = ac.sampleRate; bruit = ac.createBuffer(1, n, n); const d = bruit.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
     return true;
   }
-  function appliquer() { if (!ac) return; busSons.gain.value = pref.sons ? 0.55 * volApp('volumeSons') : 0; busMus.gain.value = pref.musique ? 0.3 * volApp('volumeMusique') : 0; if (fichier) fichier.volume = Math.min(1, (pref.musique ? 0.6 : 0) * volApp('volumeMusique')); }
+  function appliquer() { if (!ac) return; busSons.gain.value = pref.sons ? 0.55 * volApp('volumeSons') : 0; busMus.gain.value = pref.musique ? 0.3 * volApp('volumeMusique') : 0; if (gainFichier) gainFichier.gain.value = Math.min(1, (pref.musique ? 0.6 : 0) * volApp('volumeMusique')); }
   // 📱 iPhone : l'audio ne se débloque que pendant un vrai geste (appui relâché), et le bouton silencieux coupe le son du web
-  // → on se déclare « lecture audio » (comme une appli de musique) et on joue un son muet en boucle pour garder le son actif
-  let muet = null;
-  function modeLecture() {
-    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
-    if (!muet) { muet = document.createElement('audio'); muet.setAttribute('playsinline', ''); muet.setAttribute('x-webkit-airplay', 'deny'); muet.loop = true; muet.preload = 'auto';
-      muet.src = 'data:audio/wav;base64,UklGRt0BAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YbkBAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA='; } // 40 ms de silence
-    const p = muet.play(); if (p && p.catch) p.catch(() => {});
-  }
+  // → on déclare le type de son à l'iPhone (réglage admin `sonSilencieux`) : « lecture » = son même en mode silencieux, « ambiance » = respecte le bouton silencieux.
+  // ⚠️ Plus aucun lecteur <audio> : c'est lui qui faisait apparaître Bastory dans le lecteur de musique de l'iPhone. Tout passe par Web Audio (sons, musique, MP3).
+  const silencieuxOK = () => { const a = (typeof CONFIG !== 'undefined' && CONFIG.app) || {}; return a.sonSilencieux !== false; };
+  function modeLecture() { try { if (navigator.audioSession) navigator.audioSession.type = silencieuxOK() ? 'playback' : 'ambient'; } catch (e) {} }
   const debloquer = () => { if (!init()) return; modeLecture(); if (ac.state !== 'running') { const r = ac.resume(); if (r && r.then) r.then(() => { if (voulue && !courante) musique(voulue); }); }
     else if (voulue && !courante) musique(voulue);
     if (ac.state === 'running') ['touchend', 'click', 'pointerup', 'keydown', 'touchstart', 'pointerdown'].forEach(e => removeEventListener(e, debloquer, true)); }; // 1er geste
   ['touchend', 'click', 'pointerup', 'keydown', 'touchstart', 'pointerdown'].forEach(e => addEventListener(e, debloquer, true));
   function arrierePlan(cache) { // 📱 appli en arrière-plan : on coupe tout, sinon l'iPhone affiche la musique du jeu dans le centre de notifications
     if (!cache) { if (ac) ['touchend', 'click', 'pointerup', 'keydown', 'touchstart', 'pointerdown'].forEach(e => addEventListener(e, debloquer, true)); if (ac && ac.state !== 'running') { const r = ac.resume(); if (r && r.then) r.then(() => { if (voulue && !courante) musique(voulue); }).catch(() => {}); } return; } // retour : relancé au 1er appui
-    for (const a of [muet, fichier]) if (a) { a.pause(); a.removeAttribute('src'); a.load(); }
-    muet = null; fichier = null; clearInterval(minuteur); minuteur = null; courante = null;
+    arreterFichier(); clearInterval(minuteur); minuteur = null; courante = null;
     if (ac && ac.state === 'running') ac.suspend();
+    try { if (navigator.audioSession) navigator.audioSession.type = 'auto'; } catch (e) {} // on rend la main à l'iPhone
     try { if ('mediaSession' in navigator) { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } } catch (e) {}
   }
   document.addEventListener('visibilitychange', () => arrierePlan(document.hidden));
@@ -85,7 +81,10 @@ const Son = (() => {
     if (filtre) { const b = ac.createBiquadFilter(); b.type = 'lowpass'; b.frequency.value = filtre; b.Q.value = 0.6; o.connect(b); b.connect(g); } else o.connect(g);
     g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(v, t + att); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); g.connect(busMusIn); o.start(t); o.stop(t + dur + 0.05); return dst;
   }
-  let courante = null, voulue = null, pas = 0, prochain = 0, minuteur = null, fichier = null;
+  let courante = null, voulue = null, pas = 0, prochain = 0, minuteur = null, fichierUrl = null, srcMus = null, jetonMus = 0;
+  const tampons = {}; // MP3 déjà téléchargés et décodés
+  const chargerMp3 = url => tampons[url] || (tampons[url] = fetch(url).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(b => new Promise((ok, ko) => ac.decodeAudioData(b, ok, ko))).catch(e => { delete tampons[url]; throw e; }));
+  function arreterFichier() { jetonMus++; if (srcMus) { try { srcMus.stop(); } catch (e) {} srcMus.disconnect(); srcMus = null; } fichierUrl = null; }
   function planifier() {
     if (!courante || !ac) return; const m = MUS[courante], d = 60 / m.bpm / 4; // pas = double-croche
     while (prochain < ac.currentTime + 0.3) {
@@ -103,12 +102,16 @@ const Son = (() => {
   function urlMusique(nom) { const a = (typeof CONFIG !== 'undefined' && CONFIG.app) || {}; return (nom === 'jeu' ? a.musiqueJeu : a.musiqueMenu) || ''; }
   function musique(nom) {
     voulue = nom; if (!ac || ac.state !== 'running') return; const url = nom ? urlMusique(nom) : '';
-    if (nom === courante && (!fichier || fichier.dataset.url === url)) return;
-    courante = nom; clearInterval(minuteur); minuteur = null; if (fichier) { fichier.pause(); fichier = null; }
+    if (nom === courante && (fichierUrl || '') === url) return;
+    courante = nom; clearInterval(minuteur); minuteur = null; arreterFichier();
     if (!nom) return;
-    if (url) { fichier = new Audio(url); fichier.dataset.url = url; fichier.loop = true; fichier.volume = Math.min(1, (pref.musique ? 0.6 : 0) * volApp('volumeMusique')); fichier.play().catch(() => {}); return; } // 🎧 ta musique
+    if (url) { // 🎧 ta musique (MP3 joué par Web Audio, en boucle) ; si elle ne se charge pas → musique du jeu
+      fichierUrl = url; const j = jetonMus;
+      chargerMp3(url).then(buf => { if (j !== jetonMus) return; srcMus = ac.createBufferSource(); srcMus.buffer = buf; srcMus.loop = true; srcMus.connect(gainFichier); srcMus.start(); })
+        .catch(e => { console.warn('Musique MP3 illisible', url, e); if (j === jetonMus && courante === nom) { pas = 0; prochain = ac.currentTime + 0.1; minuteur = setInterval(planifier, 100); } });
+      return; }
     pas = 0; prochain = ac.currentTime + 0.1; minuteur = setInterval(planifier, 100);
   }
   function regler(p) { Object.assign(pref, p); try { localStorage.setItem('bastorySon', JSON.stringify(pref)); } catch (e) {} appliquer(); }
-  return { jouer, musique, regler, pref, appliquer, etat: () => ({ contexte: ac ? ac.state : 'aucun', musique: courante, sons: busSons ? busSons.gain.value : 0, volMusique: busMus ? busMus.gain.value : 0 }) };
+  return { jouer, musique, regler, pref, appliquer, etat: () => ({ contexte: ac ? ac.state : 'aucun', musique: courante, mp3: !!srcMus, sons: busSons ? busSons.gain.value : 0, volMusique: busMus ? busMus.gain.value : 0 }) };
 })();
