@@ -64,6 +64,13 @@ async function lancer() {
       const ok = avant === 0 && lance === 1; rtdb = sv; groupe = g; pretsGroupe = p; demarrerPartie = dp; etat = e; return ok; })()`));
   await test('Évolution : les stats affichées montent avec le niveau du perso', () => E(`(() => { const p = CONFIG.persos[0], a = statsJeu(p, 1), b = statsJeu(p, 3), g = CONFIG.progression || {};
       return (!(+g.bonusPV) || b.pvMax > a.pvMax) && (!(+g.bonusDegats) || b.degats > a.degats); })()`));
+  await test('Bots : ils trouvent leur chemin autour des murs sans rester bloqués', () => { const r = E(`(() => { let ok = 0, n = 0;
+      for (let e = 0; e < 6; e++) { const d = caseLibre([]), j = { ...creerJoueur(0, d.x, d.y, 'botT', 'T', 9, 1), bot: true, dep: 'sol' }, c = caseLibre([d]);
+        if (Math.hypot(c.x - j.x, c.y - j.y) < TUILE * 6 || !cheminBot(j, c.x, c.y)) continue; n++;
+        for (let i = 0; i < 2400 && Math.hypot(c.x - j.x, c.y - j.y) > TUILE * 1.2; i++) { temps++; allerVers(j, c.x, c.y, 4); }
+        if (Math.hypot(c.x - j.x, c.y - j.y) <= TUILE * 1.2) ok++; }
+      return [ok, n]; })()`); return { ok: r[0] >= r[1] - 1, detail: r[0] + ' / ' + r[1] + ' trajets réussis' }; });
+  await test('Bots : plus les joueurs ont de trophées, plus les bots sont forts', () => E(`forceBots(3000).niv > forceBots(0).niv && forceBots(3000).nvPerso > forceBots(0).nvPerso`));
   await test('Rangs de saison dans le bon ordre', () => E(`rangDe(0).nom === 'Bronze' && rangDe(1e9).nom === 'Légende' && rangDe(400).min <= 400`));
   await test("Skins : un skin non acheté n'est jamais porté", () => E(`(() => { mesStats.skins = {}; mesStats.skinChoisi = { [cleP(baseDe(moi.perso))]: 'dore' }; return skinChoisi(moi.perso) === ''; })()`));
   await test('Bots : ils se rapprochent et attaquent', () => { const r = E(`(() => { const b = Object.values(autres)[0]; b.pv = b.pvMax = 1e9; moi.pv = moi.pvMax = 1e9; const d0 = Math.hypot(b.x - moi.x, b.y - moi.y), vus = new Set(); for (let i = 0; i < 1200; i++) { pasDeJeu(); projectiles.forEach(p => { if (p.de === b.uid) vus.add(p); }); } return [Math.round(d0), Math.round(Math.hypot(b.x - moi.x, b.y - moi.y)), 1e9 - moi.pv, vus.size]; })()`); return { ok: r[1] < Math.max(450, r[0]) && (r[3] > 0 || r[2] > 0), detail: 'distance ' + r[0] + ' → ' + r[1] + ' • tirs ' + r[3] + ' • dégâts ' + r[2] }; });

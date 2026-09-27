@@ -442,7 +442,7 @@ async function chercherPartie(opts = {}) {
   if (s.hote) { rtdb.ref(cle).onDisconnect().remove(); s.ref.onDisconnect().remove(); await s.ref.child('info').set({ map: mapChoisie(mode), sig }); }
   const moiRef = s.ref.child('joueurs/' + user.uid);
   moiRef.onDisconnect().remove();
-  await moiRef.set({ nom: nomJoueur(), p: persoIndex, sk: skinChoisi(CONFIG.persos[persoIndex] || {}) || '', nv: niveauDe(CONFIG.persos[persoIndex]), g: groupe.chef || null, pp: ((mesStats.persos || {})[cleP(CONFIG.persos[persoIndex] || {})] || {}).points || 0, t: firebase.database.ServerValue.TIMESTAMP });
+  await moiRef.set({ nom: nomJoueur(), p: persoIndex, sk: skinChoisi(CONFIG.persos[persoIndex] || {}) || '', nv: niveauDe(CONFIG.persos[persoIndex]), g: groupe.chef || null, pp: ((mesStats.persos || {})[cleP(CONFIG.persos[persoIndex] || {})] || {}).points || 0, tr: mesStats.points || 0, t: firebase.database.ServerValue.TIMESTAMP });
   s.ref.child('joueurs').on('value', snap => {
     if (salle !== s) return;
     s.js = snap.val() || {};
@@ -462,16 +462,20 @@ async function chercherPartie(opts = {}) {
   s.ref.child('bots').on('value', snap => { if (salle === s && etat === 'JEU' && !hote && !s.hote) for (const [uid, d] of Object.entries(snap.val() || {})) if (autres[uid]) { transitionPV(autres[uid], d.pv); Object.assign(autres[uid], { tx: d.x, ty: d.y, angle: d.a, pv: d.pv, cache: d.c, marche: d.m, bo: d.bo ? d.bo.split(',') : [] }); } });
   s.ref.child('boss').on('value', snap => { if (salle === s && etat === 'JEU' && !hote) majBossDistants(snap.val() || []); });
 }
+function forceBots(tr) { // 🤖 force des bots selon les trophées moyens des joueurs (réglages admin)
+  const pal = Math.max(50, reglage('botsTropheesNiveau', 600)), k = tr / pal;
+  return { niv: Math.max(reglage('botsNivMin', 0.8), Math.min(reglage('botsNivMax', 3), 0.8 + k * 0.5)), nvPerso: Math.max(1, Math.min(+(CONFIG.progression || {}).niveauMax || 10, 1 + Math.floor(k))) };
+}
 function lancerSalle(avecBots) {
   const s = salle; if (!s || s.debut) return; s.debut = true;
   rtdb.ref(s.cle).transaction(v => v && v.salle === s.id ? null : undefined).catch(() => {});
   const liste = Object.entries(s.js).sort((a, b) => (a[1].t || 0) - (b[1].t || 0)).map(([uid, d]) => ({ uid, nom: d.nom, p: d.p, nv: d.nv || 1, g: d.g || null, sk: d.sk || '' }));
   if (avecBots) { // 🤖 complète avec des bots (nombre pair en équipes)
     let k = 1;
-    const humains = Object.values(s.js), moy = humains.reduce((t, d) => t + (+d.pp || 0), 0) / Math.max(1, humains.length);
-    const niv = +((+mode.niveauBots || 1) * (mode.botsAdaptatifs !== false ? Math.max(0.7, Math.min(2.2, 0.7 + moy / 400)) : 1)).toFixed(2); // 🤖 niveau selon les points des joueurs
+    const humains = Object.values(s.js), moy = humains.reduce((t, d) => t + (+d.tr || +d.pp || 0), 0) / Math.max(1, humains.length), f = forceBots(moy);
+    const niv = +((+mode.niveauBots || 1) * (mode.botsAdaptatifs !== false ? f.niv : 1)).toFixed(2), nvP = mode.botsAdaptatifs !== false ? f.nvPerso : 1; // 🤖 niveau selon les trophées des joueurs
     while (liste.length < s.min || (nbEquipes(mode) && liste.length % nbEquipes(mode) && liste.length < s.max))
-      liste.push({ uid: 'bot' + k, nom: '🤖 Bot ' + k++, p: Math.floor(Math.random() * CONFIG.persos.length), bot: true, niv });
+      liste.push({ uid: 'bot' + k, nom: '🤖 Bot ' + k++, p: Math.floor(Math.random() * CONFIG.persos.length), bot: true, niv, nv: nvP });
   }
   const grp = {}; liste.forEach(j => (grp[j.g || j.uid] = grp[j.g || j.uid] || []).push(j)); // 👥 amis = même équipe
   if (nbEquipes(mode)) { const n = Array(nbEquipes(mode)).fill(0); Object.values(grp).sort((a, b) => b.length - a.length).forEach(gr => { const t = n.indexOf(Math.min(...n)); gr.forEach(j => j.eq = t); n[t] += gr.length; }); }
@@ -853,21 +857,22 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     const d = Math.hypot(e.x - j.x, e.y - j.y);
     if ((!e.cache || d < 170) && d < dm) { dm = d; c = e; }
   }
+  const tire = () => { if (c && dm < j.perso.portee * 1.05) tirBot(j, c, dm); }; // 🔫 tire aussi en se déplaçant vers un objectif
   const v = j.perso.vitesse * KV() * (0.7 + 0.15 * (j.niv || 1)) * bonus(j, 'vitesse') * meteoMult('vitesse') * (j.ralentiT > temps ? j.ralenti || 0.6 : 1) * (roleDe(j.perso) === 'assassin' ? 1 + RV('assassin', 'vitesse', 10) / 100 : 1);
   if (!j.objet && obj() === 'tresor' && (!c || dm > 260)) { // 🤖 part à la chasse au trésor
     const t = tresors.filter(t => t.pris === null).sort((a, b) => Math.hypot(a.x - j.x, a.y - j.y) - Math.hypot(b.x - j.x, b.y - j.y))[0];
-    if (t) { allerVers(j, t.x, t.y, v); return; }
+    if (t) { allerVers(j, t.x, t.y, v); tire(); return; }
   }
-  const gz = gaz(); if (gz && gz.actif && Math.hypot(j.x - gz.x, j.y - gz.y) > gz.r * 0.85) { allerVers(j, gz.x, gz.y, v); return; } // ☠️ fuit le gaz
+  const gz = gaz(); if (gz && gz.actif && Math.hypot(j.x - gz.x, j.y - gz.y) > gz.r * 0.85) { allerVers(j, gz.x, gz.y, v); tire(); return; } // ☠️ fuit le gaz
   const butO = butObjectif(j); // 🎯 zone à tenir, cristal à casser ou à défendre
   if (butO) { const dO = Math.hypot(butO.x - j.x, butO.y - j.y), zone = obj() === 'zone';
-    if ((zone && dO > (butO.r || 90) * 0.7) || (!zone && (!c || dm > 260) && dO > 120)) { allerVers(j, butO.x, butO.y, v); return; }
+    if ((zone && dO > (butO.r || 90) * 0.7) || (!zone && (!c || dm > 260) && dO > 120)) { allerVers(j, butO.x, butO.y, v); tire(); return; }
     if (zone && !c) { if (dO > 30) allerVers(j, butO.x, butO.y, v * 0.5); return; } // reste dans la zone
   }
-  if (j.objet) { allerVers(j, j.objet.x, j.objet.y, v); if (!c || dm > 250) return; }
+  if (j.objet) { allerVers(j, j.objet.x, j.objet.y, v); if (!c || dm > 250) { tire(); return; } }
   const nv = j.niv || 1, esq = esquive(j, nv); // 🤖 esquive les tirs qui arrivent
   if (esq) { deplacer(j, esq[0] * v, esq[1] * v); j.marche += v; }
-  if (c && j.pv < j.pvMax * 0.3 && !(j.gadgets > 0) && nv >= 2) { const b = buissonProche(j, 320); if (b && Math.hypot(b.x - j.x, b.y - j.y) > 20) { allerVers(j, b.x, b.y, v); return; } } // 🌿 presque KO : va se cacher
+  if (c && j.pv < j.pvMax * 0.3 && !(j.gadgets > 0) && nv >= 2) { const b = buissonProche(j, 320); if (b && Math.hypot(b.x - j.x, b.y - j.y) > 20) { allerVers(j, b.x, b.y, v); tire(); return; } } // 🌿 presque KO : va se cacher
   if (c) {
     const su = j.suivi && j.suivi.c === c ? j.suivi : (j.suivi = { c, x: c.x, y: c.y, vx: 0, vy: 0 }); // vitesse de la cible (mémoire propre à chaque bot)
     su.vx = (c.x - su.x) * 0.5 + su.vx * 0.5; su.vy = (c.y - su.y) * 0.5 + su.vy * 0.5; su.x = c.x; su.y = c.y;
@@ -881,18 +886,22 @@ function iaBot(j) { // 🤖 : vise l'ennemi visible le plus proche, garde ses di
     if (av > 0 && Math.hypot(j.x - ax, j.y - ay) < v * 0.35 && (j.coince = (j.coince || 0) + 1) > 8) { allerVers(j, c.x, c.y, v); j.coince = 0; } // bloqué par un mur : il contourne
     if (!libre) { allerVers(j, c.x, c.y, v * 0.6); } // 🧱 ligne de tir bouchée par un mur : il contourne pour retrouver un angle de tir
     if (construction() && (j.mat || 0) >= reglage('coutMur', 10) && j.pv < j.pvMax * 0.5 && dm < 300 && Math.random() < 0.03) { j.angle = a; construireMur(j); } // 🤖 se met à l'abri
-    if (libre && !enChute() && dm < j.perso.portee && j.recharge <= 0 && j.mun >= 1 && Math.random() < 0.05 * (j.niv || 1)) {
-      const ang = a + (Math.random() - 0.5) * 0.35 / (j.niv || 1), f = Math.min(1, dm / j.perso.portee);
-      j.mun -= 1; j.recharge = j.perso.delaiTir;
-      const dg = Math.round(j.perso.degats * bonus(j, 'degats') * (0.8 + 0.2 * (j.niv || 1)) * multButin(j));
-      creerProjectile(j, ang, f, j.x, j.y, dg);
-      envoyer({ t: 'tir', de: j.uid, a: +ang.toFixed(3), f: +f.toFixed(2), x: Math.round(j.x), y: Math.round(j.y), d: dg, ak: j.butin ? j.butin.cle : '' });
-    }
+    if (libre) tirBot(j, c, dm, a);
     if (j.superPret && dm < 320) lancerSuper(j, a); else if (dm < 220 && (j.actionT || 0) < temps && Math.random() < 0.01) lancerAction(j, a);
   } else { // se promène sur la map
     if (!j.but || Math.hypot(j.but.x - j.x, j.but.y - j.y) < 30 || temps % 240 === 0) j.but = caseLibre([]);
     allerVers(j, j.but.x, j.but.y, v);
   }
+}
+function tirBot(j, c, dm, a) { // 🔫 tir d'un bot (plus il est fort, plus il tire souvent et juste)
+  if (enChute() || dm >= j.perso.portee || j.recharge > 0 || j.mun < 1) return; const nv = j.niv || 1;
+  if (a === undefined) { a = Math.atan2(c.y - j.y, c.x - j.x); if ((j.arme || {}).type !== 'lob' && porteeLibre(j.x, j.y, a, dm) < dm - c.r) return; }
+  if (Math.random() >= Math.min(0.6, reglage('botsCadence', 1) * (0.06 + 0.06 * nv))) return;
+  const ang = a + (Math.random() - 0.5) * 0.35 / nv, f = Math.min(1, dm / j.perso.portee);
+  j.mun -= 1; j.recharge = j.perso.delaiTir;
+  const dg = Math.round(j.perso.degats * bonus(j, 'degats') * (0.8 + 0.2 * nv) * multButin(j));
+  creerProjectile(j, ang, f, j.x, j.y, dg);
+  envoyer({ t: 'tir', de: j.uid, a: +ang.toFixed(3), f: +f.toFixed(2), x: Math.round(j.x), y: Math.round(j.y), d: dg, ak: j.butin ? j.butin.cle : '' });
 }
 function regenerer() { // ❤️‍🩹 la vie remonte doucement quand on ne se bat pas (chacun gère ses PV : moi, bots et boss chez l'hôte)
   const delai = reglage('regenDelai', 3) * 60, taux = reglage('regenTaux', 4) / 100 / 2; if (taux <= 0) return;
@@ -1934,6 +1943,7 @@ function changerCarte(dest) { // 🗺️ arrivée sur la carte de l'épreuve sui
     const libreE = (map.eqj[j.eq] || []).find(p => !p.pris);
     const sp = libreE ? (libreE.pris = true, { x: c(libreE.x), y: c(libreE.y) }) : map.j[k] ? { x: c(map.j[k].x), y: c(map.j[k].y) } : caseLibre(places);
     j.spawn = sp; places.push(sp); if (moiOuBot(j)) { j.x = sp.x; j.y = sp.y; if (j.pv > 0) j.pv = j.pvMax; }
+    Object.assign(j, { but: null, via: null, chem: null, objet: null, suivi: null, detourT: 0, coince: 0 }); // 🤖 oublie les buts de l'ancienne carte (sinon il fonce dans un mur)
   });
   projectiles = []; objets = []; degatsTuiles = {}; retours = []; levees = {}; decor3D = null;
   if (typeof Modele3D !== 'undefined' && Modele3D.dispo()) Modele3D.decor(map.def).then(d => decor3D = d).catch(e => console.warn('Décor 3D', e));
@@ -2805,8 +2815,8 @@ async function debloquerPerso(p) { const c = +p.coutJetons || 3; if ((mesStats.j
 // ---------- 🤖 DÉPLACEMENT MALIN DES BOTS (contourne les murs) & OBJECTIFS ----------
 function passageBot(j, tx, ty) { // 🔀 chaque bot choisit son propre chemin : un point de passage sur le côté (réglage admin botsVariete)
   const va = reglage('botsVariete', 1), D = Math.hypot(tx - j.x, ty - j.y); if (va <= 0 || D < 280) { j.via = null; return null; }
-  if (j.via && Math.hypot(j.via.tx - tx, j.via.ty - ty) < 200 && temps < j.via.fin) { if (Math.hypot(j.via.x - j.x, j.via.y - j.y) > 50) return j.via; j.via.fait = true; }
-  if (j.via && j.via.fait && Math.hypot(j.via.tx - tx, j.via.ty - ty) < 200) return null; // passage atteint : tout droit jusqu'au but
+  if (j.via && j.via.fait && Math.hypot(j.via.tx - tx, j.via.ty - ty) < 200) return null; // passage atteint : direct jusqu'au but (sans y revenir)
+  if (j.via && Math.hypot(j.via.tx - tx, j.via.ty - ty) < 200 && temps < j.via.fin) { if (Math.hypot(j.via.x - j.x, j.via.y - j.y) > 50) return j.via; j.via.fait = true; return null; }
   j.via = null; if (Math.random() < 0.25) { j.via = { tx, ty, fait: true, fin: temps + 600 }; return null; } // parfois tout droit
   const nx = -(ty - j.y) / D, ny = (tx - j.x) / D, W = (map.l || 20) * TUILE, H2 = (map.h || 12) * TUILE;
   for (let k = 0; k < 8; k++) { const t = 0.3 + Math.random() * 0.4, o = (Math.random() < 0.5 ? -1 : 1) * (0.15 + Math.random() * 0.4) * D * Math.min(1.5, va),
@@ -2814,19 +2824,39 @@ function passageBot(j, tx, ty) { // 🔀 chaque bot choisit son propre chemin : 
     if (libre(x, y, j.r, j.dep)) return j.via = { x, y, tx, ty, fin: temps + 900 }; }
   j.via = { tx, ty, fait: true, fin: temps + 600 }; return null;
 }
+function cheminBot(j, tx, ty) { // 🧭 plus court chemin case par case (recalculé ~2 fois par seconde) : les bots ne restent plus bloqués derrière les murs
+  const T = TUILE, L = map.l, Hm = map.h, ax = Math.floor(j.x / T), ay = Math.floor(j.y / T), bx = Math.max(0, Math.min(L - 1, Math.floor(tx / T))), by = Math.max(0, Math.min(Hm - 1, Math.floor(ty / T)));
+  if (ax === bx && ay === by) return null;
+  const c = j.chem; if (c && c.bx === bx && c.by === by && c.map === map && temps < c.t) { while (c.l.length && Math.hypot((c.l[0][0] + 0.5) * T - j.x, (c.l[0][1] + 0.5) * T - j.y) < T * 0.55) c.l.shift(); return c.l.length ? c.l : null; }
+  const rr = Math.min(j.r, T * 0.42), ok = (x, y) => x >= 0 && y >= 0 && x < L && y < Hm && libre((x + 0.5) * T, (y + 0.5) * T, rr, j.dep);
+  const de = new Int32Array(L * Hm).fill(-1), file = [ay * L + ax]; de[ay * L + ax] = ay * L + ax; let fin = -1;
+  const D = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]], s = j.cotePref > 0 ? 1 : 0; // ordre selon le bot : chemins variés à longueur égale
+  for (let q = 0; q < file.length && q < 6000; q++) { const n = file[q], x = n % L, y = (n / L) | 0; if (x === bx && y === by) { fin = n; break; }
+    for (let i = 0; i < 8; i++) { const [dx, dy] = D[(i + s * 2) % 8], nx = x + dx, ny = y + dy, m = ny * L + nx; if (nx < 0 || ny < 0 || nx >= L || ny >= Hm || de[m] >= 0) continue;
+      if (!ok(nx, ny) && !(nx === bx && ny === by)) continue; if (dx && dy && (!ok(x + dx, y) || !ok(x, y + dy))) continue; de[m] = n; file.push(m); } }
+  if (fin < 0) { j.chem = { bx, by, map, t: temps + 45, l: [] }; return null; } // pas de chemin : on garde l'ancien comportement
+  const l = []; for (let n = fin; n !== ay * L + ax; n = de[n]) l.unshift([n % L, (n / L) | 0]);
+  j.chem = { bx, by, map, t: temps + 30, l }; return l.length ? l : null;
+}
+function ligneLibre(j, x, y) { const d = Math.hypot(x - j.x, y - j.y), n = Math.ceil(d / (TUILE / 3)), rr = Math.min(j.r, TUILE * 0.42); // peut-il marcher tout droit jusque-là ?
+  for (let i = 1; i <= n; i++) if (!libre(j.x + (x - j.x) * i / n, j.y + (y - j.y) * i / n, rr, j.dep)) return false; return true; }
 function allerVers(j, tx, ty, v) {
   const pa = passageBot(j, tx, ty); if (pa) { tx = pa.x; ty = pa.y; }
+  let suit = false; if (j.dep !== 'vol') { const ch = cheminBot(j, tx, ty); if (ch) { suit = true; const p = ch[Math.min(1, ch.length - 1)], q = ch[0]; // vise 1 case plus loin si la route est dégagée
+    const px = (p[0] + 0.5) * TUILE, py = (p[1] + 0.5) * TUILE; if (ch.length > 1 && ligneLibre(j, px, py)) { tx = px; ty = py; } else { tx = (q[0] + 0.5) * TUILE; ty = (q[1] + 0.5) * TUILE; } } }
   if (j.cotePref === undefined) j.cotePref = Math.random() < 0.5 ? 1 : -1; // chaque bot a son côté préféré pour contourner
   let a = Math.atan2(ty - j.y, tx - j.x);
   if (j.detourT > temps) a = j.detourA;
-  else { const d = j.r + 30, px = j.x + Math.cos(a) * d, py = j.y + Math.sin(a) * d;
+  else if (!suit) { const d = j.r + 30, px = j.x + Math.cos(a) * d, py = j.y + Math.sin(a) * d;
     if (!libre(px, py, j.r, j.dep)) { // un mur devant : on tente son côté préféré, sinon l'autre
       const s = j.cotePref, g = libre(j.x + Math.cos(a - 1.1 * s) * d, j.y + Math.sin(a - 1.1 * s) * d, j.r, j.dep);
       a += (g ? -1.1 : 1.1) * s; j.detourA = a; j.detourT = temps + 18 + Math.floor(Math.random() * 14); } }
   const ax = j.x, ay = j.y;
   deplacer(j, Math.cos(a) * v, Math.sin(a) * v); j.marche += v; tourner(j, a, 0.15);
   if (Math.hypot(j.x - ax, j.y - ay) < v * 0.35) { // toujours coincé : grand contournement
-    if ((j.coince = (j.coince || 0) + 1) > 10) { j.detourA = a + (Math.random() < 0.5 ? 1 : -1) * (1.4 + Math.random()); j.detourT = temps + 50; j.coince = 0; }
+    if ((j.coince = (j.coince || 0) + 1) > 10) { j.coince = 0;
+      if (suit) { j.chem = null; j.via = null; const T = TUILE, cx = (Math.floor(j.x / T) + 0.5) * T, cy = (Math.floor(j.y / T) + 0.5) * T; j.detourA = Math.atan2(cy - j.y, cx - j.x); j.detourT = temps + 10; } // coincé sur son chemin : se recentre sur sa case et recalcule
+      else { j.detourA = a + (Math.random() < 0.5 ? 1 : -1) * (1.4 + Math.random()); j.detourT = temps + 50; } }
   } else j.coince = 0;
 }
 const centreZone = () => { if (map.zc === undefined) { let sx = 0, sy = 0, n = 0, b = { x0: 1e9, y0: 1e9, x1: -1, y1: -1 };

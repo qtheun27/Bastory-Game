@@ -1044,6 +1044,10 @@ const CONFIG_PAR_DEFAUT = {
     "tailleDegats": 1,
     "esquiveBots": 1,
     "botsVariete": 1,
+    "botsTropheesNiveau": 600,
+    "botsNivMin": 0.8,
+    "botsNivMax": 3,
+    "botsCadence": 1,
     "multPV": 1.3,
     "multPVBoss": 1.25,
     "quetesParJour": 3,
@@ -1401,6 +1405,10 @@ function migrerConfig(c) {
   if ((c.version || 0) < 28) { // v28 : 💬 chat de team (historique)
     c.app = c.app || {}; if (c.app.chatTeamMax === undefined) c.app.chatTeamMax = 200;
     c.version = Math.max(c.version || 0, 28);
+  }
+  if ((c.version || 0) < 29) { // v29 : 🤖 bots plus forts selon les trophées, tirent plus, vrai chemin sur la grille
+    c.app = c.app || {}; [['botsTropheesNiveau', 600], ['botsNivMin', 0.8], ['botsNivMax', 3], ['botsCadence', 1]].forEach(([k, v]) => { if (c.app[k] === undefined) c.app[k] = v; });
+    c.version = Math.max(c.version || 0, 29);
   }
 
 
