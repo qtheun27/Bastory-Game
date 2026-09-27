@@ -2512,12 +2512,13 @@ async function chercherAmi() {
 // ---------- 🛡️ TEAMS : clubs permanents (≠ groupe de jeu) — admins, ouverte / fermée, classement des teams chaque saison ----------
 // Realtime DB `teams/<id>` = { nom, embleme, ouverte, createur, admins: {uid: true}, membres: {uid: {nom, pts}}, demandes: {uid: {nom, t}}, saisonId, saisonPts, cree }
 // Profil Firestore du joueur : team, teamNom (ma team) • teamDemande (team fermée où j'attends une réponse)
-let maTeam = null, teamEcoute = null, listeTeams = null, listeTeamsT = -9999;
+let teamsRefusees = false, maTeam = null, teamEcoute = null, listeTeams = null, listeTeamsT = -9999;
 const EMBLEMES = ['🛡️', '🐉', '🦅', '🐺', '🦁', '🔥', '⚡', '🌊', '🌪️', '💀', '👑', '⭐', '🗡️', '🌙'];
 const refTeam = id => rtdb.ref('teams/' + id);
 const estAdminTeam = (t = maTeam) => !!(t && user && (t.admins || {})[user.uid]);
 const nbMembres = t => Object.keys((t && t.membres) || {}).length;
-const erreurBase = e => notif('⚠️ Refusé par la base : ' + e.message);
+const refusTeams = e => /permission/i.test((e && e.message) || '') ? '⚠️ Teams pas encore autorisées dans la base (règles Firebase « teams » à ajouter)' : null;
+const erreurBase = e => notif(refusTeams(e) || '⚠️ Refusé par la base : ' + e.message);
 function majProfilTeam(m) { Object.assign(mesStats, m); return db ? db.collection('joueurs').doc(user.uid).set(m, { merge: true }) : Promise.resolve(); }
 function ecouterTeam() { // suit ma team (ou celle où j'ai fait une demande) ; appelé à chaque image du menu, ne fait rien si rien n'a changé
   const id = mesStats.team || mesStats.teamDemande || '';
@@ -2532,12 +2533,12 @@ function ecouterTeam() { // suit ma team (ou celle où j'ai fait une demande) ; 
     }
     maTeam = t;
   };
-  ref.on('value', f, e => notif('⚠️ Team illisible : ' + e.message)); teamEcoute = { id, ref, f };
+  ref.on('value', f, e => notif(refusTeams(e) || '⚠️ Team illisible : ' + e.message)); teamEcoute = { id, ref, f };
 }
 function chargerTeams(force) { // liste des teams (rafraîchie toutes les ~15 s)
   if (!rtdb || (!force && temps - listeTeamsT < 900)) return; listeTeamsT = temps;
-  rtdb.ref('teams').orderByChild('saisonPts').limitToLast(40).once('value').then(s => { const l = []; s.forEach(c => { l.push({ id: c.key, ...c.val() }); });
-    listeTeams = l.map(t => ({ ...t, pts: t.saisonId === saisonId() ? +t.saisonPts || 0 : 0 })).sort((a, b) => b.pts - a.pts); }).catch(e => { listeTeams = listeTeams || []; notif('⚠️ Teams illisibles : ' + e.message); });
+  rtdb.ref('teams').orderByChild('saisonPts').limitToLast(40).once('value').then(s => { teamsRefusees = false; const l = []; s.forEach(c => { l.push({ id: c.key, ...c.val() }); });
+    listeTeams = l.map(t => ({ ...t, pts: t.saisonId === saisonId() ? +t.saisonPts || 0 : 0 })).sort((a, b) => b.pts - a.pts); }).catch(e => { listeTeams = listeTeams || []; teamsRefusees = !!refusTeams(e); notif(refusTeams(e) || '⚠️ Teams illisibles : ' + e.message); });
 }
 async function creerTeam() {
   if (!rtdb || !user) return; if (mesStats.team) return notif('Quitte ta team pour en créer une');
@@ -2602,6 +2603,7 @@ function panneauTeam(x, y, w, h) { // onglet 🛡️ Team du menu Amis
       B(x + w - 100 * u, y + 4 * u, 100 * u, 32 * u, 'Annuler', '#8b8fa8', '#5d6778', () => annulerDemandeTeam()); }
     texte('Une team = ton club permanent. Les points de chaque partie comptent pour le classement des teams de la saison.', x, y + 58 * u, 11 * u, 'rgba(255,255,255,.75)', 'left', w);
     if (!listeTeams) return texte('Chargement…', x + w / 2, y + 100 * u, 14 * u, '#fff');
+    if (teamsRefusees) return texte('⚠️ Les teams ne sont pas encore autorisées dans la base de données (l\'admin doit ajouter la règle « teams » dans Firebase).', x + w / 2, y + 100 * u, 13 * u, '#ffe8a3', 'center', w - 20 * u);
     if (!listeTeams.length) return texte('Aucune team pour l\'instant : crée la première !', x + w / 2, y + 100 * u, 14 * u, '#fff');
     listeTeams.slice(0, Math.max(1, Math.floor((h - 80 * u) / (rh + 6 * u)))).forEach((t, i) => {
       const ry = y + 76 * u + i * (rh + 6 * u), n = nbMembres(t); verre(x, ry, w, rh, 14 * u);
@@ -2636,7 +2638,8 @@ function panneauTeam(x, y, w, h) { // onglet 🛡️ Team du menu Amis
   });
 }
 function classementTeams(x, y, w, h) { // 🏆 compétition : classement des teams de la saison
-  const u = U(); chargerTeams(); if (!listeTeams) return texte('Chargement…', x + w / 2, y + 40 * u, 16 * u, '#fff');
+  const u = U(); chargerTeams(); if (teamsRefusees) return texte('⚠️ Les teams ne sont pas encore autorisées dans la base de données.', x + w / 2, y + 40 * u, 14 * u, '#ffe8a3', 'center', w - 20 * u);
+  if (!listeTeams) return texte('Chargement…', x + w / 2, y + 40 * u, 16 * u, '#fff');
   const l = listeTeams.filter(t => t.pts > 0 || t.id === mesStats.team); if (!l.length) return texte('Aucune team n\'a encore de points cette saison… crée ou rejoins une team (menu Amis) !', x + w / 2, y + 40 * u, 14 * u, '#fff', 'center', w - 20 * u);
   const rh = 36 * u; l.slice(0, Math.max(1, Math.floor(h / (rh + 6 * u)))).forEach((t, k) => {
     const ry = y + k * (rh + 6 * u), mien = t.id === mesStats.team; rect(x, ry, w, rh, 10 * u, mien ? 'rgba(255,210,63,.35)' : 'rgba(255,255,255,.1)', mien ? '#ffd23f' : null, 2);
