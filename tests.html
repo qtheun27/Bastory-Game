@@ -58,6 +58,10 @@ async function lancer() {
   await test('Bots : ils ne prennent pas tous le même chemin', () => E(`(() => { const W = map.l * TUILE, H2 = map.h * TUILE, vus = new Set(); let libres = 0;
       for (let i = 0; i < 20; i++) { const j = { x: W * 0.15, y: H2 * 0.5, r: 20, dep: 'vol' }; const p = passageBot(j, W * 0.85, H2 * 0.5); if (p) { libres++; vus.add(Math.round(p.x / 40) + ',' + Math.round(p.y / 40)); } }
       return libres === 0 || vus.size >= 3; })()`));
+  await test('Groupe : la partie démarre seulement quand tout le monde est prêt', () => E(`(() => { const sv = rtdb, g = groupe, p = pretsGroupe, dp = demarrerPartie, e = etat; let lance = 0;
+      rtdb = { ref: () => ({ remove: () => Promise.resolve() }) }; demarrerPartie = () => lance++; etat = 'MENU'; groupe = { chef: user.uid, membres: { a: { nom: 'A' } } };
+      pretsGroupe = { [user.uid]: true }; verifierPrets(); const avant = lance; pretsGroupe = { [user.uid]: true, a: true }; verifierPrets();
+      const ok = avant === 0 && lance === 1; rtdb = sv; groupe = g; pretsGroupe = p; demarrerPartie = dp; etat = e; return ok; })()`));
   await test('Rangs de saison dans le bon ordre', () => E(`rangDe(0).nom === 'Bronze' && rangDe(1e9).nom === 'Légende' && rangDe(400).min <= 400`));
   await test("Skins : un skin non acheté n'est jamais porté", () => E(`(() => { mesStats.skins = {}; mesStats.skinChoisi = { [cleP(baseDe(moi.perso))]: 'dore' }; return skinChoisi(moi.perso) === ''; })()`));
   await test('Bots : ils se rapprochent et attaquent', () => { const r = E(`(() => { const b = Object.values(autres)[0]; b.pv = b.pvMax = 1e9; moi.pv = moi.pvMax = 1e9; const d0 = Math.hypot(b.x - moi.x, b.y - moi.y), vus = new Set(); for (let i = 0; i < 1200; i++) { pasDeJeu(); projectiles.forEach(p => { if (p.de === b.uid) vus.add(p); }); } return [Math.round(d0), Math.round(Math.hypot(b.x - moi.x, b.y - moi.y)), 1e9 - moi.pv, vus.size]; })()`); return { ok: r[1] < Math.max(450, r[0]) && (r[3] > 0 || r[2] > 0), detail: 'distance ' + r[0] + ' → ' + r[1] + ' • tirs ' + r[3] + ' • dégâts ' + r[2] }; });
